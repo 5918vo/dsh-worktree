@@ -1,0 +1,440 @@
+/**
+ * Task lifecycle: publish (worktree + branch + record), git snapshot
+ * aggregation, acceptance actions. Session creation stays on the client
+ * (remote.session.create); the host only records the binding.
+ */
+
+import { randomUUID } from 'node:crypto'
+import { promises as fs } from 'node:fs'
+import { basename, isAbsolute, join, resolve } from 'node:path'
+import * as gitx from './gitx.js'
+import { Project, ProjectStats, ProjectView, TaskSnapshot, TaskStatus, TaskView, WorktreeConfig, WorktreeTask } from './models.js'
+import { Store } from './store.js'
+
+export interface PublishInput {
+  projectId?: string
+  repoPath?: string
+  baseBranch?: string
+  title: string
+  description: string
+  branchName?: string
+  start?: boolean
+}
+
+export interface AddProjectInput {
+  repoPath: string
+  name?: string
+  baseBranch?: string
+  dirName?: string
+  branchPrefix?: string
+}
+
+export class TaskError extends Error {
+  readonly status: number
+  constructor(message: string, status = 400) {
+    super(message)
+    this.name = 'TaskError'
+    this.status = status
+  }
+}
+
+function id8(id: string): string {
+  return id.replace(/-/g, '').slice(0, 8)
+}
+
+function assertTaskBranchName(name: string): void {
+  const valid = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/.test(name)
+  if (!valid || name.includes('..') || name.includes('@{') || name.endsWith('/') || name.endsWith('.') || name.endsWith('.lock')) {
+    throw new TaskError('任务分支只能使用英文、数字、点、下划线和斜杠')
+  }
+}
+
+export function buildFirstPrompt(task: WorktreeTask): string {
+  return [
+    `## 任务：${task.title}`,
+    '',
+    task.description.trim(),
+    '',
+    '---',
+    '这是一个 git worktree 任务，你的实际工作目录与当前启动目录不同：',
+    `- worktree 路径：${task.worktreePath}（分支 ${task.branch}，基于 ${task.baseBranch}）← 在这里开发`,
+    `- 主仓库：${task.repoPath}（会话启动目录；不要改动主仓库的工作区文件）`,
+    '',
+    '第一步：用 working_directory 工具切换到上面的 worktree 路径。',
+    '之后所有开发（读写、运行、提交）都在 worktree 里进行：阶段性 commit、写清楚的提交信息；需要用户决策时直接提问；完成后总结改动与验证结果。',
+  ].join('\n')
+}
+
+export class Runtime {
+  private readonly store: Store
+  private readonly config: WorktreeConfig
+  readonly gitPath: string
+
+  constructor(deps: { store: Store; config: WorktreeConfig }) {
+    this.store = deps.store
+    this.config = deps.config
+    this.gitPath = deps.config.gitPath
+  }
+
+  private abs(p: string): string {
+    const expanded = p.startsWith('~') ? join(process.env.USERPROFILE || process.env.HOME || '.', p.slice(1)) : p
+    return isAbsolute(expanded) ? expanded : resolve(expanded)
+  }
+
+  async repoInfo(dir: string): Promise<{ current: string | null; default: string | null }> {
+    if (!(await gitx.isRepo(this.gitPath, dir))) {
+      throw new TaskError(`目录不是 git 仓库工作区：${dir}`)
+    }
+    const { current, default: def } = await gitx.listBranches(this.gitPath, dir)
+    return { current, default: def }
+  }
+
+  async branches(dir: string): Promise<{ branches: Array<{ name: string; current: boolean }>; current: string | null; default: string | null }> {
+    const d = this.abs(dir)
+    return gitx.listBranches(this.gitPath, d)
+  }
+
+  /** Effective per-project worktree knobs (project override > global config). */
+  effective(project: Project | undefined) {
+    return {
+      dirName: project?.dirName?.trim() || this.config.dirName,
+      branchPrefix: project?.branchPrefix?.trim() || this.config.branchPrefix,
+    }
+  }
+
+  // ---- projects ----
+
+  async addProject(input: AddProjectInput): Promise<Project> {
+    const repoPath = this.abs(input.repoPath)
+    if (!(await gitx.isRepo(this.gitPath, repoPath))) {
+      throw new TaskError(`目标目录不是 git 仓库工作区：${repoPath}`)
+    }
+    const existing = this.store.findProjectByRepo(repoPath)
+    if (existing) return existing
+    const { current, default: defaultBranch } = await gitx.listBranches(this.gitPath, repoPath)
+    const base = (input.baseBranch || current || defaultBranch || '').trim()
+    const project: Project = {
+      id: randomUUID(),
+      name: (input.name || basename(repoPath) || 'project').trim(),
+      repoPath,
+      baseBranch: base,
+      ...(input.dirName?.trim() ? { dirName: input.dirName.trim() } : {}),
+      ...(input.branchPrefix?.trim() ? { branchPrefix: input.branchPrefix.trim() } : {}),
+      createdAt: Date.now(),
+    }
+    this.store.putProject(project)
+    this.store.addRecent(repoPath)
+    return project
+  }
+
+  updateProject(id: string, patch: { name?: string; baseBranch?: string; dirName?: string; branchPrefix?: string }): Project {
+    const project = this.store.getProject(id)
+    if (!project) throw new TaskError(`项目不存在：${id}`, 404)
+    if (typeof patch.name === 'string' && patch.name.trim()) project.name = patch.name.trim()
+    if (typeof patch.baseBranch === 'string' && patch.baseBranch.trim()) {
+      const b = patch.baseBranch.trim()
+      if (!gitx.branchExists(this.gitPath, project.repoPath, b)) throw new TaskError(`基线分支不存在：${b}`)
+      project.baseBranch = b
+    }
+    if (typeof patch.dirName === 'string') project.dirName = patch.dirName.trim() || undefined
+    if (typeof patch.branchPrefix === 'string') project.branchPrefix = patch.branchPrefix.trim() || undefined
+    this.store.putProject(project)
+    return project
+  }
+
+  deleteProject(id: string, opts: { withTasks?: boolean }): { deletedTasks: number } {
+    const project = this.store.getProject(id)
+    if (!project) throw new TaskError(`项目不存在：${id}`, 404)
+    const tasks = this.store.listTasksOfProject(id)
+    if (tasks.length > 0 && !opts.withTasks) {
+      throw new TaskError(`项目下还有 ${tasks.length} 个任务；勾选「连同任务删除」后重试`)
+    }
+    for (const t of tasks) this.store.deleteTask(t.id)
+    this.store.deleteProject(id)
+    return { deletedTasks: tasks.length }
+  }
+
+  /** Resolve the owning project for a publish: explicit id, repo match, or create. */
+  private async ensureProject(input: PublishInput): Promise<Project> {
+    if (input.projectId) {
+      const project = this.store.getProject(input.projectId)
+      if (!project) throw new TaskError(`项目不存在：${input.projectId}`, 404)
+      return project
+    }
+    const repoPath = this.abs(input.repoPath || '')
+    if (!input.repoPath) throw new TaskError('缺少 projectId 或 repoPath')
+    const found = this.store.findProjectByRepo(repoPath)
+    if (found) return found
+    return this.addProject({ repoPath })
+  }
+
+  /** Aggregate the board's left column: every project with its task views. */
+  async projectViews(): Promise<ProjectView[]> {
+    const views = await this.views()
+    const byId = new Map<string, ProjectView>()
+    const orphans: TaskView[] = []
+    for (const p of this.store.listProjects()) {
+      byId.set(p.id, { project: p, stats: { tasks: 0, byStatus: {}, running: 0 }, tasks: [] })
+    }
+    for (const v of views) {
+      let bucket = v.task.projectId ? byId.get(v.task.projectId) : undefined
+      if (bucket) bucket.tasks.push(v)
+      else orphans.push(v)
+    }
+    // Legacy tasks without a project: group them under a synthetic row per repo.
+    for (const v of orphans) {
+      const key = 'repo:' + v.task.repoPath.toLowerCase()
+      let bucket = byId.get(key)
+      if (!bucket) {
+        const synth: Project = {
+          id: key,
+          name: basename(v.task.repoPath) || v.task.repoPath,
+          repoPath: v.task.repoPath,
+          baseBranch: v.task.baseBranch,
+          createdAt: v.task.createdAt,
+        }
+        bucket = { project: synth, stats: { tasks: 0, byStatus: {}, running: 0 }, tasks: [] }
+        byId.set(key, bucket)
+      }
+      bucket.tasks.push(v)
+    }
+    const out = [...byId.values()]
+    for (const b of out) {
+      b.tasks.sort((x, y) => y.task.createdAt - x.task.createdAt)
+      b.stats.tasks = b.tasks.length
+      for (const v of b.tasks) {
+        const s = v.snapshot.status
+        b.stats.byStatus[s] = (b.stats.byStatus[s] || 0) + 1
+      }
+      b.stats.running = b.tasks.filter((v) => v.snapshot.status === 'developing').length
+    }
+    return out.sort((a, b) => a.project.name.localeCompare(b.project.name))
+  }
+
+  async publish(input: PublishInput): Promise<WorktreeTask> {
+    if (!input.title?.trim()) throw new TaskError('任务标题不能为空')
+    if (!input.description?.trim()) throw new TaskError('任务描述不能为空')
+
+    const project = await this.ensureProject(input)
+    const repoPath = project.repoPath
+    if (!(await gitx.isRepo(this.gitPath, repoPath))) {
+      throw new TaskError(`目标目录不是 git 仓库工作区：${repoPath}`)
+    }
+
+    const { current, default: defaultBranch } = await gitx.listBranches(this.gitPath, repoPath)
+    const base = (input.baseBranch || project.baseBranch || current || defaultBranch || '').trim()
+    if (!base || !(await gitx.branchExists(this.gitPath, repoPath, base))) {
+      throw new TaskError(`基线分支不存在：${base || '(未指定)'}`)
+    }
+
+    const eff = this.effective(project)
+    const id = randomUUID()
+    const short = id8(id)
+    const wanted = (input.branchName?.trim() || `${eff.branchPrefix}${short}`).trim()
+    assertTaskBranchName(wanted)
+    const branch = await gitx.uniqueBranchName(this.gitPath, repoPath, wanted)
+    const worktreePath = join(repoPath, eff.dirName, short)
+
+    await gitx.worktreeAdd(this.gitPath, repoPath, worktreePath, branch, base)
+    await gitx.ensureExclude(this.gitPath, repoPath, eff.dirName)
+
+    const now = Date.now()
+    const task: WorktreeTask = {
+      id,
+      projectId: project.id,
+      title: input.title.trim(),
+      description: input.description,
+      repoPath,
+      baseBranch: base,
+      branch,
+      worktreePath,
+      sessionId: null,
+      firstPrompt: '',
+      startOnBind: input.start !== false,
+      createdAt: now,
+      updatedAt: now,
+    }
+    task.firstPrompt = buildFirstPrompt(task)
+    this.store.putTask(task)
+    this.store.addRecent(repoPath)
+    return task
+  }
+
+  async snapshot(task: WorktreeTask): Promise<TaskSnapshot> {
+    const snap: TaskSnapshot = {
+      worktree: { exists: false, branch: null, dirtyCount: 0, ahead: 0, commits: [], lastCommitAt: null },
+      repo: { exists: false, currentBranch: null, dirtyCount: 0 },
+      branchExists: false,
+      merged: false,
+      status: 'broken',
+    }
+    try {
+      const [repoIsRepo, wtStat] = await Promise.all([
+        gitx.isRepo(this.gitPath, task.repoPath),
+        fs.stat(task.worktreePath).then((s) => s.isDirectory()).catch(() => false),
+      ])
+      snap.repo.exists = repoIsRepo
+      snap.worktree.exists = wtStat
+      snap.branchExists = repoIsRepo ? await gitx.branchExists(this.gitPath, task.repoPath, task.branch) : false
+
+      if (repoIsRepo) {
+        const [cur, dirty] = await Promise.all([
+          gitx.currentBranch(this.gitPath, task.repoPath),
+          gitx.isDirty(this.gitPath, task.repoPath),
+        ])
+        snap.repo.currentBranch = cur
+        snap.repo.dirtyCount = dirty
+        if (cur && snap.branchExists) {
+          // Merged means the branch tip is an ancestor of base AND the branch
+          // actually diverged (a freshly created branch points at base itself).
+          const [anc, same] = await Promise.all([
+            gitx.isAncestor(this.gitPath, task.repoPath, task.branch, task.baseBranch),
+            gitx.sameCommit(this.gitPath, task.repoPath, task.branch, task.baseBranch),
+          ])
+          snap.merged = anc && !same
+        }
+      }
+
+      if (wtStat) {
+        const [wtBranch, wtDirty, ahead, commits, lastAt] = await Promise.all([
+          gitx.currentBranch(this.gitPath, task.worktreePath),
+          gitx.isDirty(this.gitPath, task.worktreePath),
+          gitx.countCommits(this.gitPath, task.worktreePath, `${task.baseBranch}..HEAD`),
+          gitx.logOneline(this.gitPath, task.worktreePath, `${task.baseBranch}..HEAD`, 20),
+          gitx.lastCommitTime(this.gitPath, task.worktreePath),
+        ])
+        snap.worktree.branch = wtBranch
+        snap.worktree.dirtyCount = wtDirty
+        snap.worktree.ahead = ahead
+        snap.worktree.commits = commits
+        snap.worktree.lastCommitAt = lastAt
+      }
+
+      snap.status = this.statusOf(task, snap)
+    } catch (error) {
+      snap.status = 'broken'
+      snap.error = error instanceof Error ? error.message : String(error)
+    }
+    return snap
+  }
+
+  /**
+   * Git state is the source of truth; the record only carries metadata.
+   * Precedence: cleaned → broken → merged → reviewing → developing/review/ready.
+   */
+  statusOf(task: WorktreeTask, snap: TaskSnapshot): TaskStatus {
+    if (task.cleanedAt) return 'cleaned'
+    if (snap.error) return 'broken'
+    if (snap.merged) return 'merged'
+    if (snap.repo.currentBranch && snap.repo.currentBranch === task.branch) return 'reviewing'
+    if (snap.worktree.exists && (snap.worktree.ahead > 0 || snap.worktree.dirtyCount > 0)) return 'review'
+    if (task.sessionId) return 'developing'
+    return 'ready'
+  }
+
+  async view(task: WorktreeTask): Promise<TaskView> {
+    return { task, snapshot: await this.snapshot(task) }
+  }
+
+  async views(): Promise<TaskView[]> {
+    const tasks = this.store.listTasks()
+    return Promise.all(tasks.map((t) => this.view(t)))
+  }
+
+  private needTask(id: string): WorktreeTask {
+    const task = this.store.getTask(id)
+    if (!task) throw new TaskError(`任务不存在：${id}`, 404)
+    return task
+  }
+
+  private async refuseDirty(dir: string, what: string): Promise<void> {
+    const dirty = await gitx.isDirty(this.gitPath, dir)
+    if (dirty > 0) throw new TaskError(`${what}有 ${dirty} 处未提交改动，请先处理后再操作`)
+  }
+
+  async checkout(id: string): Promise<WorktreeTask> {
+    const task = this.needTask(id)
+    if (task.cleanedAt) throw new TaskError('worktree 已清理，无法验收切换')
+    await this.refuseDirty(task.repoPath, '主仓库')
+    const cur = await gitx.currentBranch(this.gitPath, task.repoPath)
+    if (cur !== task.branch) {
+      task.originalBranch = cur ?? task.originalBranch
+      await gitx.switchBranch(this.gitPath, task.repoPath, task.branch)
+      this.store.putTask(task)
+    }
+    return task
+  }
+
+  async back(id: string): Promise<WorktreeTask> {
+    const task = this.needTask(id)
+    if (!task.originalBranch) throw new TaskError('没有记录验收前的分支')
+    if (!(await gitx.branchExists(this.gitPath, task.repoPath, task.originalBranch))) {
+      throw new TaskError(`原分支已不存在：${task.originalBranch}`)
+    }
+    await this.refuseDirty(task.repoPath, '主仓库')
+    const cur = await gitx.currentBranch(this.gitPath, task.repoPath)
+    if (cur !== task.originalBranch) {
+      await gitx.switchBranch(this.gitPath, task.repoPath, task.originalBranch)
+    }
+    return task
+  }
+
+  async merge(id: string): Promise<WorktreeTask> {
+    const task = this.needTask(id)
+    if (task.cleanedAt) throw new TaskError('worktree 已清理，分支若仍在可手动合并')
+    if (!(await gitx.branchExists(this.gitPath, task.repoPath, task.branch))) {
+      throw new TaskError(`任务分支不存在：${task.branch}`)
+    }
+    await this.refuseDirty(task.repoPath, '主仓库')
+    const cur = await gitx.currentBranch(this.gitPath, task.repoPath)
+    if (cur !== task.baseBranch) {
+      await gitx.switchBranch(this.gitPath, task.repoPath, task.baseBranch)
+    }
+    await gitx.mergeNoFF(this.gitPath, task.repoPath, task.branch)
+    // After a successful merge the working branch is the base; keep the
+    // original-branch hint only if the user never went through checkout.
+    if (cur && cur !== task.branch && !task.originalBranch) task.originalBranch = cur
+    this.store.putTask(task)
+    return task
+  }
+
+  async cleanup(id: string, opts: { force?: boolean; deleteBranch?: boolean }): Promise<WorktreeTask> {
+    const task = this.needTask(id)
+    const wtExists = await fs.stat(task.worktreePath).then((s) => s.isDirectory()).catch(() => false)
+    if (wtExists) {
+      if (!opts.force) await this.refuseDirty(task.worktreePath, 'worktree')
+      await gitx.worktreeRemove(this.gitPath, task.repoPath, task.worktreePath, !!opts.force)
+    }
+    if (opts.deleteBranch && (await gitx.branchExists(this.gitPath, task.repoPath, task.branch))) {
+      const cur = await gitx.currentBranch(this.gitPath, task.repoPath)
+      if (cur === task.branch && task.originalBranch) {
+        await gitx.switchBranch(this.gitPath, task.repoPath, task.originalBranch)
+      }
+      await gitx.removeBranch(this.gitPath, task.repoPath, task.branch, true)
+    }
+    task.cleanedAt = Date.now()
+    this.store.putTask(task)
+    return task
+  }
+
+  delete(id: string): void {
+    this.store.deleteTask(id)
+  }
+
+  bind(id: string, sessionId: string): WorktreeTask {
+    const task = this.needTask(id)
+    task.sessionId = sessionId
+    task.startOnBind = false
+    this.store.putTask(task)
+    return task
+  }
+
+  unbindBySession(sessionId: string): WorktreeTask | null {
+    const task = this.store.listTasks().find((t) => t.sessionId === sessionId)
+    if (!task) return null
+    task.sessionId = null
+    task.startOnBind = false // the user removed the conversation; do not resurrect it
+    this.store.putTask(task)
+    return task
+  }
+}

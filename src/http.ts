@@ -1,0 +1,269 @@
+import { randomBytes } from 'node:crypto'
+import { App } from './app.js'
+import { TaskError } from './runtime.js'
+
+const PREFIX = '/dsh-worktree/api'
+const MAX_BODY = 64 * 1024
+const BOARD_CLIENT = 'worktree-board'
+
+interface RouteDef {
+  kind: 'exact'
+  path: string
+  handler: (req: any, res: any) => void | Promise<void>
+}
+
+function header(req: any, name: string): string | undefined {
+  const v = req.headers?.[name]
+  return Array.isArray(v) ? v[0] : v
+}
+
+function readJson(req: any): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const type = String(header(req, 'content-type') || '').toLowerCase()
+    if (!type.includes('application/json')) {
+      reject(Object.assign(new Error('json required'), { status: 415 }))
+      return
+    }
+    let size = 0
+    const chunks: Buffer[] = []
+    req.on('data', (c: Buffer) => {
+      size += c.length
+      if (size > MAX_BODY) {
+        reject(Object.assign(new Error('too large'), { status: 413 }))
+        req.destroy()
+      } else chunks.push(c)
+    })
+    req.on('end', () => {
+      try {
+        resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {})
+      } catch {
+        reject(Object.assign(new Error('bad json'), { status: 400 }))
+      }
+    })
+    req.on('error', reject)
+  })
+}
+
+function send(res: any, status: number, body: unknown): void {
+  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'x-content-type-options': 'nosniff', 'cache-control': 'no-store' })
+  res.end(JSON.stringify(body))
+}
+
+export function registerHttp(app: App): () => void {
+  const table = new Map<string, Map<string, (req: any, res: any) => void | Promise<void>>>()
+
+  const trusted = (req: any): boolean => {
+    if ((header(req, 'sec-fetch-site') || '').toLowerCase() === 'cross-site') return false
+    const origin = header(req, 'origin')
+    if (origin === undefined) return true
+    try {
+      return new URL(origin).host === header(req, 'host')
+    } catch {
+      return false
+    }
+  }
+  const requireToken = (req: any): void => {
+    const token = header(req, 'x-dsh-worktree-token')
+    if (!token || !app.tokens.has(token)) throw Object.assign(new Error('bad token'), { status: 403, code: 'bad-token' })
+  }
+  const q = (req: any, name: string): string => {
+    try {
+      return new URL(req.url, 'http://localhost').searchParams.get(name) || ''
+    } catch {
+      return ''
+    }
+  }
+
+  const route = (path: string, method: string, handler: (req: any, res: any) => void | Promise<void>) => {
+    let m = table.get(path)
+    if (!m) {
+      m = new Map()
+      table.set(path, m)
+    }
+    m.set(method, handler)
+  }
+
+  route('session', 'POST', async (req, res) => {
+    const body = await readJson(req)
+    // The board is a global page, not a session dock: one client key is enough.
+    const clientId = String(body.sessionId || BOARD_CLIENT)
+    if (clientId !== BOARD_CLIENT) return send(res, 403, { error: 'unknown client' })
+    const token = randomBytes(24).toString('hex')
+    app.tokens.set(token, clientId)
+    send(res, 200, { token })
+  })
+
+  route('config', 'GET', async (_req, res) => send(res, 200, { config: app.config }))
+
+  route('recents', 'GET', async (_req, res) => send(res, 200, { dirs: app.store.listRecents() }))
+  route('recents/clear', 'POST', async (_req, res) => {
+    app.store.clearRecents()
+    send(res, 200, { ok: true })
+  })
+
+  route('branches', 'GET', async (req, res) => {
+    const dir = q(req, 'path')
+    if (!dir) return send(res, 400, { error: 'path required' })
+    try {
+      const info = await app.runtime.branches(dir)
+      send(res, 200, info)
+    } catch (error) {
+      send(res, 400, { error: error instanceof Error ? error.message : String(error) })
+    }
+  })
+
+  route('publish', 'POST', async (req, res) => {
+    requireToken(req)
+    const body = await readJson(req)
+    try {
+      const task = await app.runtime.publish({
+        projectId: body.projectId ? String(body.projectId) : undefined,
+        repoPath: body.repoPath ? String(body.repoPath) : undefined,
+        baseBranch: body.baseBranch ? String(body.baseBranch) : undefined,
+        title: String(body.title || ''),
+        description: String(body.description || ''),
+        branchName: body.branchName ? String(body.branchName) : undefined,
+        start: body.start !== false,
+      })
+      send(res, 200, { task })
+    } catch (error) {
+      if (error instanceof TaskError) return send(res, error.status, { error: error.message })
+      send(res, 500, { error: error instanceof Error ? error.message : String(error) })
+    }
+  })
+
+  route('projects', 'GET', async (req, res) => {
+    requireToken(req)
+    const views = await app.runtime.projectViews()
+    send(res, 200, { projects: views })
+  })
+
+  route('projects/add', 'POST', async (req, res) => {
+    requireToken(req)
+    const body = await readJson(req)
+    try {
+      const project = await app.runtime.addProject({
+        repoPath: String(body.repoPath || ''),
+        name: body.name ? String(body.name) : undefined,
+        baseBranch: body.baseBranch ? String(body.baseBranch) : undefined,
+        dirName: body.dirName ? String(body.dirName) : undefined,
+        branchPrefix: body.branchPrefix ? String(body.branchPrefix) : undefined,
+      })
+      send(res, 200, { project })
+    } catch (error) {
+      if (error instanceof TaskError) return send(res, error.status, { error: error.message })
+      send(res, 500, { error: error instanceof Error ? error.message : String(error) })
+    }
+  })
+
+  route('projects/update', 'POST', async (req, res) => {
+    requireToken(req)
+    const body = await readJson(req)
+    try {
+      const project = app.runtime.updateProject(String(body.id || ''), {
+        name: body.name === undefined ? undefined : String(body.name),
+        baseBranch: body.baseBranch === undefined ? undefined : String(body.baseBranch),
+        dirName: body.dirName === undefined ? undefined : String(body.dirName),
+        branchPrefix: body.branchPrefix === undefined ? undefined : String(body.branchPrefix),
+      })
+      send(res, 200, { project })
+    } catch (error) {
+      if (error instanceof TaskError) return send(res, error.status, { error: error.message })
+      send(res, 500, { error: error instanceof Error ? error.message : String(error) })
+    }
+  })
+
+  route('projects/delete', 'POST', async (req, res) => {
+    requireToken(req)
+    const body = await readJson(req)
+    try {
+      send(res, 200, app.runtime.deleteProject(String(body.id || ''), { withTasks: !!body.withTasks }))
+    } catch (error) {
+      if (error instanceof TaskError) return send(res, error.status, { error: error.message })
+      send(res, 500, { error: error instanceof Error ? error.message : String(error) })
+    }
+  })
+
+  route('tasks', 'GET', async (req, res) => {
+    requireToken(req)
+    const views = await app.runtime.views()
+    send(res, 200, { tasks: views })
+  })
+
+  route('bind', 'POST', async (req, res) => {
+    requireToken(req)
+    const body = await readJson(req)
+    const id = String(body.id || '')
+    const sessionId = String(body.sessionId || '')
+    if (!id || !sessionId) return send(res, 400, { error: 'id and sessionId required' })
+    try {
+      send(res, 200, { task: await app.runtime.bind(id, sessionId) })
+    } catch (error) {
+      if (error instanceof TaskError) return send(res, error.status, { error: error.message })
+      send(res, 500, { error: error instanceof Error ? error.message : String(error) })
+    }
+  })
+
+  const act = (name: string, fn: (id: string, body: any) => Promise<unknown>) => {
+    route(`task/${name}`, 'POST', async (req, res) => {
+      requireToken(req)
+      const body = await readJson(req)
+      try {
+        await fn(String(body.id || ''), body)
+        const id = String(body.id || '')
+        const task = app.store.getTask(id)
+        if (!task) return send(res, 200, { ok: true, deleted: true })
+        send(res, 200, { ok: true, view: await app.runtime.view(task) })
+      } catch (error) {
+        if (error instanceof TaskError) return send(res, error.status, { error: error.message })
+        send(res, 500, { error: error instanceof Error ? error.message : String(error) })
+      }
+    })
+  }
+
+  act('checkout', async (id) => app.runtime.checkout(id))
+  act('back', async (id) => app.runtime.back(id))
+  act('merge', async (id) => app.runtime.merge(id))
+  act('cleanup', async (id, body) => app.runtime.cleanup(id, { force: !!body.force, deleteBranch: !!body.deleteBranch }))
+  act('delete', async (id) => app.runtime.delete(id))
+
+  const routes: RouteDef[] = []
+  for (const [path, methods] of table) {
+    routes.push({
+      kind: 'exact',
+      path: `${PREFIX}/${path}`,
+      async handler(req: any, res: any) {
+        try {
+          if (!trusted(req)) return send(res, 403, { error: 'untrusted-origin' })
+          const fn = methods.get(req.method)
+          if (!fn) return send(res, 405, { error: 'method-not-allowed' })
+          await fn(req, res)
+        } catch (error: any) {
+          send(res, error?.status || 500, { error: error?.code || 'internal', message: error instanceof Error ? error.message : String(error) })
+        }
+      },
+    })
+  }
+
+  return app.ctx.inject(['webServer'], (host: any) => {
+    const ws = host.webServer
+    if (!ws || typeof ws.register !== 'function') return () => {}
+    const offs: Array<() => void> = []
+    for (const r of routes) {
+      try {
+        offs.push(ws.register(r))
+      } catch {
+        /* noop */
+      }
+    }
+    return () => {
+      for (const off of offs) {
+        try {
+          off()
+        } catch {
+          /* noop */
+        }
+      }
+    }
+  })
+}

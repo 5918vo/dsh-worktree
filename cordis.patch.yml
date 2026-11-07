@@ -1,0 +1,14 @@
+# DeepSeek Worktree 任务插件 —— 每个任务是一个绑定 worktree 的真实 DSH 会话。
+#
+# Host 行只注册插件本身（git worktree 生命周期 + 任务台账 + 工作台 HTTP + 模型工具）。
+# 不声明 preset 行：任务会话跑用户当前的默认 preset，体验与普通会话一致。
+- insert:
+    - id: deepseek-worktree
+      name: '@local/dsh-deepseek-worktree'
+      config:
+        # worktree 父目录名（相对目标仓库根）
+        dirName: .dsh-worktrees
+        # 自动生成的任务分支前缀
+        branchPrefix: dsh-wt/
+        # git 可执行文件
+        gitPath: git
