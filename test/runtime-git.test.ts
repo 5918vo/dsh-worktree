@@ -265,3 +265,33 @@ test('a branch left at an older base is not reported as merged', async () => {
     await teardown(f)
   }
 })
+
+test('merge conflict reports the conflicting files and leaves the repo clean', async () => {
+  const f = await fixture()
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'conflict', description: 'd' })
+    await commitFile(task.worktreePath, 'src/conflict.txt', 'task\n', 'feat: task')
+
+    await fs.mkdir(join(f.repo, 'src'), { recursive: true })
+    await fs.writeFile(join(f.repo, 'src', 'conflict.txt'), 'base\n', 'utf8')
+    await git(f.repo, ['add', '.'])
+    await git(f.repo, ['commit', '-m', 'base change'])
+
+    const preview = await f.runtime.mergePreview(task.id)
+    assert.equal(preview.applicable, true)
+    assert.equal(preview.baseAhead, 1)
+    assert.deepEqual(preview.overlapFiles, ['src/conflict.txt'])
+    assert.equal(preview.conflict, true)
+    assert.ok(preview.conflictFiles.includes('src/conflict.txt'))
+
+    await assert.rejects(() => f.runtime.merge(task.id), (error: any) => {
+      assert.equal(error.status, 409)
+      assert.match(error.message, /无法自动合并/)
+      assert.match(error.message, /src\/conflict\.txt/)
+      return true
+    })
+    assert.equal(await exists(join(f.repo, '.git', 'MERGE_HEAD')), false)
+  } finally {
+    await teardown(f)
+  }
+})
