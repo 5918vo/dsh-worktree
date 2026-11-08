@@ -348,6 +348,10 @@ export function TaskDetail(props: any) {
     const cwdOff = !!liveCwd && !!task.worktreePath && liveCwd.toLowerCase() !== String(task.worktreePath).toLowerCase()
     const cleaned = snap.status === 'cleaned'
     const merged = snap.status === 'merged'
+    const archived = !!task.archivedAt
+    // Only finished tasks can be archived; a task under development should not
+    // vanish from the sidebar.
+    const canArchive = merged || cleaned
     const postMerge = snap.postMergeAhead || 0
     // A task that was merged through the workbench can spawn a follow-up task.
     const continued = !!task.mergedAt && (merged || cleaned)
@@ -866,6 +870,7 @@ export function TaskDetail(props: any) {
             h('div', { className: 'dshw-hero-meta' },
               h(Chip, { tone: meta.tone }, meta.label),
               meta.note ? h(Chip, { tone: 'warn' }, meta.note) : null,
+              archived ? h(Chip, { tone: 'neutral' }, t.archived) : null,
               healthActive
                 ? h(Chip, { tone: health.kind === 'error' ? 'error' : 'warn' }, health.kind === 'error' ? t.sessionError : t.sessionInterrupted)
                 : null,
@@ -973,6 +978,27 @@ export function TaskDetail(props: any) {
             snap.repo.dirtyCount > 0
               ? h(KV, { label: t.uncommitted }, h(Chip, { tone: 'warn', small: true }, snap.repo.dirtyCount + ' ' + t.changesUnit))
               : null))),
+      canArchive
+        ? h(Card, null,
+          h(CardHead, {
+            icon: 'archive',
+            title: t.archiveSection,
+            right: archived ? h(Chip, { tone: 'neutral', small: true }, t.archived) : null,
+          }),
+          h('p', { className: 'dshw-card-sub' }, archived ? t.archiveHintOn : t.archiveHintOff),
+          h('div', { className: 'dshw-action-grid' },
+            archived
+              ? h(Btn, {
+                icon: 'archiveRestore',
+                disabled: busy !== '',
+                onClick: () => void actPost('unarchive', 'task/unarchive', {}, t.unarchiveDone),
+              }, busy === 'unarchive' ? h(Spinner) : null, t.unarchive)
+              : h(Btn, {
+                icon: 'archive',
+                disabled: busy !== '',
+                onClick: () => void actPost('archive', 'task/archive', {}, t.archiveDone),
+              }, busy === 'archive' ? h(Spinner) : null, t.archive)))
+        : null,
       h(Card, { danger: true },
         h(CardHead, { icon: 'alert', title: t.dangerZone }),
         h('p', { className: 'dshw-card-sub' }, t.cleanupHint),
