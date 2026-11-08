@@ -1,7 +1,7 @@
 import { React, h } from './ui'
 import { Banner, Btn, Card, CardHead, Chip, CopyBtn, Dot, Icon, IconBtn, KV, Modal, Spinner } from './primitives'
-import { getJson, post } from './context'
-import { clipText, cx, firstLine, fmtDuration, fmtK, jp, pad2, relTime } from './format'
+import { appCtx, getJson, post } from './context'
+import { clipText, cx, firstLine, fmtDuration, fmtK, jp, pad2, relTime, uuid } from './format'
 import { pendingLabel, resolveStatus, statusMeta } from './status'
 import { fallbackEntries } from './timeline'
 import type { TimelineEntry } from './timeline'
@@ -310,6 +310,35 @@ export function TaskDetail(props: any) {
     const [force, setForce] = React.useState(false)
     const [delBranch, setDelBranch] = React.useState(false)
     const actionRef = React.useRef(false)
+    const remotes = appCtx && appCtx.remote
+    const [preview, setPreview] = React.useState(null)
+    const [previewBusy, setPreviewBusy] = React.useState(false)
+    const [syncBusy, setSyncBusy] = React.useState(false)
+    const previewRef = React.useRef(false)
+
+    const loadPreview = React.useCallback(async () => {
+      if (previewRef.current) return
+      previewRef.current = true
+      setPreviewBusy(true)
+      try {
+        const result = await post('task/merge-preview', { id: task.id })
+        setPreview(result.preview || null)
+      } catch {
+        /* the dry run is best-effort */
+      } finally {
+        previewRef.current = false
+        setPreviewBusy(false)
+      }
+    }, [task.id])
+
+    React.useEffect(() => {
+      setPreview(null)
+      void loadPreview()
+      const timer = setInterval(() => {
+        if (!document.hidden) void loadPreview()
+      }, 15000)
+      return () => clearInterval(timer)
+    }, [loadPreview])
 
     const meta = statusMeta(t, resolveStatus(snap.status, props.running), props.pendingKind)
     const liveData = readLive(props.live)
@@ -355,6 +384,82 @@ export function TaskDetail(props: any) {
     const actPost = (key: string, path: string, body: any, success: string) =>
       act(key, success, () => post(path, Object.assign({ id: task.id }, body)))
     const busyLabel = (key: string, label: string, working: string) => (busy === key ? working : label)
+
+    const syncBaseline = async () => {
+      if (syncBusy) return
+      if (!task.sessionId) {
+        props.notify(t.syncNoSession, 'error')
+        return
+      }
+      if (!remotes || !remotes.session) {
+        props.notify(t.failed, 'error')
+        return
+      }
+      setSyncBusy(true)
+      try {
+        const files = (preview && (preview.conflictFiles?.length ? preview.conflictFiles : preview.overlapFiles)) || []
+        const fileText = files.length ? files.join('、') : '—'
+        const text = String(t.syncPrompt)
+          .replace('{base}', task.baseBranch)
+          .replace('{branch}', task.branch)
+          .replace('{files}', fileText)
+        const tz = (() => {
+          try {
+            return Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+          } catch {
+            return ''
+          }
+        })()
+        const sent = await remotes.session.prompt({
+          requestId: uuid(),
+          sessionId: task.sessionId,
+          mode: 'queue',
+          content: [{ type: 'text', text }],
+          ...(tz ? { clientTimeZone: tz } : {}),
+        })
+        if (sent && sent.ok === false) {
+          throw new Error((sent.error && (sent.error.message || sent.error.code)) || t.failed)
+        }
+        props.notify(t.syncPromptSent)
+      } catch (error: any) {
+        props.notify((error && error.message) || t.failed, 'error')
+      } finally {
+        setSyncBusy(false)
+      }
+    }
+
+    const previewRisk = !cleaned && !merged && !!(preview && preview.applicable && preview.baseAhead > 0)
+    const previewFiles: string[] = preview
+      ? (preview.conflict && Array.isArray(preview.conflictFiles) && preview.conflictFiles.length
+        ? preview.conflictFiles
+        : preview.overlapFiles || [])
+      : []
+    const previewFilesText = previewFiles.slice(0, 8).join('、') + (previewFiles.length > 8 ? '…' : '')
+    const previewChip = previewRisk
+      ? preview.conflict
+        ? { tone: 'error', label: String(t.mergePreviewConflict).replace('{n}', String(Math.max(1, previewFiles.length))) }
+        : previewFiles.length
+          ? { tone: 'warn', label: String(t.mergePreviewOverlap).replace('{n}', String(previewFiles.length)) }
+          : { tone: 'neutral', label: String(t.mergePreviewBaseAhead).replace('{n}', String(preview.baseAhead)) }
+      : null
+    const syncAction = h(Btn, {
+      size: 'sm',
+      icon: 'refresh',
+      disabled: syncBusy || busy !== '' || !task.sessionId,
+      title: task.sessionId ? undefined : t.syncNoSession,
+      onClick: () => void syncBaseline(),
+    }, syncBusy ? t.syncingBaseline : t.syncBaseline)
+    const previewNode = previewRisk && (preview.conflict || previewFiles.length)
+      ? h(Banner, {
+        tone: preview.conflict ? 'error' : 'warn',
+        icon: 'alert',
+        title: preview.conflict ? t.mergePreviewConflictTitle : t.mergePreviewOverlapTitle,
+        actions: syncAction,
+      },
+        h('div', null, preview.conflict ? t.mergePreviewConflictHint : t.mergePreviewOverlapHint),
+        previewFiles.length ? h('div', { className: 'dshw-hint' }, t.mergePreviewFiles + '：' + previewFilesText) : null,
+        preview.supported === false || preview.checked === false ? h('div', { className: 'dshw-hint' }, t.mergePreviewNoCheck) : null)
+      : null
 
     const primary = cleaned
       ? h(Btn, { variant: 'primary', size: 'lg', icon: 'trash', disabled: true }, t.cleaned)
@@ -479,7 +584,8 @@ export function TaskDetail(props: any) {
           h(Btn, {
             key: 'ok',
             variant: 'primary',
-            disabled: busy === 'merge' || dirty > 0,
+            disabled: busy === 'merge' || dirty > 0 || previewBusy || !!(preview && preview.conflict),
+            title: preview && preview.conflict ? t.mergePreviewConflictHint : undefined,
             onClick: () => {
               void act('merge', String(t.mergeDone).replace('{base}', task.baseBranch), () => post('task/merge', { id: task.id }))
                 .then((ok) => { if (ok) setMergeOpen(false) })
@@ -492,6 +598,22 @@ export function TaskDetail(props: any) {
           h(KV, { label: t.baseBranch }, h('span', { className: 'dshw-mono' }, task.baseBranch)),
           h(KV, { label: t.commits }, String(ahead)),
           h(KV, { label: t.uncommitted }, dirty > 0 ? h(Chip, { tone: 'warn', small: true }, dirty + ' ' + t.changesUnit) : h('span', { className: 'dshw-hint', style: { margin: 0 } }, t.clean))),
+        previewBusy ? h('div', { className: 'dshw-hint' }, h(Spinner), t.mergePreviewChecking) : null,
+        previewRisk
+          ? h(Banner, {
+            tone: preview.conflict ? 'error' : previewFiles.length ? 'warn' : 'info',
+            icon: preview.conflict ? 'alert' : 'info',
+            title: preview.conflict
+              ? t.mergePreviewConflictTitle
+              : previewFiles.length
+                ? t.mergePreviewOverlapTitle
+                : String(t.mergePreviewBaseAhead).replace('{n}', String(preview.baseAhead)),
+            actions: previewFiles.length ? syncAction : null,
+          },
+            previewFiles.length ? h('div', null, preview.conflict ? t.mergePreviewConflictHint : t.mergePreviewOverlapHint) : null,
+            previewFiles.length ? h('div', { className: 'dshw-hint' }, t.mergePreviewFiles + '：' + previewFilesText) : null,
+            preview.supported === false || preview.checked === false ? h('div', { className: 'dshw-hint' }, t.mergePreviewNoCheck) : null)
+          : null,
         dirty > 0
           ? h(Banner, { tone: 'warn', icon: 'alert', title: t.mergeDirtyTitle }, t.mergeDirtyHint)
           : h(Banner, { tone: 'info', icon: 'info' }, t.mergeCleanHint),
@@ -602,6 +724,7 @@ export function TaskDetail(props: any) {
               healthActive
                 ? h(Chip, { tone: health.kind === 'error' ? 'error' : 'warn' }, health.kind === 'error' ? t.sessionError : t.sessionInterrupted)
                 : null,
+              previewChip ? h(Chip, { tone: previewChip.tone }, previewChip.label) : null,
               h('span', { className: 'dshw-meta-pill' }, h(Icon, { name: 'branch' }), h('span', { className: 'dshw-mono' }, branch)),
               h('span', { className: 'dshw-meta-pill' }, h(Icon, { name: 'arrowUp' }), ahead + ' ' + t.commitsAhead),
               dirty > 0
@@ -614,6 +737,7 @@ export function TaskDetail(props: any) {
       notStartedNode,
       pendingNode,
       healthNode,
+      previewNode,
       errorNode,
       h(LiveCard, { t, task, running: props.running, pendingKind: props.pendingKind, live: props.live, history: props.history }),
       showDiff ? h(DiffCard, { t, task, version: diffVersion, notify: props.notify }) : null,
@@ -662,7 +786,7 @@ export function TaskDetail(props: any) {
             icon: 'merge',
             disabled: mergeDisabled || busy !== '',
             title: mergeTitle,
-            onClick: () => setMergeOpen(true),
+            onClick: () => { setPreview(null); setMergeOpen(true); void loadPreview() },
           }, t.merge)),
         h('div', { className: 'dshw-hint' }, h(Icon, { name: 'info' }), acceptanceHint)),
       h(Card, null,

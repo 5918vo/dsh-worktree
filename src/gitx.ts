@@ -274,6 +274,82 @@ export async function commitTime(gitPath: string, dir: string, rev: string): Pro
   return Number.isFinite(seconds) ? seconds : null
 }
 
+export async function revParse(gitPath: string, dir: string, rev: string): Promise<string | null> {
+  const result = await tryRun(gitPath, dir, ['rev-parse', '--verify', '--quiet', rev])
+  const value = result ? result.stdout.trim() : ''
+  return value || null
+}
+
+export async function mergeBase(gitPath: string, dir: string, a: string, b: string): Promise<string | null> {
+  const result = await tryRun(gitPath, dir, ['merge-base', a, b])
+  const value = result ? result.stdout.trim() : ''
+  return value || null
+}
+
+/** Files changed between two revisions. */
+export async function diffNameOnly(gitPath: string, dir: string, from: string, to: string): Promise<string[]> {
+  const result = await tryRun(gitPath, dir, ['diff', '--name-only', from, to])
+  if (!result) return []
+  return result.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+}
+
+export interface MergeTreeCheck {
+  supported: boolean
+  conflict: boolean
+  files: string[]
+  error?: string
+}
+
+function mergeTreeFiles(stdout: string, stderr: string): string[] {
+  const files = new Set<string>()
+  const firstBlock = stdout.split(/\r?\n\r?\n/)[0] || ''
+  const lines = firstBlock.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  for (const line of lines.slice(1)) {
+    if (/^[0-9a-f]{40,64}$/i.test(line)) continue
+    if (/^(auto-merging|conflict|error)\b/i.test(line)) continue
+    files.add(line)
+  }
+  const all = `${stdout}\n${stderr}`
+  for (const match of all.matchAll(/Merge conflict in (.+)$/gm)) files.add(match[1].trim())
+  for (const match of all.matchAll(/CONFLICT \([^)]*\):\s*(.+?)\s+(?:deleted|modified) in/gi)) files.add(match[1].trim())
+  return [...files]
+}
+
+/**
+ * Dry-run a merge without touching either working tree.
+ * Requires git >= 2.38 (`merge-tree --write-tree`); older versions report
+ * `supported: false` so callers can fall back to an overlap-only warning.
+ */
+export function mergeTreeCheck(gitPath: string, dir: string, base: string, branch: string): Promise<MergeTreeCheck> {
+  return new Promise((resolve) => {
+    execFile(
+      gitPath,
+      ['merge-tree', '--write-tree', '--name-only', base, branch],
+      { cwd: dir, windowsHide: true, maxBuffer: 16 * 1024 * 1024, timeout: 120_000 },
+      (error, stdout, stderr) => {
+        const out = String(stdout ?? '')
+        const err = String(stderr ?? '')
+        const text = `${err}\n${out}`.trim()
+        if (!error) {
+          resolve({ supported: true, conflict: false, files: [] })
+          return
+        }
+        const code = typeof (error as any).code === 'number' ? (error as any).code : null
+        const unsupported = /unknown option|usage:\s*git merge-tree|is not a git command/i.test(text) && code !== 1
+        if (unsupported) {
+          resolve({ supported: false, conflict: false, files: [], error: text })
+          return
+        }
+        if (code === 1) {
+          resolve({ supported: true, conflict: true, files: mergeTreeFiles(out, err) })
+          return
+        }
+        resolve({ supported: true, conflict: false, files: [], error: text })
+      },
+    )
+  })
+}
+
 /**
  * Idempotently add `/<dirName>/` to the repo's local exclude file
  * (.git/info/exclude via git-common-dir, so it works from any linked
@@ -299,13 +375,6 @@ export async function ensureExclude(gitPath: string, dir: string, dirName: strin
 
 export async function removeBranch(gitPath: string, repoDir: string, branch: string, force: boolean): Promise<void> {
   await run(gitPath, repoDir, ['branch', force ? '-D' : '-d', branch])
-}
-
-/** Resolve the merge-base of two revisions, or null when they share no history. */
-export async function mergeBase(gitPath: string, dir: string, a: string, b: string): Promise<string | null> {
-  const r = await tryRun(gitPath, dir, ['merge-base', a, b])
-  const out = r?.stdout.trim()
-  return out ? out.split('\n')[0]!.trim() : null
 }
 
 export interface RawDiffFile {

@@ -222,6 +222,18 @@ export function registerHttp(app: App): () => void {
     }
   })
 
+  route('task/merge-preview', 'POST', async (req, res) => {
+    requireToken(req)
+    const body = await readJson(req)
+    try {
+      const preview = await app.runtime.mergePreview(String(body.id || ''))
+      send(res, 200, { preview })
+    } catch (error) {
+      if (error instanceof TaskError) return send(res, error.status, { error: error.message })
+      send(res, 500, { error: error instanceof Error ? error.message : String(error) })
+    }
+  })
+
   const act = (name: string, fn: (id: string, body: any) => Promise<unknown>) => {
     route(`task/${name}`, 'POST', async (req, res) => {
       requireToken(req)

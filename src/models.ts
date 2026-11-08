@@ -121,6 +121,26 @@ export interface SessionSummary {
   updatedAt?: number
 }
 
+/** Dry-run result for merging a task branch into its base branch. */
+export interface MergePreview {
+  applicable: boolean
+  branch: string
+  baseBranch: string
+  /** Commits on base since the merge base. */
+  baseAhead: number
+  /** Files changed on both sides since the merge base. */
+  overlapFiles: string[]
+  /** Files git predicts as conflicts (merge-tree). */
+  conflictFiles: string[]
+  conflict: boolean
+  /** Whether merge-tree actually ran. */
+  checked: boolean
+  /** Whether the local git supports merge-tree --write-tree (>= 2.38). */
+  supported: boolean
+  reason?: string
+  error?: string
+}
+
 /** A published task with its snapshot, as returned to the client and tools. */
 export interface TaskView {
   task: WorktreeTask

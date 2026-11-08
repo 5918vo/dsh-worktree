@@ -87,6 +87,17 @@ dsh-wt/b92e5f2a
 - 中文或包含非法字符的分支名会返回 `400`，不会创建 worktree。
 - 历史上已经存在的中文分支不会被自动重命名，避免破坏已有 worktree 和合并关系。
 
+## 任务提示词
+
+新建任务统一生成提示词，包含：
+
+- worktree 与主仓库的读写边界，主仓库只读
+- 开始前用 `git rev-parse --show-toplevel` / `git branch --show-current` 自检
+- 分阶段 commit、禁止切换分支/rebase/push/fetch/pull
+- 禁止主动同步基线；即使发现基线有新提交，也只写进总结
+- 仅在用户明确要求时执行 `git merge <base>`，冲突先问用户，失败用 `git merge --abort` 恢复
+- 完成后汇总改动、提交、验证、冲突处理与遗留风险
+
 ## 状态推导
 
 状态以 Git 和会话绑定情况为准：
@@ -124,6 +135,10 @@ Git 状态与会话状态分开显示：`review` 只表示 worktree 有待验收
 - 实时会话读取会话历史，默认收起为每步一行，点击展开完整内容；思考显示持续时长，工具显示路径/命令、变更行数和完成状态，超出部分省略。
 - 会话最近一轮中断或失败时，任务行和详情会显示「会话中断」/「会话异常」，并在详情提供打开会话入口。
 - 合并、清理、删除任务、删除项目和清空最近目录均使用页面内确认弹窗，展示分支、路径和未提交改动。
+- 基线有新提交时，任务详情会显示「基线已更新」；两边改到同一文件时提示重叠文件，`git merge-tree` 预检到真实冲突时提示「预计冲突」，但不改变任务状态。
+- 合并确认弹窗会重新预检：只有文件重叠时允许合并并列出风险文件；预计冲突时禁用合并，并提供「让 Agent 同步基线」。
+- 「让 Agent 同步基线」只在用户点击后向会话发送预设消息，插件不会自动向会话插入提醒；是否同步由用户决定。
+- 自动合并失败时执行 `git merge --abort`，在弹窗中列出冲突文件和处理方式。
 - 删除项目时默认勾选「同时删除 worktree 文件夹」：删除任务记录后会强制移除磁盘上的 worktree 目录；取消勾选则仅移除记录。仓库与分支本身不会被删除。
 - 复制会话 ID、分支或路径后会给出 Toast 反馈；刷新状态有独立进行中状态。
 - 任务详情和项目设置按 ID 重置状态，避免切换任务或项目后残留表单值、强制清理或删除分支选项。
@@ -194,6 +209,7 @@ POST bind
 POST task/checkout
 POST task/back
 POST task/merge
+POST task/merge-preview
 POST task/cleanup
 POST task/delete
 ```
@@ -202,6 +218,7 @@ POST task/delete
 - `session` 用于申请工作台 token；`config`、`recents`、`branches` 是本地查询接口。
 - `cleanup` 可带 `force`、`deleteBranch`。
 - `publish` 未传 `branchName` 时使用 Hash 命名规则。
+- `task/merge-preview` 使用 `git merge-tree --write-tree` 做无工作区副作用的合并预检，返回 `baseAhead`、`overlapFiles`、`conflictFiles`；Git 低于 2.38 时返回 `supported: false`，只提示文件重叠。
 
 ## 模型工具
 
