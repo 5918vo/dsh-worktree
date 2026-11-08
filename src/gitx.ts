@@ -266,6 +266,14 @@ export async function sameCommit(gitPath: string, dir: string, a: string, b: str
   return ra.stdout.trim() === rb.stdout.trim()
 }
 
+/** Commit timestamp in seconds, or null when the revision does not resolve. */
+export async function commitTime(gitPath: string, dir: string, rev: string): Promise<number | null> {
+  const result = await tryRun(gitPath, dir, ['show', '-s', '--format=%ct', rev])
+  if (!result) return null
+  const seconds = Number(result.stdout.trim())
+  return Number.isFinite(seconds) ? seconds : null
+}
+
 /**
  * Idempotently add `/<dirName>/` to the repo's local exclude file
  * (.git/info/exclude via git-common-dir, so it works from any linked

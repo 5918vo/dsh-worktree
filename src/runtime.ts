@@ -349,7 +349,17 @@ export class Runtime {
             gitx.isAncestor(this.gitPath, task.repoPath, task.branch, task.baseBranch),
             gitx.sameCommit(this.gitPath, task.repoPath, task.branch, task.baseBranch),
           ])
-          snap.merged = anc && !same
+          if (anc && !same) {
+            if (task.mergedAt) {
+              snap.merged = true
+            } else {
+              // A branch that only points at an older base commit is behind,
+              // not merged. A merged branch has a task commit newer than the
+              // task record.
+              const tipTime = await gitx.commitTime(this.gitPath, task.repoPath, task.branch)
+              snap.merged = tipTime !== null && tipTime * 1000 > (task.createdAt || 0)
+            }
+          }
         }
       }
 
@@ -452,6 +462,7 @@ export class Runtime {
     // After a successful merge the working branch is the base; keep the
     // original-branch hint only if the user never went through checkout.
     if (cur && cur !== task.branch && !task.originalBranch) task.originalBranch = cur
+    task.mergedAt = Date.now()
     this.store.putTask(task)
     return task
   }
