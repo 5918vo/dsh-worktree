@@ -6,7 +6,7 @@ import { TaskDetail } from './task-detail'
 import { ProjectDetail } from './project-detail'
 import { appCtx, bindSession, getJson } from './context'
 import { uuid } from './format'
-import { STATUS_TONE, pendingLabel, statusMeta } from './status'
+import { STATUS_TONE, pendingLabel, resolveStatus, statusMeta } from './status'
 import { buildHistoryEntries } from './timeline'
 
 export function BoardPage(props: any) {
@@ -473,10 +473,13 @@ export function BoardPage(props: any) {
               const pendingKind = v.task.sessionId ? pendingMap[v.task.sessionId] : null
               const running = runningOf(v.task)
               const active = selectedTaskId === v.task.id
-              const meta = statusMeta(t, v.snapshot.status, pendingKind)
+              // A running session is still in progress even after it has committed;
+              // show the status the Git snapshot alone cannot see.
+              const effectiveStatus = resolveStatus(v.snapshot.status, running)
+              const meta = statusMeta(t, effectiveStatus, pendingKind)
               const health = v.task.sessionId ? sessionHealth[v.task.sessionId] : null
               const healthActive = !!health && !running
-              const dotTone = meta.pending && !meta.note ? 'warn' : healthActive ? (health.kind === 'error' ? 'error' : 'warn') : STATUS_TONE[v.snapshot.status] || 'neutral'
+              const dotTone = meta.pending && !meta.note ? 'warn' : healthActive ? (health.kind === 'error' ? 'error' : 'warn') : STATUS_TONE[effectiveStatus] || 'neutral'
               const bound = !!v.task.sessionId
               return h('div', { key: v.task.id, role: 'listitem', className: 'dshw-task' + (active ? ' dshw-task--on' : '') },
                 h('button', {
@@ -611,6 +614,7 @@ export function BoardPage(props: any) {
         view: selectedProject,
         cfg,
         pendingMap,
+        sessionMap,
         t,
         notify,
         onChanged: afterChange,
