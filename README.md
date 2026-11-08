@@ -132,11 +132,44 @@ Git 状态与会话状态分开显示：`review` 只表示 worktree 有待验收
 
 ## 配色
 
-全部颜色集中在 `src/client.ts` 的 `PALETTE.light` 和 `PALETTE.dark` 两个对象，构建时生成 `--dshw-*` CSS 变量。
+全部颜色集中在 `src/client/palette.ts` 的 `PALETTE.light` 和 `PALETTE.dark` 两个对象，构建时生成 `--dshw-*` CSS 变量。
 
 - 更换配色只需修改这两个对象，其他样式不得写死颜色。
 - 宿主明暗主题通过 `dshw-dark` 类自动切换对应色板。
 - 状态色、终端面板、Toast、阴影和焦点环同样来自配色表。
+
+## 代码结构
+
+客户端按职责拆分，`src/client.ts` 只负责宿主模块注册和 slot 接线：
+
+```text
+src/client.ts                 # factory、locale 注册、slots
+src/client/
+├─ ui.ts                      # 宿主 React 代理、h、useStyles
+├─ context.ts                 # appCtx、token、请求、bindSession
+├─ palette.ts                 # 明暗色板（唯一颜色来源）
+├─ styles.ts                  # 全部 CSS
+├─ i18n.ts                    # 直接引用 locale/*.json
+├─ icons.ts
+├─ format.ts                  # 时间、路径、文本、diff、复制
+├─ timeline.ts                # 会话时间线与稳定 key
+├─ status.ts                  # 状态到 tone / 文案的映射
+├─ primitives.ts              # Btn / Card / Chip / Modal / Field / Toast 等
+├─ hooks.ts                   # useBranchInfo、useToast
+├─ modals.ts                  # 新增项目、发布任务
+├─ task-detail.ts             # LiveCard、TaskDetail
+├─ project-detail.ts
+├─ settings-page.ts
+└─ board-page.ts              # BoardPage、BoardIcon
+```
+
+约定：
+
+- 宿主通过 `factory(require)` 注入 React，组件不要直接 `import React from 'react'`，统一从 `src/client/ui.ts` 读取代理。
+- 新颜色只改 `src/client/palette.ts`；新样式只改 `src/client/styles.ts`。
+- 新文案同时加入 `locale/en.json` 和 `locale/zh.json`，`src/client/i18n.ts` 不再维护第二份字典。
+- 新请求统一走 `src/client/context.ts` 的 `getJson` / `post`，它们带 token 刷新和 12s 超时。
+- 操作结果统一使用 `useToast` + `Toast`，不再在页面里复制计时器。
 
 ## HTTP API
 
@@ -220,6 +253,8 @@ dist/index.js    Host 插件
 dist/client.js   Web 客户端
 ```
 
+客户端源码在 `src/client/`，构建时由 esbuild 统一打包进 `dist/client.js`；`locale/*.json` 同时供客户端与宿主使用。
+
 在 DSH Web 中通过 Plugins → 安装外部 bundle，源可以是 npm 包名或本地路径：
 
 ```text
@@ -269,6 +304,14 @@ npm publish
 - 临时任务创建、清理、分支删除和记录删除
 
 当前未包含自动化测试套件，以上验证以构建检查和真实浏览器交互测试为主。
+
+本次结构重构后额外验证：
+
+- `npm run typecheck`
+- `npm run build`
+- React SSR 渲染冒烟：任务详情、项目详情、设置页、新增项目弹窗、发布任务弹窗、看板页和侧栏图标均通过
+- 时间线稳定 key 检查：追加新事件后旧行 ID 不变
+- 构建产物 slot 注册检查：`settings.section`、`sidebar.panellist`、`main`
 
 
 ## 设计要点

@@ -105,6 +105,8 @@
   "clearRecents": "清空最近目录",
   "loading": "加载中…",
   "loadFailed": "加载失败",
+  "connectionLost": "连接已断开，请重试，或从 DSH 启动地址重新打开工作台。",
+  "reload": "重新加载",
   "failed": "操作失败",
   "publishTimeout": "发布请求超时，请刷新看板确认任务是否已创建",
   "bindTimeout": "任务已创建，但会话创建超时；请稍后在看板中打开或创建会话",
@@ -242,5 +244,13 @@
   "copyPath": "复制路径",
   "copySessionId": "复制会话 ID",
   "copyWorktree": "复制 worktree 路径",
-  "branchLabel": "分支"
+  "branchLabel": "分支",
+  "resultRead": "读取完成 · {lines} 行 · {chars} 字符",
+  "resultMatch": "匹配 {n} 个文件",
+  "resultWrite": "写入完成",
+  "todoUpdate": "更新执行清单",
+  "contentSize": "内容：{n} 字符",
+  "durationSec": "{n} 秒",
+  "durationMin": "{n} 分",
+  "durationMinSec": "{m} 分 {s} 秒"
 }

@@ -9,8 +9,9 @@
 实现入口：
 
 - `src/client-entry.ts`：the agent harness 客户端模块注册入口。
-- `src/client.ts`：React 视图、配色、样式、国际化和数据交互。
-- `src/client.ts` 中的 `PALETTE`：全部颜色的唯一来源。
+- `src/client.ts`：factory、locale 注册和 slot 接线。
+- `src/client/`：React 视图、配色、样式、国际化和数据交互的模块化实现。
+- `src/client/palette.ts`：全部颜色的唯一来源。
 - 构建产物：`dist/client.js`。
 
 ### 约束
@@ -114,7 +115,7 @@ grid-template-columns: 320px minmax(0, 1fr);
 
 ### 5.1 配色管理
 
-全部颜色集中定义在 `src/client.ts` 的 `PALETTE`：
+全部颜色集中定义在 `src/client/palette.ts` 的 `PALETTE`：
 
 ```ts
 const PALETTE = {
@@ -419,38 +420,41 @@ Git 状态与会话状态分开：
 
 ## 10. 代码组织与扩展原则
 
-当前 UI 集中在 `src/client.ts`，属于插件级内聚实现。后续扩展遵循：
+当前 UI 已按职责拆分到 `src/client/`，`src/client.ts` 只保留宿主模块注册、factory 和 slot 接线。后续扩展遵循：
 
-- 新组件优先复用 `Btn`、`IconBtn`、`Chip`、`Dot`、`Card`、`CardHead`、`KV`、`Field`、`Modal`、`Banner`、`Stat`。
-- 新颜色必须加入 `PALETTE`，不能在规则里写十六进制、`rgb()` 或命名颜色。
-- 新状态必须进入 `STATUS_TONE`，不能单独定义近似色。
+- 新组件优先复用 `src/client/primitives.ts` 的 `Btn`、`IconBtn`、`Chip`、`Dot`、`Card`、`CardHead`、`KV`、`Field`、`Modal`、`Banner`、`Stat`、`Toast`。
+- 新颜色必须加入 `src/client/palette.ts` 的 `PALETTE`，不能在 `styles.ts` 或组件里写十六进制、`rgb()` 或命名颜色。
+- 新状态必须进入 `src/client/status.ts` 的 `STATUS_TONE`，不能单独定义近似色。
+- 新文案必须加入 `locale/en.json` 和 `locale/zh.json`；`src/client/i18n.ts` 直接引用这两个文件，不再维护第二份字典。
 - 新表单必须使用 `Field` 或等价的 label / error / aria 关联。
-- 弹窗必须复用 `Modal`，不能复制焦点管理。
-- 新异步操作必须提供 loading、失败和防重复提交处理。
-- 样式注入使用单例引用计数，避免重复 `<style>`。
+- 弹窗必须复用 `Modal`，不能复制焦点管理；需要“取消 + 确认”时优先复用统一 footer 结构。
+- 复制、刷新、操作结果统一使用 `useToast` + `Toast`，不要在每个页面复制计时器。
+- 请求统一走 `src/client/context.ts` 的 `getJson` / `post`，它们带 token 刷新、12s 超时和重试语义。
+- 组件内不要直接 `import React from 'react'`：宿主通过 `factory(require)` 注入 React，统一从 `src/client/ui.ts` 读取代理。
+- 样式只改 `src/client/styles.ts`；主题探测和 `<style>` 单例引用计数在 `ui.ts`。
 - 修改交互后同时更新本文件和 `README.md`。
 
-后续如拆分文件，建议按以下边界组织，但不改变宿主接入方式：
+当前边界：
 
 ```text
+src/client.ts                 # factory / locale 注册 / slot 接线
 src/client/
+├─ ui.ts                      # 宿主 React 代理、h、useStyles
+├─ context.ts                 # appCtx、token、请求、bindSession
 ├─ palette.ts
 ├─ styles.ts
-├─ i18n.ts
+├─ i18n.ts                    # 直接引用 locale/*.json
 ├─ icons.ts
-├─ components/
-│  ├─ Modal.ts
-│  ├─ Field.ts
-│  ├─ Chip.ts
-│  ├─ Card.ts
-│  └─ Toast.ts
-├─ pages/
-│  ├─ BoardPage.ts
-│  ├─ TaskDetail.ts
-│  ├─ ProjectDetail.ts
-│  └─ SettingsPage.ts
-└─ hooks/
-   └─ useBranchInfo.ts
+├─ format.ts                  # 时间、路径、文本、diff、复制
+├─ timeline.ts                # 会话时间线与稳定 key
+├─ status.ts
+├─ primitives.ts              # 基础组件与 Modal/Field/Toast
+├─ hooks.ts                   # useBranchInfo、useToast
+├─ modals.ts                  # 新增项目、发布任务
+├─ task-detail.ts             # LiveCard + TaskDetail
+├─ project-detail.ts
+├─ settings-page.ts
+└─ board-page.ts              # BoardPage + BoardIcon
 ```
 
 ## 11. 验收清单

@@ -105,6 +105,8 @@
   "clearRecents": "Clear recents",
   "loading": "Loading…",
   "loadFailed": "Load failed",
+  "connectionLost": "Connection lost. Retry, or reopen the workbench from the DSH launch URL.",
+  "reload": "Reload",
   "failed": "Operation failed",
   "publishTimeout": "Publish timed out — refresh the board to confirm whether the task was created",
   "bindTimeout": "Task created, but session creation timed out — open or create the session from the board later",
@@ -242,5 +244,13 @@
   "copyPath": "Copy path",
   "copySessionId": "Copy session ID",
   "copyWorktree": "Copy worktree path",
-  "branchLabel": "Branch"
+  "branchLabel": "Branch",
+  "resultRead": "Read · {lines} lines · {chars} chars",
+  "resultMatch": "Matched {n} files",
+  "resultWrite": "Write complete",
+  "todoUpdate": "Update todos",
+  "contentSize": "Content: {n} chars",
+  "durationSec": "{n}s",
+  "durationMin": "{n}m",
+  "durationMinSec": "{m}m {s}s"
 }
