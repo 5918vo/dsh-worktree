@@ -19,6 +19,8 @@ export interface PublishInput {
   description: string
   branchName?: string
   start?: boolean
+  /** Continue from an already-merged task; the new task records this as its parent. */
+  parentId?: string
   /** Client publishes bind their own session; tools rely on the board retry. */
   autoBind?: boolean
 }
@@ -117,13 +119,58 @@ function assertTaskBranchName(name: string): void {
   }
 }
 
-export function buildFirstPrompt(task: WorktreeTask): string {
-  return [
+/** Facts about the preceding merged task, folded into a follow-up task's first prompt. */
+export interface ParentPromptInfo {
+  id: string
+  title: string
+  branch: string
+  mergedCommits: gitx.CommitLine[]
+  mergedFiles: string[]
+  /** Commits added on the predecessor branch after it was merged (not yet in base). */
+  leftoverCommits: gitx.CommitLine[]
+  /** `<mergeBase>..<parentBranch>` range for cherry-picking the leftovers, when known. */
+  leftoverRange?: string
+}
+
+function parentPromptLines(parent: ParentPromptInfo, baseBranch: string): string[] {
+  const lines: string[] = []
+  lines.push(`前序任务（已合并到 ${baseBranch}）：`)
+  lines.push(`- 标题：${parent.title}`)
+  lines.push(`- 分支：${parent.branch}`)
+  if (parent.mergedCommits.length) {
+    lines.push('- 已合并的提交：')
+    for (const commit of parent.mergedCommits) lines.push(`  - ${commit.hash} ${commit.subject}`)
+  } else {
+    lines.push('- 已合并的提交：—')
+  }
+  lines.push(`- 改动文件：${parent.mergedFiles.length ? parent.mergedFiles.join('、') : '—'}`)
+  lines.push('')
+  lines.push(`当前 worktree 基于 ${baseBranch} 创建，已包含上述已合并改动。`)
+  lines.push('请先阅读相关文件，了解现有实现，再在此基础上完成本次任务；不要重复实现或回退前序改动。')
+  if (parent.leftoverCommits.length && parent.leftoverRange) {
+    lines.push('')
+    lines.push(`注意：前序分支在合并后又有 ${parent.leftoverCommits.length} 个未合并提交，当前 worktree 尚未包含它们：`)
+    for (const commit of parent.leftoverCommits) lines.push(`  - ${commit.hash} ${commit.subject}`)
+    lines.push('开始开发前，请先把这些提交带入当前分支（在 worktree 内执行）：')
+    lines.push(`  git cherry-pick ${parent.leftoverRange}`)
+    lines.push('遇到冲突逐个解决；涉及业务取舍时先问我。')
+  }
+  return lines
+}
+
+export function buildFirstPrompt(task: WorktreeTask, parent?: ParentPromptInfo): string {
+  const lines = [
     '这是一个 git worktree 任务。',
     '',
     `任务：${task.title}`,
     `描述：${task.description.trim()}`,
     '',
+  ]
+  if (parent) {
+    lines.push(...parentPromptLines(parent, task.baseBranch))
+    lines.push('')
+  }
+  lines.push(
     '环境：',
     `- worktree：${task.worktreePath}`,
     `  分支 ${task.branch}，基于 ${task.baseBranch} ← 所有开发都在这里进行`,
@@ -154,7 +201,8 @@ export function buildFirstPrompt(task: WorktreeTask): string {
     '- 运行过的验证及结果',
     '- 如果同步过基线：同步到的基线提交、冲突文件及解决方式',
     '- 没验证的部分和遗留风险',
-  ].join('\n')
+  )
+  return lines.join('\n')
 }
 
 export class Runtime {
@@ -341,6 +389,53 @@ export class Runtime {
     return out.sort((a, b) => a.project.name.localeCompare(b.project.name))
   }
 
+  /**
+   * Validate that a predecessor task's merged changes really are in `base`.
+   * Returns the resolved parent plus the facts the follow-up prompt needs.
+   */
+  private async loadContinuableParent(parentId: string, repoPath: string, base: string): Promise<{ parent: WorktreeTask; info: ParentPromptInfo }> {
+    const parent = this.store.getTask(parentId)
+    if (!parent) throw new TaskError(`前序任务不存在：${parentId}`, 404)
+    const norm = (p: string) => p.replace(/[\\/]+$/, '').toLowerCase()
+    if (norm(parent.repoPath) !== norm(repoPath)) {
+      throw new TaskError('前序任务属于其他仓库，不能作为续作发布')
+    }
+    if (!parent.mergedAt) {
+      throw new TaskError('前序任务尚未合并，无法作为续作发布；请先合并前序任务')
+    }
+    // Prefer the branch tip that was actually merged: it stays an ancestor of base
+    // even after newer commits land on the old branch.
+    const ref = parent.mergedBranchTip || parent.branch
+    if (!(await gitx.isAncestor(this.gitPath, repoPath, ref, base))) {
+      throw new TaskError(`前序任务的改动不在基线分支 ${base} 的历史中，无法作为续作发布`)
+    }
+    return { parent, info: await this.parentPromptInfo(parent, base) }
+  }
+
+  /** Best-effort facts about a merged task: what it merged, and what came after. */
+  private async parentPromptInfo(parent: WorktreeTask, base: string): Promise<ParentPromptInfo> {
+    const repo = parent.repoPath
+    let mergedCommits: gitx.CommitLine[] = []
+    let mergedFiles: string[] = []
+    if (parent.mergedCommit && parent.mergedBranchTip) {
+      mergedCommits = await gitx.logOneline(this.gitPath, repo, `${parent.mergedCommit}^1..${parent.mergedBranchTip}`, 30)
+      mergedFiles = await gitx.diffNameOnly(this.gitPath, repo, `${parent.mergedCommit}^1`, parent.mergedBranchTip)
+    } else if (await gitx.branchExists(this.gitPath, repo, parent.branch)) {
+      mergedCommits = await gitx.logOneline(this.gitPath, repo, parent.branch, 20)
+      mergedFiles = await gitx.diffNameOnly(this.gitPath, repo, base, parent.branch)
+    }
+    let leftoverCommits: gitx.CommitLine[] = []
+    let leftoverRange: string | undefined
+    if (await gitx.branchExists(this.gitPath, repo, parent.branch)) {
+      const mb = await gitx.mergeBase(this.gitPath, repo, base, parent.branch)
+      if (mb) {
+        leftoverCommits = await gitx.logOneline(this.gitPath, repo, `${mb}..${parent.branch}`, 20)
+        if (leftoverCommits.length) leftoverRange = `${mb}..${parent.branch}`
+      }
+    }
+    return { id: parent.id, title: parent.title, branch: parent.branch, mergedCommits, mergedFiles, leftoverCommits, leftoverRange }
+  }
+
   async publish(input: PublishInput): Promise<WorktreeTask> {
     if (!input.title?.trim()) throw new TaskError('任务标题不能为空')
     if (!input.description?.trim()) throw new TaskError('任务描述不能为空')
@@ -355,6 +450,14 @@ export class Runtime {
     const base = (input.baseBranch || project.baseBranch || current || defaultBranch || '').trim()
     if (!base || !(await gitx.branchExists(this.gitPath, repoPath, base))) {
       throw new TaskError(`基线分支不存在：${base || '(未指定)'}`)
+    }
+
+    let parentInfo: ParentPromptInfo | undefined
+    let parentId: string | undefined
+    if (input.parentId) {
+      const loaded = await this.loadContinuableParent(input.parentId, repoPath, base)
+      parentInfo = loaded.info
+      parentId = loaded.parent.id
     }
 
     const eff = this.effective(project)
@@ -381,10 +484,11 @@ export class Runtime {
       sessionId: null,
       firstPrompt: '',
       startOnBind: input.start !== false && input.autoBind !== false,
+      ...(parentId ? { parentId } : {}),
       createdAt: now,
       updatedAt: now,
     }
-    task.firstPrompt = buildFirstPrompt(task)
+    task.firstPrompt = buildFirstPrompt(task, parentInfo)
     this.store.putTask(task)
     this.store.addRecent(repoPath)
     return task
@@ -432,6 +536,14 @@ export class Runtime {
               // task record.
               const tipTime = await gitx.commitTime(this.gitPath, task.repoPath, task.branch)
               snap.merged = tipTime !== null && tipTime * 1000 > (task.createdAt || 0)
+            }
+          } else if (!anc && task.mergedAt) {
+            // Merged through the workbench, but newer commits landed on the old
+            // branch afterwards. Keep the task `merged` and count those patches.
+            const aheadOfBase = await gitx.countCommits(this.gitPath, task.repoPath, `${task.baseBranch}..${task.branch}`)
+            if (aheadOfBase > 0) {
+              snap.merged = true
+              snap.postMergeAhead = aheadOfBase
             }
           }
         }
@@ -599,6 +711,8 @@ export class Runtime {
       throw new TaskError(`任务分支不存在：${task.branch}`)
     }
     await this.refuseDirty(task.repoPath, '主仓库', false)
+    // Capture the tip that is about to be merged, before any switch.
+    const mergedTip = await gitx.revParse(this.gitPath, task.repoPath, task.branch)
     const cur = await gitx.currentBranch(this.gitPath, task.repoPath)
     if (cur !== task.baseBranch) {
       await gitx.switchBranch(this.gitPath, task.repoPath, task.baseBranch)
@@ -621,6 +735,9 @@ export class Runtime {
     // original-branch hint only if the user never went through checkout.
     if (cur && cur !== task.branch && !task.originalBranch) task.originalBranch = cur
     task.mergedAt = Date.now()
+    if (mergedTip) task.mergedBranchTip = mergedTip
+    const mergeCommit = await gitx.revParse(this.gitPath, task.repoPath, 'HEAD')
+    if (mergeCommit) task.mergedCommit = mergeCommit
     this.store.putTask(task)
     return task
   }

@@ -345,3 +345,92 @@ test('merge conflict reports the conflicting files and leaves the repo clean', a
     await teardown(f)
   }
 })
+
+test('merge records the merged branch tip and later commits show as merged + postMergeAhead', async () => {
+  const f = await fixture()
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'm', description: 'd' })
+    await commitFile(task.worktreePath, 'src/a.txt', 'a\n', 'feat: a')
+    const merged = await f.runtime.merge(task.id)
+    assert.ok(merged.mergedBranchTip, 'mergedBranchTip should be recorded')
+    assert.ok(merged.mergedCommit, 'mergedCommit should be recorded')
+
+    // The old branch picks up another commit after the merge.
+    await commitFile(task.worktreePath, 'src/b.txt', 'b\n', 'feat: b after merge')
+    const view = await f.runtime.view(task)
+    assert.equal(view.snapshot.merged, true)
+    assert.equal(view.snapshot.status, 'merged')
+    assert.equal(view.snapshot.postMergeAhead, 1)
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('publish with parentId continues a merged task from the base and records the link', async () => {
+  const f = await fixture()
+  try {
+    const parent = await f.runtime.publish({ repoPath: f.repo, title: '父任务', description: 'd' })
+    await commitFile(parent.worktreePath, 'src/parent.txt', 'parent\n', 'feat: parent')
+    await f.runtime.merge(parent.id)
+
+    const child = await f.runtime.publish({ repoPath: f.repo, title: '子任务', description: 'd2', parentId: parent.id })
+    assert.equal(child.parentId, parent.id)
+    assert.equal(child.baseBranch, parent.baseBranch)
+    assert.ok(await exists(join(child.worktreePath, 'src/parent.txt')), 'child worktree should contain the merged parent file')
+    assert.ok(child.firstPrompt.includes('前序任务'))
+    assert.ok(child.firstPrompt.includes(parent.title))
+    assert.ok(child.firstPrompt.includes(parent.branch))
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('publish with parentId rejects a predecessor that was never merged', async () => {
+  const f = await fixture()
+  try {
+    const parent = await f.runtime.publish({ repoPath: f.repo, title: 'p', description: 'd' })
+    await assert.rejects(
+      () => f.runtime.publish({ repoPath: f.repo, title: 'c', description: 'd', parentId: parent.id }),
+      (e: any) => e instanceof TaskError && /尚未合并/.test(e.message),
+    )
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('publish with parentId works after the predecessor worktree and branch are cleaned', async () => {
+  const f = await fixture()
+  try {
+    const parent = await f.runtime.publish({ repoPath: f.repo, title: 'p', description: 'd' })
+    await commitFile(parent.worktreePath, 'src/p.txt', 'p\n', 'feat: p')
+    await f.runtime.merge(parent.id)
+    await f.runtime.cleanup(parent.id, { deleteBranch: true })
+
+    const child = await f.runtime.publish({ repoPath: f.repo, title: 'c', description: 'd', parentId: parent.id })
+    assert.equal(child.parentId, parent.id)
+    assert.ok(await exists(join(child.worktreePath, 'src/p.txt')), 'base still carries the merged changes')
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('follow-up prompt lists leftover commits with a cherry-pick hint', async () => {
+  const f = await fixture()
+  try {
+    const parent = await f.runtime.publish({ repoPath: f.repo, title: 'p', description: 'd' })
+    await commitFile(parent.worktreePath, 'src/a.txt', 'a\n', 'feat: first')
+    await f.runtime.merge(parent.id)
+    await commitFile(parent.worktreePath, 'src/b.txt', 'b\n', 'feat: leftover work')
+
+    const view = await f.runtime.view(parent)
+    assert.equal(view.snapshot.postMergeAhead, 1)
+
+    const child = await f.runtime.publish({ repoPath: f.repo, title: 'c', description: 'd', parentId: parent.id })
+    assert.ok(child.firstPrompt.includes('feat: leftover work'), 'leftover commit subject should be listed')
+    assert.ok(child.firstPrompt.includes('cherry-pick'), 'cherry-pick hint should be present')
+    // The follow-up branch starts from base, so the leftover file is not present yet.
+    assert.equal(await exists(join(child.worktreePath, 'src/b.txt')), false)
+  } finally {
+    await teardown(f)
+  }
+})

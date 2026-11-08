@@ -119,3 +119,25 @@ test('recents dedupe, cap at ten and clear', async () => {
     await cleanup(store, dir)
   }
 })
+
+test('store persists a task parentId across reload', async () => {
+  const { store, dir } = await freshStore()
+  try {
+    const t = task('child', 'p', 1)
+    t.parentId = 'parent'
+    store.putTask(t)
+    await store.flush()
+  } finally {
+    store.dispose()
+    await store.flush()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  try {
+    const reloaded = new Store(dir)
+    await reloaded.load()
+    assert.equal(reloaded.getTask('child')!.parentId, 'parent')
+  } finally {
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    await rmrf(dir)
+  }
+})

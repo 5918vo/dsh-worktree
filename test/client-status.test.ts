@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { STATUS_TONE, isReviewable, pendingLabel, resolveStatus, statusMeta } from '../src/client/status.js'
+import { STATUS_TONE, isReviewable, pendingLabel, postMergeLabel, resolveStatus, statusMeta } from '../src/client/status.js'
 
 const T = {
   ready: '准备',
@@ -13,6 +13,7 @@ const T = {
   pendingApproval: '待审批',
   pendingPlanReview: '待计划确认',
   pendingQuestion: '待回答',
+  postMergeBadge: '已合并 · 之后有 {n} 个新提交',
 }
 
 test('STATUS_TONE maps lifecycle states to tones', () => {
@@ -76,4 +77,8 @@ test('resolveStatus leaves other lifecycle states untouched while running', () =
   for (const status of ['ready', 'developing', 'reviewing', 'merged', 'cleaned', 'broken']) {
     assert.equal(resolveStatus(status, true), status)
   }
+})
+
+test('postMergeLabel fills the commit count into the badge', () => {
+  assert.equal(postMergeLabel(T, 2), '已合并 · 之后有 2 个新提交')
 })

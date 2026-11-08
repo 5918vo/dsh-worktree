@@ -125,6 +125,8 @@ cleaned
 
 Git 状态与会话状态分开显示：`review` 只表示 worktree 有待验收的提交或改动；如果最近一轮 `turn/end` 的原因是 `interrupted` 或 `error`，任务行和详情会额外显示「会话中断」/「会话异常」提示，验收操作仍按 Git 状态决定。
 
+已合并的任务如果在旧分支上又出现新提交，状态仍为「已合并」，并附加「已合并 · 之后有 N 个新提交」标记：可以「再次合并」作为补丁路径，或「基于此任务继续」新建后续任务。
+
 ## 工作台与交互
 
 - 左侧按项目展示任务树，项目行主体用于选中项目，折叠和新增任务为独立按钮。
@@ -133,6 +135,9 @@ Git 状态与会话状态分开显示：`review` 只表示 worktree 有待验收
 - 项目详情提供任务总数、进行中、待验收、已合并统计，并把待审批任务汇总为可跳转提示。
 - 任务详情按「任务摘要 → 实时会话 → 改动文件（待验收） → 会话信息 → 验收操作 → Worktree/主仓库 → 危险操作」排列。
 - 「切到任务分支验收」仅在任务进入待验收（`review`）后可用；待开始、进行中（`developing`）时禁用并说明原因，避免在开发完成前进入验收。
+- 已合并任务详情的主操作为「基于此任务继续」，「打开会话」降为次级；点击后打开发布弹窗并预填标题（原标题加「（续）」）、项目默认基线和「关联前序任务」说明，描述留空由用户填写新需求。
+- 已合并任务分支在合并后又有新提交时，详情显示「已合并 · 之后有 N 个新提交」：可「再次合并」作为补丁，或「基于此任务继续」新建后续任务（这些未合并提交会写进首条指令，由 Agent 用 cherry-pick 带入）。
+- 后续任务会记录 `parentId`，详情中展示前序任务与后续任务的链接；发布成功后可选择清理前序任务的 worktree（默认不清理）。
 - 实时会话读取会话历史，默认收起为每步一行，点击展开完整内容；思考显示持续时长，工具显示路径/命令、变更行数和完成状态，超出部分省略。
 - 会话最近一轮中断或失败时，任务行和详情会显示「会话中断」/「会话异常」，并在详情提供打开会话入口。
 - 合并、清理、删除任务、删除项目和清空最近目录均使用页面内确认弹窗，展示分支、路径和未提交改动。
@@ -219,12 +224,13 @@ POST task/delete
 - `session` 用于申请工作台 token；`config`、`recents`、`branches` 是本地查询接口。
 - `cleanup` 可带 `force`、`deleteBranch`。
 - `publish` 未传 `branchName` 时使用 Hash 命名规则。
+- `publish` 可带 `parentId`：从已合并任务派生后续任务，校验前序任务已合并且其合并时的分支尖端在基线历史中；不满足时返回 400/404。
 - `task/merge-preview` 使用 `git merge-tree --write-tree` 做无工作区副作用的合并预检，返回 `baseAhead`、`overlapFiles`、`conflictFiles`；Git 低于 2.38 时返回 `supported: false`，只提示文件重叠。
 
 ## 模型工具
 
 ```text
-worktree_publish { repository, base_branch?, title, task, branch_name?, start? }
+worktree_publish { repository, base_branch?, title, task, branch_name?, parent_id?, start? }
 worktree_tasks   {}
 worktree_act     { id, action, force?, delete_branch? }
 ```

@@ -123,6 +123,7 @@ export function registerHttp(app: App): () => void {
         title: String(body.title || ''),
         description: String(body.description || ''),
         branchName: body.branchName ? String(body.branchName) : undefined,
+        parentId: body.parentId ? String(body.parentId) : undefined,
         start: body.start !== false,
         autoBind: false,
       })

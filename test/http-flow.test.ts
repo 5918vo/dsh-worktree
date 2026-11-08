@@ -187,3 +187,38 @@ test('task/diff returns per-file changes for a task', async () => {
   assert.ok(file, 'committed file should be listed')
   assert.ok(file.patch.includes('+a'))
 })
+
+test('publish with parentId continues a merged task over HTTP', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
+  const projectId = added.body.project.id
+
+  const published = await call('publish', {
+    body: { projectId, title: '父任务', description: '实现父功能', branchName: 'feat/http-parent' },
+    headers: auth,
+  })
+  assert.equal(published.status, 200, JSON.stringify(published.body))
+  const parent = published.body.task
+  await commitFile(parent.worktreePath, 'src/http-parent.txt', 'x\n', 'feat: parent')
+
+  const merged = await call('task/merge', { body: { id: parent.id }, headers: auth })
+  assert.equal(merged.status, 200, JSON.stringify(merged.body))
+
+  const child = await call('publish', {
+    body: { projectId, title: '子任务', description: '实现子功能', branchName: 'feat/http-child', parentId: parent.id },
+    headers: auth,
+  })
+  assert.equal(child.status, 200, JSON.stringify(child.body))
+  assert.equal(child.body.task.parentId, parent.id)
+})
+
+test('publish with an unknown parentId returns 404', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
+  const projectId = added.body.project.id
+  const res = await call('publish', {
+    body: { projectId, title: 'x', description: 'y', parentId: 'does-not-exist' },
+    headers: auth,
+  })
+  assert.equal(res.status, 404)
+})

@@ -1,13 +1,13 @@
 import { React, h, useStyles } from './ui'
-import { Btn, Chip, Dot, Empty, Icon, IconBtn, Spinner, Toast } from './primitives'
+import { Btn, Chip, Dot, Empty, Icon, IconBtn, Modal, Spinner, Toast } from './primitives'
 import { AddProjectModal, PublishModal } from './modals'
 import { useToast } from './hooks'
 import { TaskDetail } from './task-detail'
 import { ProjectDetail } from './project-detail'
 import { upsertPublishedTask } from './board-data'
-import { appCtx, bindSession, getJson } from './context'
+import { appCtx, bindSession, getJson, post } from './context'
 import { uuid } from './format'
-import { STATUS_TONE, pendingLabel, resolveStatus, statusMeta } from './status'
+import { STATUS_TONE, pendingLabel, postMergeLabel, resolveStatus, statusMeta } from './status'
 import { buildHistoryEntries } from './timeline'
 
 export function BoardPage(props: any) {
@@ -24,6 +24,11 @@ export function BoardPage(props: any) {
     const [showDetail, setShowDetail] = React.useState(false)
     const [collapsed, setCollapsed] = React.useState({})
     const [publishFor, setPublishFor] = React.useState(null)
+    const [publishParent, setPublishParent] = React.useState(null)
+    const [cleanupPredecessor, setCleanupPredecessor] = React.useState(null)
+    const [predecessorBusy, setPredecessorBusy] = React.useState(false)
+    const [predecessorErr, setPredecessorErr] = React.useState('')
+    const [predecessorForce, setPredecessorForce] = React.useState(false)
     const [projectModalOpen, setProjectModalOpen] = React.useState(false)
     const [sessionMap, setSessionMap] = React.useState({})
     const [pendingMap, setPendingMap] = React.useState({})
@@ -392,6 +397,18 @@ export function BoardPage(props: any) {
     }
     const toggleCollapse = (id: string) => setCollapsed((c: any) => ({ ...c, [id]: !c[id] }))
 
+    /** Open the publish dialog prefilled to continue from a merged task. */
+    const openContinue = (view: any) => {
+      const owner = projectViews.find((pv: any) => pv.tasks.some((v: any) => v.task.id === view.task.id))
+        || projectViews.find((pv: any) => pv.project.id === view.task.projectId)
+        || projectViews.find((pv: any) => pv.project.repoPath === view.task.repoPath)
+      const project = owner ? owner.project : (selectedProject ? selectedProject.project : null)
+      if (!project) return
+      setPublishParent({ view })
+      setPublishFor(project)
+      selectProject(project.id)
+    }
+
     /** Jump to the task's conversation in the left workspace (native navigation). */
     const openTaskSession = (sessionId: string) => {
       try {
@@ -518,6 +535,9 @@ export function BoardPage(props: any) {
                     h('span', { className: 'dshw-task-meta' },
                       h(Chip, { tone: meta.tone, small: true }, meta.label),
                       meta.note ? h(Chip, { tone: 'warn', small: true }, meta.note) : null,
+                      v.snapshot.postMergeAhead > 0
+                        ? h(Chip, { tone: 'warn', small: true }, postMergeLabel(t, v.snapshot.postMergeAhead))
+                        : null,
                       healthActive
                         ? h(Chip, { tone: health.kind === 'error' ? 'error' : 'warn', small: true }, health.kind === 'error' ? t.sessionError : t.sessionInterrupted)
                         : null,
@@ -630,6 +650,10 @@ export function BoardPage(props: any) {
         onOpenSession: selectedTask.task.sessionId ? () => openTaskSession(selectedTask.task.sessionId) : undefined,
         onCreateSession: selectedTask.task.sessionId ? undefined : () => createTaskSession(selectedTask),
         onStartTask: selectedTask.task.sessionId ? () => startBoundSession(selectedTask) : undefined,
+        parentView: selectedTask.task.parentId ? (allTasks.find((v: any) => v.task.id === selectedTask.task.parentId) || null) : null,
+        followUps: allTasks.filter((v: any) => v.task.parentId === selectedTask.task.id),
+        onContinue: () => openContinue(selectedTask),
+        onSelectTask: (id: string) => selectTask(id),
       })
     } else if (selectedProject) {
       detailBody = h(ProjectDetail, {
@@ -659,6 +683,23 @@ export function BoardPage(props: any) {
         h('div', { className: 'dshw-detail-inner' }, mobileBar),
         detailBody))
 
+    const runPredecessorCleanup = async () => {
+      if (!cleanupPredecessor || predecessorBusy) return
+      setPredecessorBusy(true)
+      setPredecessorErr('')
+      try {
+        await post('task/cleanup', { id: cleanupPredecessor.task.id, force: predecessorForce, deleteBranch: false })
+        setCleanupPredecessor(null)
+        setPredecessorForce(false)
+        notify(t.cleanupPredecessorDone)
+        await refresh()
+      } catch (e: any) {
+        setPredecessorErr((e && e.message) || t.failed)
+      } finally {
+        setPredecessorBusy(false)
+      }
+    }
+
     const modalNode = [
       publishFor
         ? h(PublishModal, {
@@ -666,11 +707,14 @@ export function BoardPage(props: any) {
           t,
           project: publishFor,
           cfg,
-          onClose: () => setPublishFor(null),
+          parentView: publishParent ? publishParent.view : undefined,
+          onClose: () => { setPublishFor(null); setPublishParent(null) },
           onRefresh: () => { void refresh() },
           onError: (message: string) => notify(message, 'error'),
           onPublished: (task: any, project: any, warning?: string) => {
+            const predecessor = publishParent ? publishParent.view : null
             setPublishFor(null)
+            setPublishParent(null)
             if (project && project.id) setSelectedProjectId(project.id)
             if (task && task.id) setSelectedTaskId(task.id)
             setShowDetail(true)
@@ -683,6 +727,11 @@ export function BoardPage(props: any) {
               setProjectViews((prev: any[]) => upsertPublishedTask(prev, task, project && project.id, status))
             }
             void refresh()
+            // Offer (never force) to clean the predecessor's worktree once its
+            // continuation is published.
+            if (predecessor && predecessor.snapshot && predecessor.snapshot.worktree && predecessor.snapshot.worktree.exists) {
+              setCleanupPredecessor(predecessor)
+            }
             notify(warning || String(t.published).replace('{branch}', task && task.branch ? task.branch : ''), warning ? 'error' : 'ok')
           },
         })
@@ -703,6 +752,34 @@ export function BoardPage(props: any) {
             void refresh()
           },
         })
+        : null,
+      cleanupPredecessor
+        ? h(Modal, {
+          key: 'pred',
+          t,
+          title: t.cleanupPredecessorTitle,
+          subtitle: t.cleanupPredecessorSub,
+          icon: 'trash',
+          tone: 'danger',
+          size: 'sm',
+          busy: predecessorBusy,
+          onClose: () => { if (!predecessorBusy) { setCleanupPredecessor(null); setPredecessorForce(false); setPredecessorErr('') } },
+          footer: [
+            h(Btn, { key: 'c', onClick: () => { setCleanupPredecessor(null); setPredecessorForce(false); setPredecessorErr('') }, disabled: predecessorBusy, 'data-autofocus': true }, t.keepWorktree),
+            h(Btn, { key: 'ok', variant: 'danger', disabled: predecessorBusy, onClick: () => void runPredecessorCleanup() }, predecessorBusy ? h(Spinner) : null, predecessorBusy ? t.cleaning : t.cleanup),
+          ],
+        },
+          h('div', { className: 'dshw-danger-list' },
+            h('div', { className: 'dshw-danger-title' }, h(Icon, { name: 'alert' }), t.cleanupPredecessorSub),
+            h('div', { className: 'dshw-danger-item' }, h(Icon, { name: 'folder' }), h('span', null, cleanupPredecessor.task.worktreePath))),
+          h('div', { className: 'dshw-hint' }, t.cleanupPredecessorHint),
+          (cleanupPredecessor.snapshot.worktree.dirtyCount || 0) > 0
+            ? h('label', { className: 'dshw-check' },
+              h('input', { type: 'checkbox', checked: predecessorForce, onChange: (e: any) => setPredecessorForce(e.target.checked) }),
+              h('span', { className: 'dshw-check-copy' }, t.cleanupPredecessorForce,
+                h('small', null, String(t.cleanupPredecessorDirty).replace('{n}', String(cleanupPredecessor.snapshot.worktree.dirtyCount || 0)))))
+            : null,
+          predecessorErr ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, predecessorErr)) : null)
         : null,
     ]
 

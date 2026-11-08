@@ -207,15 +207,17 @@ export function AddProjectModal(props: { t: any; onClose: () => void; onAdded: (
       err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null))
   }
 
-export function PublishModal(props: { t: any; project: any; cfg: any; onClose: () => void; onRefresh: () => void; onError: (message: string) => void; onPublished: (task: any, project: any, warning?: string) => void }) {
+export function PublishModal(props: { t: any; project: any; cfg: any; parentView?: any; onClose: () => void; onRefresh: () => void; onError: (message: string) => void; onPublished: (task: any, project: any, warning?: string) => void }) {
     const t = props.t
     const remotes = appCtx && appCtx.remote
     const project = props.project
     const cfg = props.cfg || {}
+    const parentTask = props.parentView && props.parentView.task ? props.parentView.task : null
+    const parentAhead = (props.parentView && props.parentView.snapshot && props.parentView.snapshot.postMergeAhead) || 0
     const branches = useBranchInfo(project.repoPath)
     const [baseBranch, setBaseBranch] = React.useState(project.baseBranch || '')
     const [branchName, setBranchName] = React.useState('')
-    const [title, setTitle] = React.useState('')
+    const [title, setTitle] = React.useState(parentTask ? String(parentTask.title) + String(t.continueTitleSuffix) : '')
     const [description, setDescription] = React.useState('')
     const [start, setStart] = React.useState(true)
     const [busy, setBusy] = React.useState(false)
@@ -269,6 +271,7 @@ export function PublishModal(props: { t: any; project: any; cfg: any; onClose: (
           title: title.trim(),
           description,
           branchName: branchName.trim() || undefined,
+          ...(parentTask ? { parentId: parentTask.id } : {}),
           start,
         }), 30000, t.publishTimeout)
         const task = r.task
@@ -325,7 +328,7 @@ export function PublishModal(props: { t: any; project: any; cfg: any; onClose: (
 
     return h(Modal, {
       t,
-      title: t.publish,
+      title: parentTask ? t.continueTask : t.publish,
       subtitle: project.name,
       icon: 'play',
       size: 'lg',
@@ -343,6 +346,17 @@ export function PublishModal(props: { t: any; project: any; cfg: any; onClose: (
           h('div', { className: 'dshw-readonly-box' },
             h('span', { className: 'dshw-folder-tile dshw-folder-tile--blue' }, h(Icon, { name: 'folder' })),
             h('span', { className: 'dshw-nowrap' }, project.name))),
+        parentTask
+          ? h('div', { className: 'dshw-form-row' },
+            h('label', null, t.parentTask),
+            h('div', null,
+              h('div', { className: 'dshw-readonly-box' },
+                h('span', { className: 'dshw-folder-tile dshw-folder-tile--purple' }, h(Icon, { name: 'branch' })),
+                h('span', { className: 'dshw-nowrap' }, parentTask.title)),
+              h('div', { className: 'dshw-hint' },
+                String(t.parentTaskMerged).replace('{base}', baseBranch || project.baseBranch || ''),
+                parentAhead > 0 ? ' · ' + String(t.carryNote).replace('{n}', String(parentAhead)) : '')))
+          : null,
         h('div', { className: 'dshw-form-row' },
           h('label', { htmlFor: 'dshw-publish-title' }, t.taskTitle, h('span', { className: 'dshw-req', 'aria-hidden': 'true' }, '*')),
           h('div', null,

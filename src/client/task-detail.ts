@@ -2,7 +2,7 @@ import { React, h } from './ui'
 import { Banner, Btn, Card, CardHead, Chip, CopyBtn, Dot, Icon, IconBtn, KV, Modal, Spinner } from './primitives'
 import { appCtx, getJson, post } from './context'
 import { clipText, cx, firstLine, fmtDuration, fmtK, jp, pad2, relTime, uuid } from './format'
-import { isReviewable, pendingLabel, resolveStatus, statusMeta } from './status'
+import { isReviewable, pendingLabel, postMergeLabel, resolveStatus, statusMeta } from './status'
 import { fallbackEntries } from './timeline'
 import type { TimelineEntry } from './timeline'
 
@@ -348,6 +348,9 @@ export function TaskDetail(props: any) {
     const cwdOff = !!liveCwd && !!task.worktreePath && liveCwd.toLowerCase() !== String(task.worktreePath).toLowerCase()
     const cleaned = snap.status === 'cleaned'
     const merged = snap.status === 'merged'
+    const postMerge = snap.postMergeAhead || 0
+    // A task that was merged through the workbench can spawn a follow-up task.
+    const continued = !!task.mergedAt && (merged || cleaned)
     const broken = snap.status === 'broken'
     const checkedOut = snap.status === 'reviewing'
     const dirty = snap.worktree.dirtyCount
@@ -361,7 +364,7 @@ export function TaskDetail(props: any) {
     // The review-only diff card: shown while the task is waiting for acceptance
     // (or being reviewed on the main repo), where "what changed" matters most.
     const effectiveStatus = resolveStatus(snap.status, props.running)
-    const showDiff = !cleaned && !broken && (effectiveStatus === 'review' || effectiveStatus === 'reviewing')
+    const showDiff = !cleaned && !broken && (effectiveStatus === 'review' || effectiveStatus === 'reviewing' || postMerge > 0)
     const diffVersion = [snap.worktree.ahead, snap.worktree.dirtyCount, snap.worktree.lastCommitAt || 0, snap.status].join(':')
 
     const act = async (key: string, success: string, fn: () => Promise<any>): Promise<boolean> => {
@@ -462,37 +465,85 @@ export function TaskDetail(props: any) {
         preview.supported === false || preview.checked === false ? h('div', { className: 'dshw-hint' }, t.mergePreviewNoCheck) : null)
       : null
 
-    const primary = cleaned
-      ? h(Btn, { variant: 'primary', size: 'lg', icon: 'trash', disabled: true }, t.cleaned)
-      : canStart
-        ? h(Btn, {
-          variant: 'primary',
-          size: 'lg',
-          icon: busy === 'start' ? undefined : 'play',
-          disabled: busy !== '',
-          onClick: () => { void act('start', t.taskStarted, () => Promise.resolve(props.onStartTask())) },
-        }, busy === 'start' ? h(Spinner) : null, busyLabel('start', t.startTask, t.startingTask))
-        : task.sessionId
+    // Merged, but the old branch picked up commits after the merge: offer the
+    // light patch path (merge again) or a clean follow-up task (carry commits in).
+    const postMergeNode = postMerge > 0
+      ? h(Banner, {
+        tone: 'warn',
+        icon: 'clock',
+        title: String(t.postMergeTitle).replace('{n}', String(postMerge)),
+        actions: h('div', { className: 'dshw-inline', style: { gap: '8px', flexWrap: 'wrap' } },
+          h(Btn, {
+            size: 'sm',
+            icon: 'merge',
+            disabled: busy !== '',
+            onClick: () => { setPreview(null); setMergeOpen(true); void loadPreview() },
+          }, t.mergeAgain),
+          props.onContinue
+            ? h(Btn, {
+              size: 'sm',
+              variant: 'primary',
+              icon: 'plus',
+              disabled: busy !== '',
+              onClick: () => props.onContinue(),
+            }, t.continueTask)
+            : null),
+      }, String(t.postMergeHint).replace('{n}', String(postMerge)))
+      : null
+
+    const primary = continued && props.onContinue
+      ? h(Btn, {
+        variant: 'primary',
+        size: 'lg',
+        icon: 'plus',
+        disabled: busy !== '',
+        onClick: () => props.onContinue(),
+      }, t.continueTask)
+      : cleaned
+        ? h(Btn, { variant: 'primary', size: 'lg', icon: 'trash', disabled: true }, t.cleaned)
+        : canStart
           ? h(Btn, {
             variant: 'primary',
             size: 'lg',
-            icon: 'external',
-            disabled: !props.onOpenSession,
-            onClick: () => {
-              const opened = props.onOpenSession && props.onOpenSession()
-              if (opened === false) props.notify(t.openSessionFailed, 'error')
-            },
-          }, t.openSessionBtn)
-          : h(Btn, {
-            variant: 'primary',
-            size: 'lg',
-            icon: busy === 'session' ? undefined : 'message',
-            disabled: !props.onCreateSession || busy !== '',
-            onClick: () => {
-              if (!props.onCreateSession) return
-              void act('session', t.sessionCreated, () => Promise.resolve(props.onCreateSession()))
-            },
-          }, busy === 'session' ? h(Spinner) : null, busyLabel('session', t.createSession, t.creatingSession))
+            icon: busy === 'start' ? undefined : 'play',
+            disabled: busy !== '',
+            onClick: () => { void act('start', t.taskStarted, () => Promise.resolve(props.onStartTask())) },
+          }, busy === 'start' ? h(Spinner) : null, busyLabel('start', t.startTask, t.startingTask))
+          : task.sessionId
+            ? h(Btn, {
+              variant: 'primary',
+              size: 'lg',
+              icon: 'external',
+              disabled: !props.onOpenSession,
+              onClick: () => {
+                const opened = props.onOpenSession && props.onOpenSession()
+                if (opened === false) props.notify(t.openSessionFailed, 'error')
+              },
+            }, t.openSessionBtn)
+            : h(Btn, {
+              variant: 'primary',
+              size: 'lg',
+              icon: busy === 'session' ? undefined : 'message',
+              disabled: !props.onCreateSession || busy !== '',
+              onClick: () => {
+                if (!props.onCreateSession) return
+                void act('session', t.sessionCreated, () => Promise.resolve(props.onCreateSession()))
+              },
+            }, busy === 'session' ? h(Spinner) : null, busyLabel('session', t.createSession, t.creatingSession))
+
+    // On a merged/cleaned task the continue action is primary; keep "open session"
+    // available as a secondary action for reviewing history.
+    const secondaryOpen = continued && task.sessionId && props.onOpenSession
+      ? h(Btn, {
+        size: 'lg',
+        icon: 'external',
+        disabled: busy !== '',
+        onClick: () => {
+          const opened = props.onOpenSession && props.onOpenSession()
+          if (opened === false) props.notify(t.openSessionFailed, 'error')
+        },
+      }, t.openSessionBtn)
+      : null
 
     const lastActivity = task.sessionId && task.updatedAt ? t.lastActivity + ' · ' + relTime(task.updatedAt, t) : ''
 
@@ -535,12 +586,15 @@ export function TaskDetail(props: any) {
       }, health.message || (health.kind === 'error' ? t.sessionErrorHint : t.sessionInterruptedHint))
       : null
 
-    const disabled = cleaned || merged
+    // A task merged through the workbench with newer branch commits is reviewable
+    // again for that pending patch, even though its lifecycle status is `merged`.
+    const acceptStatus = postMerge > 0 ? 'review' : effStatus
+    const disabled = cleaned || (merged && postMerge === 0)
     // Acceptance ("switch to the task branch") is only meaningful once the task
     // is waiting for review. While the task is still developing (or not started),
     // switching the main repo branch would enter acceptance too early. Use the
     // session-aware status so a still-running session counts as in progress.
-    const reviewable = isReviewable(effStatus)
+    const reviewable = isReviewable(acceptStatus)
     const checkoutDisabled = disabled || checkedOut || broken || dirty > 0 || repoDirty > 0 || !snap.worktree.exists || !reviewable
     // "Switch back" is only meaningful while the main repo is away from the recorded branch.
     const onOriginalBranch = !!task.originalBranch && snap.repo.currentBranch === task.originalBranch
@@ -563,6 +617,7 @@ export function TaskDetail(props: any) {
 
     let acceptanceHint = t.acceptanceHintDefault
     if (cleaned) acceptanceHint = t.acceptanceHintClean
+    else if (merged && postMerge > 0) acceptanceHint = String(t.acceptanceHintPostMerge).replace('{n}', String(postMerge))
     else if (merged) acceptanceHint = t.acceptanceHintMerged
     else if (broken) acceptanceHint = t.acceptanceHintBroken
     else if (effStatus === 'developing') acceptanceHint = t.acceptanceHintDeveloping
@@ -719,6 +774,31 @@ export function TaskDetail(props: any) {
         err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null)
       : null
 
+    const parentView = props.parentView
+    const followUps = Array.isArray(props.followUps) ? props.followUps : []
+    const relationChip = (status: string) => {
+      const m = statusMeta(t, status)
+      return h(Chip, { tone: m.tone, small: true }, m.label)
+    }
+    const linkTo = (view: any) => () => { if (props.onSelectTask) props.onSelectTask(view.task.id) }
+    const relationsNode = parentView || followUps.length
+      ? h(Card, null,
+        h(CardHead, { icon: 'branch', title: t.relatedTasks }),
+        h('div', { className: 'dshw-kv' },
+          parentView
+            ? h(KV, { key: 'parent', label: t.parentTask },
+              h('span', { className: 'dshw-inline', style: { gap: '8px', flexWrap: 'wrap' } },
+                h('button', { type: 'button', className: 'dshw-link-btn', onClick: linkTo(parentView) }, parentView.task.title),
+                relationChip(parentView.snapshot.status)))
+            : null,
+          followUps.length
+            ? h(KV, { key: 'follow', label: t.followUps },
+              h('span', { className: 'dshw-inline', style: { gap: '8px', flexWrap: 'wrap' } },
+                followUps.map((fv: any) => h('button', { key: fv.task.id, type: 'button', className: 'dshw-link-btn', onClick: linkTo(fv) },
+                  fv.task.title, ' ', relationChip(fv.snapshot.status)))))
+            : null))
+      : null
+
     return h('div', { className: 'dshw-detail-inner' },
       h('article', { className: 'dshw-card dshw-hero' },
         h('div', { className: 'dshw-hero-top' },
@@ -737,20 +817,23 @@ export function TaskDetail(props: any) {
                 ? h(Chip, { tone: health.kind === 'error' ? 'error' : 'warn' }, health.kind === 'error' ? t.sessionError : t.sessionInterrupted)
                 : null,
               previewChip ? h(Chip, { tone: previewChip.tone }, previewChip.label) : null,
+              postMerge > 0 ? h(Chip, { tone: 'warn' }, postMergeLabel(t, postMerge)) : null,
               h('span', { className: 'dshw-meta-pill' }, h(Icon, { name: 'branch' }), h('span', { className: 'dshw-mono' }, branch)),
               h('span', { className: 'dshw-meta-pill' }, h(Icon, { name: 'arrowUp' }), ahead + ' ' + t.commitsAhead),
               dirty > 0
                 ? h('span', { className: 'dshw-meta-pill dshw-meta-pill--warn' }, h(Icon, { name: 'alert' }), dirty + ' ' + t.dirty)
                 : null)),
           h('div', { className: 'dshw-hero-action' },
-            primary,
+            h('div', { className: 'dshw-inline', style: { gap: '8px', flexWrap: 'wrap' } }, primary, secondaryOpen),
             h('span', { className: 'dshw-hint' }, lastActivity))),
         err ? h('div', { className: 'dshw-err', role: 'alert', style: { marginTop: '12px' } }, h(Icon, { name: 'alert' }), h('span', null, err)) : null),
       notStartedNode,
       pendingNode,
       healthNode,
       previewNode,
+      postMergeNode,
       errorNode,
+      relationsNode,
       h(LiveCard, { t, task, running: props.running, pendingKind: props.pendingKind, live: props.live, history: props.history }),
       showDiff ? h(DiffCard, { t, task, version: diffVersion, notify: props.notify }) : null,
       h(Card, null,

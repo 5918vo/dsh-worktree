@@ -54,6 +54,13 @@ export interface WorktreeTask {
   originalBranch?: string
   /** Set when this task branch was merged through the workbench. */
   mergedAt?: number
+  /** Merge commit (base HEAD after the merge); used to derive merged commits/files. */
+  mergedCommit?: string
+  /** The task branch tip that was actually merged; used to verify the merge is in base
+   *  even after newer commits land on the old branch. */
+  mergedBranchTip?: string
+  /** Preceding (already-merged) task this one continues from. */
+  parentId?: string
   /** Set when the worktree has been removed. */
   cleanedAt?: number
   createdAt: number
@@ -77,6 +84,9 @@ export interface TaskSnapshot {
   }
   branchExists: boolean
   merged: boolean
+  /** Commits on the task branch after the recorded merge that are not yet in base.
+   *  >0 means the task stays `merged` but has patches worth a follow-up. */
+  postMergeAhead?: number
   status: TaskStatus
   error?: string
 }

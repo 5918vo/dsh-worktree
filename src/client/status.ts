@@ -33,6 +33,11 @@ export function pendingLabel(t: any, kind: string | null | undefined): string {
   return t.pendingApproval
 }
 
+/** Extra chip for a merged task whose branch gained commits after the merge. */
+export function postMergeLabel(t: any, n: number): string {
+  return String(t.postMergeBadge).replace('{n}', String(n))
+}
+
 /**
  * Whether the task has work ready to be inspected/accepted.
  * Acceptance actions (switching the main repo to the task branch) only make

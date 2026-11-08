@@ -26,7 +26,7 @@ function clean(value: unknown): Json {
   }
 }
 
-function brief(v: { task: { id: string; title: string; repoPath: string; baseBranch: string; branch: string; worktreePath: string; sessionId: string | null }; snapshot: { status: string; worktree: { ahead: number; dirtyCount: number }; repo: { currentBranch: string | null } } }) {
+function brief(v: { task: { id: string; title: string; repoPath: string; baseBranch: string; branch: string; worktreePath: string; sessionId: string | null; parentId?: string }; snapshot: { status: string; worktree: { ahead: number; dirtyCount: number }; repo: { currentBranch: string | null }; postMergeAhead?: number } }) {
   return {
     id: v.task.id,
     title: v.task.title,
@@ -35,10 +35,12 @@ function brief(v: { task: { id: string; title: string; repoPath: string; baseBra
     branch: v.task.branch,
     worktreePath: v.task.worktreePath,
     sessionId: v.task.sessionId,
+    parentId: v.task.parentId || null,
     status: v.snapshot.status,
     ahead: v.snapshot.worktree.ahead,
     dirtyWorktree: v.snapshot.worktree.dirtyCount,
     mainRepoBranch: v.snapshot.repo.currentBranch,
+    postMergeAhead: v.snapshot.postMergeAhead || 0,
   }
 }
 
@@ -51,7 +53,7 @@ export function registerTools(app: App): () => void {
     reg({
       name: 'worktree_publish',
       description:
-        'Publish a git-worktree task: create a worktree + task branch from a base branch in the target repo, record it on the workbench board. Pass project_id to pin it to a registered project (inherits repo path and default base branch); otherwise the repo is auto-registered. The user (or the workbench) binds a DSH session to the worktree; the session does the actual development.',
+        'Publish a git-worktree task: create a worktree + task branch from a base branch in the target repo, record it on the workbench board. Pass project_id to pin it to a registered project (inherits repo path and default base branch); otherwise the repo is auto-registered. Pass parent_id to derive a follow-up task from an already-merged task (the predecessor must be merged into the base). The user (or the workbench) binds a DSH session to the worktree; the session does the actual development.',
       output: outDef(),
       parameters: {
         type: 'object',
@@ -62,6 +64,7 @@ export function registerTools(app: App): () => void {
           title: { type: 'string', description: 'Short task title.' },
           task: { type: 'string', description: 'Full task description for the session that will develop it.' },
           branch_name: { type: 'string', description: 'Optional task branch name; auto-generated when omitted.' },
+          parent_id: { type: 'string', description: 'Optional id of an already-merged task to continue from; creates a follow-up task on a new branch of the base.' },
           start: { type: 'boolean', description: 'Auto-start the bound session with the task prompt (default true).' },
         },
         required: ['title', 'task'],
@@ -76,12 +79,14 @@ export function registerTools(app: App): () => void {
             title: String(args.title || ''),
             description: String(args.task || ''),
             branchName: args.branch_name ? String(args.branch_name) : undefined,
+            parentId: args.parent_id ? String(args.parent_id) : undefined,
             start: args.start === false ? false : true,
           })
           return clean({
             ok: true,
             taskId: task.id,
             projectId: task.projectId,
+            parentId: task.parentId || null,
             worktreePath: task.worktreePath,
             branch: task.branch,
             baseBranch: task.baseBranch,
