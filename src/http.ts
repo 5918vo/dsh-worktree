@@ -124,6 +124,7 @@ export function registerHttp(app: App): () => void {
         description: String(body.description || ''),
         branchName: body.branchName ? String(body.branchName) : undefined,
         start: body.start !== false,
+        autoBind: false,
       })
       send(res, 200, { task })
     } catch (error) {

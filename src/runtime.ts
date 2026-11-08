@@ -19,6 +19,8 @@ export interface PublishInput {
   description: string
   branchName?: string
   start?: boolean
+  /** Client publishes bind their own session; tools rely on the board retry. */
+  autoBind?: boolean
 }
 
 export interface AddProjectInput {
@@ -91,6 +93,9 @@ export class Runtime {
 
   async branches(dir: string): Promise<{ branches: Array<{ name: string; current: boolean }>; current: string | null; default: string | null }> {
     const d = this.abs(dir)
+    if (!(await gitx.isRepo(this.gitPath, d))) {
+      throw new TaskError(`目录不是 git 仓库工作区：${d}`)
+    }
     return gitx.listBranches(this.gitPath, d)
   }
 
@@ -250,7 +255,7 @@ export class Runtime {
       worktreePath,
       sessionId: null,
       firstPrompt: '',
-      startOnBind: input.start !== false,
+      startOnBind: input.start !== false && input.autoBind !== false,
       createdAt: now,
       updatedAt: now,
     }

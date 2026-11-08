@@ -1,8 +1,12 @@
 # DeepSeek Worktree 任务插件
 
-`@local/dsh-deepseek-worktree` · v0.1.0 · 最后更新：2026-11-07
+`@5318vo/dsh-worktree` · v0.1.0 · 最后更新：2026-11-07
 
 每个任务对应一个真实的 DSH 会话。发布任务时创建独立的 Git worktree 和任务分支，会话以 worktree 为工作目录出现在左侧工作区。任务对话、审批、追问、中止和继续均使用 DSH 原生能力，工作台负责发布、查看状态和验收。
+
+## 文档
+
+- [前端设计说明](docs/frontend-design.md)：布局、视觉系统、组件、交互、可访问性和验收清单。
 
 ## 功能概览
 
@@ -107,17 +111,32 @@ cleaned
 | 待审批 / 待回答 | Warning |
 | 异常 / 操作失败 | Error |
 
+Git 状态与会话状态分开显示：`review` 只表示 worktree 有待验收的提交或改动；如果最近一轮 `turn/end` 的原因是 `interrupted` 或 `error`，任务行和详情会额外显示「会话中断」/「会话异常」提示，验收操作仍按 Git 状态决定。
+
 ## 工作台与交互
 
 - 左侧按项目展示任务树，项目行主体用于选中项目，折叠和新增任务为独立按钮。
-- 任务行分为两层：任务标题和状态/提交/改动摘要。
-- 任务详情优先展示任务描述、当前状态和主操作，再展示实时会话、Git 信息与危险操作。
-- 已有会话显示「打开会话」，未创建会话显示「创建会话」。
+- 顶部搜索按项目名、任务标题、分支和待处理状态过滤；`/` 或 `Ctrl/Cmd+K` 聚焦搜索，`Esc` 清空。
+- 任务行分为两层：任务标题和状态/提交/改动摘要；有会话的任务提供独立打开按钮。
+- 项目详情提供任务总数、进行中、待验收、已合并统计，并把待审批任务汇总为可跳转提示。
+- 任务详情按「任务摘要 → 实时会话 → 会话信息 → 验收操作 → Worktree/主仓库 → 危险操作」排列。
+- 实时会话读取会话历史，默认收起为每步一行，点击展开完整内容；思考显示持续时长，工具显示路径/命令、变更行数和完成状态，超出部分省略。
+- 会话最近一轮中断或失败时，任务行和详情会显示「会话中断」/「会话异常」，并在详情提供打开会话入口。
+- 合并、清理、删除任务、删除项目和清空最近目录均使用页面内确认弹窗，展示分支、路径和未提交改动。
+- 复制会话 ID、分支或路径后会给出 Toast 反馈；刷新状态有独立进行中状态。
 - 任务详情和项目设置按 ID 重置状态，避免切换任务或项目后残留表单值、强制清理或删除分支选项。
 - 表单字段必须具备可访问名称，必填项显示明确错误。
 - 弹窗支持 `aria-modal`、Tab 焦点圈定、Escape 关闭和关闭后焦点恢复。
 - 支持 `prefers-reduced-motion`。
 - 窄屏下列表/详情切换为单栏，详情页提供「返回项目列表」。
+
+## 配色
+
+全部颜色集中在 `src/client.ts` 的 `PALETTE.light` 和 `PALETTE.dark` 两个对象，构建时生成 `--dshw-*` CSS 变量。
+
+- 更换配色只需修改这两个对象，其他样式不得写死颜色。
+- 宿主明暗主题通过 `dshw-dark` 类自动切换对应色板。
+- 状态色、终端面板、Toast、阴影和焦点环同样来自配色表。
 
 ## HTTP API
 
@@ -169,7 +188,7 @@ Host 配置位于 `cordis.patch.yml`：
 ```yaml
 - insert:
     - id: deepseek-worktree
-      name: '@local/dsh-deepseek-worktree'
+      name: '@5318vo/dsh-worktree'
       config:
         dirName: .dsh-worktrees
         branchPrefix: dsh-wt/
@@ -177,6 +196,14 @@ Host 配置位于 `cordis.patch.yml`：
 ```
 
 项目级设置可以覆盖 `dirName` 和 `branchPrefix`。
+
+同一台机器运行多个 DSH 实例时，建议用 `DSH_WORKTREE_STATE_DIR` 为每个实例指定独立的任务台账目录，避免多个进程同时写同一份 `tasks.json`：
+
+```bash
+DSH_WORKTREE_STATE_DIR=C:/Users/liang/.dsh/worktree-web dsh web
+```
+
+发布任务使用同步提交锁；UI 发布由客户端绑定会话，HTTP 发布不会触发工作台自动绑定，避免重复创建同一任务的会话。
 
 ## 构建与安装
 
@@ -193,7 +220,13 @@ dist/index.js    Host 插件
 dist/client.js   Web 客户端
 ```
 
-在 DSH Web 中通过 Plugins → 安装外部 bundle，源为本地路径：
+在 DSH Web 中通过 Plugins → 安装外部 bundle，源可以是 npm 包名或本地路径：
+
+```text
+@5318vo/dsh-worktree
+```
+
+或本地开发路径：
 
 ```text
 C:\Users\liang\dsh-worktree
@@ -201,21 +234,42 @@ C:\Users\liang\dsh-worktree
 
 未开启 HMR 时，需要重启 DSH 或重新加载页面。
 
+## 发布
+
+公共 npm 包名为 `@5318vo/dsh-worktree`，`publishConfig.access` 已设为 `public`。
+
+```bash
+npm login
+npm run typecheck
+npm run pack:check   # 预览 tarball 内容
+npm run publish:dry  # 发布 dry-run
+npm publish
+```
+
+- `prepublishOnly` 会在发布前执行 `typecheck` 和 `build`。
+- 发布内容由 `files` 白名单控制：`dist`、`cordis.patch.yml`、`locale`、`icon.svg`、`README.md`、`LICENSE`。
+- 包名变更时需同步 `cordis.patch.yml` 和 `src/client.ts` 的 `MODULE_ID`。
+
 ## 开发验证
 
 本次版本已实际验证：
 
 - `npm run typecheck`
 - `npm run build`
-- DSH Web 中加载 Worktree 工作台
+- the agent harness Web 中加载 Worktree 工作台
 - 宽屏双栏和窄屏单栏切换
+- 工作台搜索过滤、无结果空状态和清除搜索
+- 项目概览统计与待处理提示
 - 新增项目弹窗：目录选择单次触发、分支必填、加载中禁止提交、历史目录已移除
+- 任务详情：任务摘要、实时会话时间线（思考 / 工具调用 / 工具结果 / 助手输出）、验收禁用原因、Worktree/主仓库信息
+- 清理 worktree、删除任务记录及确认弹窗
 - 分支 Hash 命名：中文标题创建任务实际得到 `dsh-wt/<id8>`
 - 中文自定义分支名返回 `400`
 - 弹窗焦点、必填校验和 Escape 关闭
-- 临时任务创建、清理和记录删除
+- 临时任务创建、清理、分支删除和记录删除
 
 当前未包含自动化测试套件，以上验证以构建检查和真实浏览器交互测试为主。
+
 
 ## 设计要点
 

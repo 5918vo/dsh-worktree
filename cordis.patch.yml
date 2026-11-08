@@ -4,7 +4,7 @@
 # 不声明 preset 行：任务会话跑用户当前的默认 preset，体验与普通会话一致。
 - insert:
     - id: deepseek-worktree
-      name: '@local/dsh-deepseek-worktree'
+      name: '@5318vo/dsh-worktree'
       config:
         # worktree 父目录名（相对目标仓库根）
         dirName: .dsh-worktrees

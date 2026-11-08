@@ -19,6 +19,8 @@ import { promises as fs } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 function stateDir() {
+  const explicit = process.env.DSH_WORKTREE_STATE_DIR;
+  if (explicit) return explicit;
   const profileDir = process.env.DSH_PROFILE_DIR;
   if (profileDir) return join(profileDir, "deepseek-worktree");
   return join(homedir(), ".dsh", "worktree-tasks");
@@ -386,6 +388,9 @@ var Runtime = class {
   }
   async branches(dir) {
     const d = this.abs(dir);
+    if (!await isRepo(this.gitPath, d)) {
+      throw new TaskError(`\u76EE\u5F55\u4E0D\u662F git \u4ED3\u5E93\u5DE5\u4F5C\u533A\uFF1A${d}`);
+    }
     return listBranches(this.gitPath, d);
   }
   /** Effective per-project worktree knobs (project override > global config). */
@@ -531,7 +536,7 @@ var Runtime = class {
       worktreePath,
       sessionId: null,
       firstPrompt: "",
-      startOnBind: input.start !== false,
+      startOnBind: input.start !== false && input.autoBind !== false,
       createdAt: now,
       updatedAt: now
     };
@@ -966,7 +971,8 @@ function registerHttp(app) {
         title: String(body.title || ""),
         description: String(body.description || ""),
         branchName: body.branchName ? String(body.branchName) : void 0,
-        start: body.start !== false
+        start: body.start !== false,
+        autoBind: false
       });
       send(res, 200, { task });
     } catch (error) {

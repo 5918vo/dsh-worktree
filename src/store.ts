@@ -4,6 +4,8 @@ import { homedir } from 'node:os'
 import { Project, WorktreeTask } from './models.js'
 
 export function stateDir(): string {
+  const explicit = process.env.DSH_WORKTREE_STATE_DIR
+  if (explicit) return explicit
   const profileDir = process.env.DSH_PROFILE_DIR
   if (profileDir) return join(profileDir, 'deepseek-worktree')
   return join(homedir(), '.dsh', 'worktree-tasks')

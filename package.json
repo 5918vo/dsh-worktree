@@ -1,9 +1,8 @@
 {
-  "name": "@local/dsh-deepseek-worktree",
+  "name": "@5318vo/dsh-worktree",
   "version": "0.1.0",
-  "private": true,
-  "type": "module",
   "description": "DeepSeek Worktree task plugin — publish git-worktree-backed tasks; each task is a real DSH session bound to its worktree.",
+  "type": "module",
   "main": "./dist/index.js",
   "exports": {
     ".": "./dist/index.js",
@@ -17,13 +16,34 @@
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
-    "README.md"
+    "README.md",
+    "LICENSE",
+    "docs/frontend-design.md"
   ],
+  "keywords": [
+    "dsh",
+    "deepseek",
+    "harness",
+    "git",
+    "worktree",
+    "task",
+    "plugin"
+  ],
+  "author": "5318vo",
   "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "node build.mjs",
-    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "prepublishOnly": "npm run typecheck && npm run build",
+    "pack:check": "npm pack --dry-run",
+    "publish:dry": "npm publish --dry-run"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
