@@ -6,15 +6,26 @@ import { App } from './app.js'
 import { registerTools } from './tools.js'
 import { registerHttp } from './http.js'
 
+/** Optional dependency overrides. Tests use this to keep host state isolated. */
+export interface ApplyOptions {
+  /**
+   * Store to use instead of the default global ledger (`~/.dsh/worktree-tasks`).
+   * Production never passes this, so the shared multi-instance ledger stays the
+   * default; tests pass a temp-dir Store so they never leak projects or tasks
+   * into the user's real board.
+   */
+  store?: Store
+}
+
 /**
  * Host half of the deepseek-worktree plugin: git worktree task lifecycle plus
  * a board board. Each task is a real DSH session bound to its worktree — the
  * client creates that session via remote.session; the host only records the
  * binding and does the git work.
  */
-export function apply(ctx: Ctx, rawConfig: unknown): void {
+export function apply(ctx: Ctx, rawConfig: unknown, options?: ApplyOptions): App {
   const config = normalizeConfig(rawConfig)
-  const store = new Store()
+  const store = options?.store ?? new Store()
   const runtime = new Runtime({ store, config })
   const logger = {
     info: (m: string) => {
@@ -74,4 +85,5 @@ export function apply(ctx: Ctx, rawConfig: unknown): void {
   } catch {
     /* noop */
   }
+  return app
 }
