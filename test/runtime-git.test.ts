@@ -611,3 +611,63 @@ test('back refuses when the main repo is dirty', async () => {
     await teardown(f)
   }
 })
+
+test('archive hides a merged task from default views and unarchive restores it', async () => {
+  const f = await fixture()
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'archive-me', description: 'd' })
+    await commitFile(task.worktreePath, 'src/a.txt', 'a\n', 'feat: a')
+    await f.runtime.merge(task.id)
+    // A merged task is visible by default.
+    assert.equal((await f.runtime.views()).some((v) => v.task.id === task.id), true)
+
+    const archived = await f.runtime.archive(task.id)
+    assert.ok(archived.archivedAt, 'archive records a timestamp')
+    // Hidden from default views and tools, still present when asked for.
+    assert.equal((await f.runtime.views()).some((v) => v.task.id === task.id), false)
+    assert.equal((await f.runtime.views({ includeArchived: true })).some((v) => v.task.id === task.id), true)
+    const project = (await f.runtime.projectViews()).find((p) => p.project.id === task.projectId)
+    assert.ok(project, 'project row still exists')
+    assert.equal(project!.tasks.length, 0, 'archived task is filtered out of the project view')
+    const withArchived = (await f.runtime.projectViews({ includeArchived: true })).find((p) => p.project.id === task.projectId)!
+    assert.equal(withArchived.tasks.length, 1)
+
+    await f.runtime.unarchive(task.id)
+    assert.equal((await f.runtime.views()).some((v) => v.task.id === task.id), true)
+    assert.equal((await f.runtime.view(task)).task.archivedAt, undefined)
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('archive rejects a task that is not merged or cleaned', async () => {
+  const f = await fixture()
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'still-developing', description: 'd' })
+    await assert.rejects(
+      () => f.runtime.archive(task.id),
+      (e: any) => e instanceof TaskError && /只有已合并或已清理的任务可以归档/.test(e.message),
+    )
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('archive also works for a cleaned task and persists across reload', async () => {
+  const f = await fixture()
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'clean-then-archive', description: 'd' })
+    await commitFile(task.worktreePath, 'src/a.txt', 'a\n', 'feat: a')
+    await f.runtime.merge(task.id)
+    await f.runtime.cleanup(task.id, { deleteBranch: true })
+    await f.runtime.archive(task.id)
+    await f.store.flush()
+
+    const reloaded = new Store(f.store.directory())
+    await reloaded.load()
+    assert.ok(reloaded.getTask(task.id)!.archivedAt, 'archivedAt survives a reload')
+    await reloaded.flush()
+  } finally {
+    await teardown(f)
+  }
+})

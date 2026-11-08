@@ -348,9 +348,13 @@ export class Runtime {
     return this.addProject({ repoPath })
   }
 
-  /** Aggregate the board's left column: every project with its task views. */
-  async projectViews(): Promise<ProjectView[]> {
-    const views = await this.views()
+  /**
+   * Aggregate the board's left column: every project with its task views.
+   * Archived tasks are filtered out by default; pass `includeArchived` for the
+   * board's "show archived" toggle.
+   */
+  async projectViews(opts: { includeArchived?: boolean } = {}): Promise<ProjectView[]> {
+    const views = await this.views({ includeArchived: opts.includeArchived })
     const byId = new Map<string, ProjectView>()
     const orphans: TaskView[] = []
     for (const p of this.store.listProjects()) {
@@ -605,8 +609,13 @@ export class Runtime {
     return { task, snapshot: await this.snapshot(task) }
   }
 
-  async views(): Promise<TaskView[]> {
-    const tasks = this.store.listTasks()
+  /**
+   * Every task as a view. Archived tasks are hidden by default so tools and the
+   * board stay focused; the board requests them explicitly to offer "show
+   * archived" and to keep an already-selected archived task resolvable.
+   */
+  async views(opts: { includeArchived?: boolean } = {}): Promise<TaskView[]> {
+    const tasks = this.store.listTasks().filter((t) => opts.includeArchived || !t.archivedAt)
     return Promise.all(tasks.map((t) => this.view(t)))
   }
 
@@ -878,6 +887,32 @@ export class Runtime {
       await gitx.removeBranch(this.gitPath, task.repoPath, task.branch, true)
     }
     task.cleanedAt = Date.now()
+    this.store.putTask(task)
+    return task
+  }
+
+  /**
+   * Archive a finished task: it stays on disk and in the store, but the board
+   * hides it by default. Only terminal states (merged / cleaned) can be
+   * archived — a task still under development should not disappear.
+   */
+  async archive(id: string): Promise<WorktreeTask> {
+    const task = this.needTask(id)
+    if (task.archivedAt) return task
+    const status = (await this.snapshot(task)).status
+    if (status !== 'merged' && status !== 'cleaned') {
+      throw new TaskError('只有已合并或已清理的任务可以归档')
+    }
+    task.archivedAt = Date.now()
+    this.store.putTask(task)
+    return task
+  }
+
+  /** Restore an archived task to the board's default list. */
+  unarchive(id: string): WorktreeTask {
+    const task = this.needTask(id)
+    if (!task.archivedAt) return task
+    task.archivedAt = undefined
     this.store.putTask(task)
     return task
   }
