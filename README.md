@@ -286,6 +286,26 @@ npm publish
 - 发布内容由 `files` 白名单控制：`dist`、`cordis.patch.yml`、`locale`、`icon.svg`、`README.md`、`LICENSE`。
 - 包名变更时需同步 `cordis.patch.yml` 和 `src/client.ts` 的 `MODULE_ID`。
 
+## 自动化测试
+
+仓库内置一套基于 Node 内置测试运行器（`node --test`）的自动化测试，用于在每次改动后回归主流程，避免「新建任务后无法执行」或出现未捕获异常。
+
+```bash
+npm install
+npm test            # 构建测试产物并运行全部用例
+npm run typecheck   # 源码类型检查
+npm run build       # 生产构建
+```
+
+- 测试源码位于 `test/**/*.test.ts`，由 `scripts/test.mjs` 用 esbuild（与生产构建同一工具）打包到 `.test-dist/` 后执行，无需额外的测试依赖。
+- 用例分层：
+  - 纯逻辑单元测试：`config`、`store`、状态推导 `statusOf`，以及客户端 `format` / `timeline` / `status`。
+  - 客户端主流程：`bindSession` 创建会话、发送首条指令并绑定任务；首条指令或会话创建失败时**不落库绑定**，保证任务仍可重新启动。
+  - Git 生命周期集成测试（真实临时仓库）：发布（worktree + hash 分支）、绑定、状态推导、验收切换/切回、合并、清理与分支删除。
+  - HTTP 端到端：启动真实 host 插件并捕获路由，用带 token 的请求走完 发布 → 绑定 → 提交 → 合并 → 清理 全链路，同时覆盖 403 / 400 / 404 等错误分支。
+  - 冒烟测试：`apply()` 能注册全部模型工具和 HTTP 路由，客户端 `factory().apply()` 能注册全部 slot，加载不抛异常。
+- 建议在 CI 或提交前执行 `npm test`；新增功能时补充对应用例，尤其覆盖任务发布与执行链路。
+
 ## 开发验证
 
 本次版本已实际验证：
@@ -304,7 +324,7 @@ npm publish
 - 弹窗焦点、必填校验和 Escape 关闭
 - 临时任务创建、清理、分支删除和记录删除
 
-当前未包含自动化测试套件，以上验证以构建检查和真实浏览器交互测试为主。
+当前已包含自动化测试套件（见上文「自动化测试」），浏览器交互测试用于补充视觉与可访问性验收。
 
 本次结构重构后额外验证：
 
