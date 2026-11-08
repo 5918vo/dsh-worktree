@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { promises as fs } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { Runtime, TaskError } from '../src/runtime.js'
 import { Store } from '../src/store.js'
 import { WorktreeTask } from '../src/models.js'
@@ -145,6 +145,64 @@ test('bind -> developing -> review -> reviewing -> merged -> cleaned full accept
     assert.equal(final.snapshot.status, 'cleaned')
     assert.equal(await exists(task.worktreePath), false)
     assert.equal((await git(f.repo, ['branch', '--list', task.branch])).includes(task.branch), false)
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('deleteProject removes task records and worktree folders on request', async () => {
+  const f = await fixture()
+  try {
+    const project = await f.runtime.addProject({ repoPath: f.repo, name: 'proj' })
+    const t1 = await f.runtime.publish({ projectId: project.id, title: 'a', description: 'd' })
+    const t2 = await f.runtime.publish({ projectId: project.id, title: 'b', description: 'd' })
+    assert.ok(await exists(t1.worktreePath))
+    assert.ok(await exists(t2.worktreePath))
+
+    // Refuses to drop a project that still has tasks unless withTasks is set.
+    await assert.rejects(
+      () => f.runtime.deleteProject(project.id, { withWorktrees: true }),
+      (e: any) => e instanceof TaskError && /连同任务删除/.test(e.message),
+    )
+
+    const res = await f.runtime.deleteProject(project.id, { withTasks: true, withWorktrees: true })
+    assert.equal(res.deletedTasks, 2)
+    assert.equal(res.deletedWorktrees, 2)
+    assert.equal(await exists(t1.worktreePath), false)
+    assert.equal(await exists(t2.worktreePath), false)
+    assert.equal(await exists(dirname(t1.worktreePath)), false, 'empty worktree container should be removed')
+    assert.equal(f.store.getProject(project.id), undefined)
+    assert.equal(f.store.listTasksOfProject(project.id).length, 0)
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('deleteProject keeps worktree folders when withWorktrees is false', async () => {
+  const f = await fixture()
+  try {
+    const project = await f.runtime.addProject({ repoPath: f.repo, name: 'proj' })
+    const task = await f.runtime.publish({ projectId: project.id, title: 'a', description: 'd' })
+    const res = await f.runtime.deleteProject(project.id, { withTasks: true })
+    assert.equal(res.deletedTasks, 1)
+    assert.equal(res.deletedWorktrees, 0)
+    assert.ok(await exists(task.worktreePath), 'worktree should stay on disk')
+    assert.equal(f.store.getProject(project.id), undefined)
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('deleteProject force-removes a dirty worktree when requested', async () => {
+  const f = await fixture()
+  try {
+    const project = await f.runtime.addProject({ repoPath: f.repo, name: 'proj' })
+    const task = await f.runtime.publish({ projectId: project.id, title: 'a', description: 'd' })
+    await commitFile(task.worktreePath, 'src/feature.txt', 'hello\n', 'feat: wip')
+    await fs.writeFile(join(task.worktreePath, 'scratch.txt'), 'uncommitted\n', 'utf8')
+    const res = await f.runtime.deleteProject(project.id, { withTasks: true, withWorktrees: true })
+    assert.equal(res.deletedWorktrees, 1)
+    assert.equal(await exists(task.worktreePath), false)
   } finally {
     await teardown(f)
   }
