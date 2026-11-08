@@ -432,6 +432,36 @@ export const CSS = `
 .dshw-danger-item{display:flex;align-items:flex-start;gap:7px;margin-top:7px;padding:7px 9px;background:var(--dshw-surface);border:1px solid var(--dshw-border);border-radius:7px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.5;color:var(--dshw-text-2);overflow-wrap:anywhere}
 .dshw-danger-item .dshw-ico{width:12px;height:12px;margin-top:1px;color:var(--dshw-text-3)}
 
+/* diff card -------------------------------------------------------------- */
+.dshw-diff-tools{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.dshw-diff-summary{display:inline-flex;align-items:center;gap:7px;font-size:11px;color:var(--dshw-text-3);font-variant-numeric:tabular-nums}
+.dshw-diff-add{color:var(--dshw-success);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
+.dshw-diff-del{color:var(--dshw-danger);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
+.dshw-diff-body{margin-top:10px}
+.dshw-diff-status{display:flex;align-items:center;gap:8px;color:var(--dshw-text-2);font-size:12px;padding:5px 2px}
+.dshw-diff-status .dshw-ico{width:15px;height:15px;color:var(--dshw-text-3)}
+.dshw-diff-status--muted{color:var(--dshw-text-3)}
+.dshw-diff-status .dshw-spinner{width:12px;height:12px}
+.dshw-diff-trunc{display:flex;align-items:center;gap:7px;margin-bottom:8px;padding:6px 10px;border-radius:7px;background:var(--dshw-warn-soft);border:1px solid var(--dshw-warn-border);color:var(--dshw-warn);font-size:11px}
+.dshw-diff-trunc .dshw-ico{width:13px;height:13px}
+.dshw-diff-list{display:flex;flex-direction:column;gap:6px}
+.dshw-diff-file{border:1px solid var(--dshw-border);border-radius:8px;overflow:hidden;background:var(--dshw-surface)}
+.dshw-diff-file-head{display:flex;align-items:center;gap:9px;width:100%;border:0;background:var(--dshw-surface);text-align:left;padding:7px 10px;color:var(--dshw-text)}
+.dshw-diff-file-head:hover{background:var(--dshw-surface-2)}
+.dshw-diff-badge{min-width:20px;justify-content:center;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:600}
+.dshw-diff-path{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--dshw-text)}
+.dshw-diff-old{color:var(--dshw-text-3);font-size:11px}
+.dshw-diff-stat{flex:none;display:inline-flex;gap:8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;font-variant-numeric:tabular-nums}
+.dshw-diff-binary{color:var(--dshw-text-3);font-size:11px}
+.dshw-diff-chevron{width:13px;height:13px;flex:none;color:var(--dshw-text-3);transform:rotate(-90deg);transition:transform .12s}
+.dshw-diff-file-head[aria-expanded="true"] .dshw-diff-chevron{transform:rotate(0)}
+.dshw-diff-patch{margin:0;padding:8px 0;border-top:1px solid var(--dshw-border-soft);background:var(--dshw-term-bg);color:var(--dshw-term-text);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.6;max-height:420px;overflow:auto;tab-size:4}
+.dshw-diff-line{display:block;padding:0 12px;white-space:pre;min-height:1.6em}
+.dshw-diff-line--meta{color:var(--dshw-term-muted)}
+.dshw-diff-line--hunk{color:var(--dshw-term-tool)}
+.dshw-diff-line--add{background:color-mix(in srgb,var(--dshw-success) 22%,transparent);color:var(--dshw-term-text)}
+.dshw-diff-line--del{background:color-mix(in srgb,var(--dshw-danger) 22%,transparent);color:var(--dshw-term-text)}
+
 /* toast ------------------------------------------------------------------ */
 .dshw-toast{position:fixed;left:50%;bottom:26px;z-index:2147483001;display:flex;align-items:center;gap:8px;padding:9px 14px;background:var(--dshw-toast-bg);color:var(--dshw-toast-fg);border-radius:9px;font-size:12.5px;font-weight:500;box-shadow:var(--dshw-shadow-lg);transform:translate(-50%,14px);opacity:0;pointer-events:none;transition:opacity .18s ease,transform .18s ease;max-width:min(92vw,560px)}
 .dshw-toast--show{opacity:1;transform:translate(-50%,0)}
@@ -500,6 +530,8 @@ export const CSS = `
 @supports not (color: color-mix(in srgb, white, black)){
   .dshw-advanced{background:var(--dshw-brand-soft)}
   .dshw-meter{background:var(--dshw-term-border)}
+  .dshw-diff-line--add{background:rgba(20,108,51,.22)}
+  .dshw-diff-line--del{background:rgba(185,28,28,.22)}
 }
 
 

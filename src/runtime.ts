@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import * as gitx from './gitx.js'
-import { Project, ProjectStats, ProjectView, TaskSnapshot, TaskStatus, TaskView, WorktreeConfig, WorktreeTask } from './models.js'
+import { DiffFile, MergePreview, Project, ProjectStats, ProjectView, TaskDiff, TaskSnapshot, TaskStatus, TaskView, WorktreeConfig, WorktreeTask } from './models.js'
 import { Store } from './store.js'
 
 export interface PublishInput {
@@ -40,8 +40,74 @@ export class TaskError extends Error {
   }
 }
 
+/** Files named by git's conflict output, deduplicated. */
+function conflictFiles(text: string): string[] {
+  const files = new Set<string>()
+  for (const match of text.matchAll(/Merge conflict in ([^\r\n]+)/g)) files.add(match[1].trim())
+  for (const match of text.matchAll(/CONFLICT \([^)]*\):\s*(.+?)\s+(?:deleted|modified) in/gi)) files.add(match[1].trim())
+  return [...files]
+}
+
 function id8(id: string): string {
   return id.replace(/-/g, '').slice(0, 8)
+}
+
+// Diff payloads travel through the board's JSON API; keep them bounded so a
+// task touching a huge generated file cannot stall the review screen.
+const DIFF_MAX_FILES = 300
+const DIFF_MAX_FILE_CHARS = 60_000
+const DIFF_MAX_TOTAL_CHARS = 300_000
+const UNTRACKED_READ_BYTES = 256 * 1024
+
+/** Render an untracked file as a synthetic "new file" unified diff. */
+async function readUntrackedDiff(dir: string, rel: string): Promise<DiffFile | null> {
+  const abs = join(dir, rel)
+  let stat
+  try {
+    stat = await fs.stat(abs)
+  } catch {
+    return null
+  }
+  if (!stat.isFile()) return null
+  let buf: Buffer
+  let truncated = false
+  try {
+    const len = Math.min(stat.size, UNTRACKED_READ_BYTES)
+    truncated = stat.size > len
+    const handle = await fs.open(abs, 'r')
+    try {
+      const out = Buffer.alloc(len)
+      await handle.read(out, 0, len, 0)
+      buf = out
+    } finally {
+      await handle.close()
+    }
+  } catch {
+    return null
+  }
+  const binary = buf.subarray(0, 8000).includes(0)
+  if (binary) {
+    return {
+      path: rel,
+      status: 'untracked',
+      additions: 0,
+      deletions: 0,
+      binary: true,
+      patch: `diff --git a/${rel} b/${rel}\nnew file mode 100644\nBinary files /dev/null and b/${rel} differ`,
+    }
+  }
+  const text = buf.toString('utf8').replace(/\r\n/g, '\n')
+  const lines = text.length ? text.replace(/\n$/, '').split('\n') : []
+  const header = `diff --git a/${rel} b/${rel}\nnew file mode 100644\n--- /dev/null\n+++ b/${rel}\n@@ -0,0 +1,${lines.length} @@`
+  const body = lines.map((line) => '+' + line).join('\n')
+  return {
+    path: rel,
+    status: 'untracked',
+    additions: lines.length,
+    deletions: 0,
+    binary: false,
+    patch: header + (body ? '\n' + body : '') + (truncated ? '\n… (truncated)' : ''),
+  }
 }
 
 function assertTaskBranchName(name: string): void {
@@ -71,14 +137,22 @@ export function buildFirstPrompt(task: WorktreeTask): string {
     '开发要求：',
     '- 文件读写优先使用 worktree 内的绝对路径。',
     '- 按阶段 commit，提交信息写清楚改了什么、为什么改。',
-    '- 不要切换分支、merge、rebase、push，不要删除 worktree；',
-    '  验收和合并由工作台完成。',
+    '- 不要切换分支、rebase、push、fetch/pull，不要删除 worktree；',
+    `  验收和合并回 ${task.baseBranch} 由工作台完成。`,
+    `- 不要主动同步基线。即使发现 ${task.baseBranch} 有新提交，也只在总结里说明。`,
     '- 遇到需求不明确或需要取舍时，直接问我。',
+    '',
+    '同步基线（仅在我明确要求时执行）：',
+    `- 在 worktree 内执行 git merge ${task.baseBranch}（使用本地分支，不 rebase）。`,
+    '- 有冲突时逐个解决；如果涉及业务取舍，先列出冲突并问我。',
+    '- 解决后运行验证（例如 npm run typecheck / npm run build），通过后再提交合并。',
+    '- 如果无法完成，执行 git merge --abort 恢复原状，并说明原因。',
     '',
     '完成后总结：',
     '- 改动的文件和要点',
     '- 提交列表',
-    '- 运行过的验证（例如 npm run typecheck / npm run build）及结果',
+    '- 运行过的验证及结果',
+    '- 如果同步过基线：同步到的基线提交、冲突文件及解决方式',
     '- 没验证的部分和遗留风险',
   ].join('\n')
 }
@@ -409,6 +483,77 @@ export class Runtime {
     return Promise.all(tasks.map((t) => this.view(t)))
   }
 
+  /**
+   * The task's changes against its base branch, as per-file unified diffs.
+   * Reads the worktree when it still exists so uncommitted and untracked files
+   * show up; falls back to the recorded branch (committed changes only) after
+   * the worktree is gone.
+   */
+  async diff(id: string): Promise<TaskDiff> {
+    const task = this.needTask(id)
+    const result: TaskDiff = { base: task.baseBranch, mergeBase: null, files: [], totalAdditions: 0, totalDeletions: 0, truncated: false }
+    try {
+      const wtExists = await fs.stat(task.worktreePath).then((s) => s.isDirectory()).catch(() => false)
+      let dir: string
+      let toRef: string | undefined
+      let includeUntracked = false
+      if (wtExists) {
+        dir = task.worktreePath
+        includeUntracked = true
+      } else if (await gitx.branchExists(this.gitPath, task.repoPath, task.branch)) {
+        dir = task.repoPath
+        toRef = task.branch
+      } else {
+        result.reason = 'worktree-missing'
+        return result
+      }
+
+      const mb = await gitx.mergeBase(this.gitPath, dir, task.baseBranch, toRef ?? 'HEAD')
+      if (!mb) {
+        result.reason = 'no-merge-base'
+        return result
+      }
+      result.mergeBase = mb
+
+      const raw = await gitx.diffFiles(this.gitPath, dir, mb, toRef)
+      let files: DiffFile[] = raw.map((file) => ({ ...file }))
+      if (includeUntracked) {
+        for (const rel of await gitx.listUntracked(this.gitPath, dir)) {
+          const file = await readUntrackedDiff(dir, rel)
+          if (file) files.push(file)
+        }
+      }
+      files.sort((a, b) => a.path.localeCompare(b.path))
+
+      if (files.length > DIFF_MAX_FILES) {
+        files = files.slice(0, DIFF_MAX_FILES)
+        result.truncated = true
+      }
+      let budget = DIFF_MAX_TOTAL_CHARS
+      for (const file of files) {
+        let patch = file.patch
+        if (patch.length > DIFF_MAX_FILE_CHARS) {
+          patch = patch.slice(0, DIFF_MAX_FILE_CHARS)
+          result.truncated = true
+        }
+        if (patch.length > budget) {
+          patch = patch.slice(0, budget)
+          result.truncated = true
+        }
+        if (patch.length < file.patch.length) patch = patch + '\n… (truncated)'
+        file.patch = patch
+        budget = Math.max(0, budget - patch.length)
+        result.totalAdditions += file.additions
+        result.totalDeletions += file.deletions
+      }
+      result.files = files
+    } catch (error) {
+      result.reason = 'error'
+      result.error = error instanceof Error ? error.message : String(error)
+    }
+    return result
+  }
+
   private needTask(id: string): WorktreeTask {
     const task = this.store.getTask(id)
     if (!task) throw new TaskError(`任务不存在：${id}`, 404)
@@ -458,13 +603,76 @@ export class Runtime {
     if (cur !== task.baseBranch) {
       await gitx.switchBranch(this.gitPath, task.repoPath, task.baseBranch)
     }
-    await gitx.mergeNoFF(this.gitPath, task.repoPath, task.branch)
+    try {
+      await gitx.mergeNoFF(this.gitPath, task.repoPath, task.branch)
+    } catch (error) {
+      const text = error instanceof Error ? error.message : String(error)
+      if (/CONFLICT|Automatic merge failed/i.test(text)) {
+        const files = conflictFiles(text)
+        const detail = files.length ? `冲突文件：${files.join('、')}。` : ''
+        throw new TaskError(
+          `无法自动合并：与 ${task.baseBranch} 存在冲突。${detail}请在任务 worktree 中执行 git merge ${task.baseBranch}，解决冲突并提交后再重试。`,
+          409,
+        )
+      }
+      throw error
+    }
     // After a successful merge the working branch is the base; keep the
     // original-branch hint only if the user never went through checkout.
     if (cur && cur !== task.branch && !task.originalBranch) task.originalBranch = cur
     task.mergedAt = Date.now()
     this.store.putTask(task)
     return task
+  }
+
+  /**
+   * Preview whether the task branch can merge into its base. This is a dry run:
+   * it never touches either working tree and does not decide the task status.
+   */
+  async mergePreview(id: string): Promise<MergePreview> {
+    const task = this.needTask(id)
+    const base: MergePreview = {
+      applicable: false,
+      branch: task.branch,
+      baseBranch: task.baseBranch,
+      baseAhead: 0,
+      overlapFiles: [],
+      conflictFiles: [],
+      conflict: false,
+      checked: false,
+      supported: true,
+    }
+    if (task.cleanedAt) return { ...base, reason: 'cleaned' }
+    if (!(await gitx.branchExists(this.gitPath, task.repoPath, task.branch))) {
+      return { ...base, reason: 'branch-missing' }
+    }
+    const mergeBase = await gitx.mergeBase(this.gitPath, task.repoPath, task.baseBranch, task.branch)
+    if (!mergeBase) return { ...base, applicable: true, reason: 'no-merge-base' }
+
+    const [baseAhead, baseFiles, taskFiles] = await Promise.all([
+      gitx.countCommits(this.gitPath, task.repoPath, `${mergeBase}..${task.baseBranch}`),
+      gitx.diffNameOnly(this.gitPath, task.repoPath, mergeBase, task.baseBranch),
+      gitx.diffNameOnly(this.gitPath, task.repoPath, mergeBase, task.branch),
+    ])
+    const taskSet = new Set(taskFiles)
+    const overlapFiles = baseFiles.filter((file) => taskSet.has(file))
+
+    const preview: MergePreview = {
+      ...base,
+      applicable: true,
+      baseAhead,
+      overlapFiles,
+      checked: true,
+    }
+    if (baseAhead === 0 || overlapFiles.length === 0) return preview
+
+    const check = await gitx.mergeTreeCheck(this.gitPath, task.repoPath, task.baseBranch, task.branch)
+    preview.supported = check.supported
+    preview.checked = check.supported && !check.error
+    preview.conflict = check.conflict
+    preview.conflictFiles = check.files
+    if (check.error) preview.error = check.error
+    return preview
   }
 
   async cleanup(id: string, opts: { force?: boolean; deleteBranch?: boolean }): Promise<WorktreeTask> {

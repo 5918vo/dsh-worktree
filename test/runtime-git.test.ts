@@ -265,3 +265,83 @@ test('a branch left at an older base is not reported as merged', async () => {
     await teardown(f)
   }
 })
+
+test('diff reports committed, uncommitted and untracked changes against base', async () => {
+  const f = await fixture()
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'diff', description: 'd' })
+    // One committed new file and one committed edit to a base file...
+    await commitFile(task.worktreePath, 'src/a.txt', 'one\ntwo\n', 'feat: a')
+    await commitFile(task.worktreePath, 'README.md', '# test repo\n\nmore\n', 'docs: readme')
+    // ...plus an uncommitted edit to the committed file and an untracked file.
+    await fs.writeFile(join(task.worktreePath, 'src/a.txt'), 'one\ntwo\nthree\n', 'utf8')
+    await fs.writeFile(join(task.worktreePath, 'src/new.txt'), 'x\ny\n', 'utf8')
+
+    const diff = await f.runtime.diff(task.id)
+    assert.equal(diff.base, task.baseBranch)
+    assert.ok(diff.mergeBase, 'merge-base should resolve')
+    assert.equal(diff.reason, undefined)
+
+    const byPath = new Map(diff.files.map((file) => [file.path, file]))
+    const a = byPath.get('src/a.txt')
+    assert.ok(a, 'committed new file should appear')
+    assert.equal(a!.status, 'added')
+    assert.ok(a!.patch.includes('+three'), 'uncommitted edit should be included in the diff')
+
+    const readme = byPath.get('README.md')
+    assert.ok(readme, 'edited base file should appear')
+    assert.equal(readme!.status, 'modified')
+
+    const untracked = byPath.get('src/new.txt')
+    assert.ok(untracked, 'untracked file should appear')
+    assert.equal(untracked!.status, 'untracked')
+    assert.equal(untracked!.additions, 2)
+    assert.ok(diff.totalAdditions >= 4)
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('diff falls back to the recorded branch when the worktree is gone', async () => {
+  const f = await fixture()
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'gone', description: 'd' })
+    await fs.rm(task.worktreePath, { recursive: true, force: true })
+    const diff = await f.runtime.diff(task.id)
+    // Branch still exists (it equals base), so this resolves rather than throwing.
+    assert.equal(diff.reason, undefined)
+    assert.equal(diff.files.length, 0)
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('merge conflict reports the conflicting files and leaves the repo clean', async () => {
+  const f = await fixture()
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'conflict', description: 'd' })
+    await commitFile(task.worktreePath, 'src/conflict.txt', 'task\n', 'feat: task')
+
+    await fs.mkdir(join(f.repo, 'src'), { recursive: true })
+    await fs.writeFile(join(f.repo, 'src', 'conflict.txt'), 'base\n', 'utf8')
+    await git(f.repo, ['add', '.'])
+    await git(f.repo, ['commit', '-m', 'base change'])
+
+    const preview = await f.runtime.mergePreview(task.id)
+    assert.equal(preview.applicable, true)
+    assert.equal(preview.baseAhead, 1)
+    assert.deepEqual(preview.overlapFiles, ['src/conflict.txt'])
+    assert.equal(preview.conflict, true)
+    assert.ok(preview.conflictFiles.includes('src/conflict.txt'))
+
+    await assert.rejects(() => f.runtime.merge(task.id), (error: any) => {
+      assert.equal(error.status, 409)
+      assert.match(error.message, /无法自动合并/)
+      assert.match(error.message, /src\/conflict\.txt/)
+      return true
+    })
+    assert.equal(await exists(join(f.repo, '.git', 'MERGE_HEAD')), false)
+  } finally {
+    await teardown(f)
+  }
+})

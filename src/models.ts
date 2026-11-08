@@ -81,11 +81,64 @@ export interface TaskSnapshot {
   error?: string
 }
 
+/** One file touched by a task branch, with its unified diff against the base. */
+export interface DiffFile {
+  /** New path (or the only path for non-renames). POSIX-style, repo-relative. */
+  path: string
+  /** Previous path before a rename/copy; absent otherwise. */
+  oldPath?: string
+  /** Lifecycle of the file within the diff. */
+  status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
+  additions: number
+  deletions: number
+  /** Git treats the file as binary; `patch` only carries the marker line. */
+  binary: boolean
+  /** Unified diff block for this file (may be trimmed when huge). */
+  patch: string
+}
+
+/** Everything the review screen needs to render a task's changes. */
+export interface TaskDiff {
+  /** Base branch the diff is computed against. */
+  base: string
+  /** Merge-base commit used, when it could be resolved. */
+  mergeBase: string | null
+  files: DiffFile[]
+  totalAdditions: number
+  totalDeletions: number
+  /** True when the file list or a patch was trimmed for size. */
+  truncated: boolean
+  /** Machine reason when no diff could be produced. */
+  reason?: 'worktree-missing' | 'no-merge-base' | 'error'
+  /** Human hint (error text) paired with `reason`. */
+  error?: string
+}
+
 export interface SessionSummary {
   sessionId: string
   running: boolean
   title?: string
   updatedAt?: number
+}
+
+/** Dry-run result for merging a task branch into its base branch. */
+export interface MergePreview {
+  applicable: boolean
+  branch: string
+  baseBranch: string
+  /** Commits on base since the merge base. */
+  baseAhead: number
+  /** Files changed on both sides since the merge base. */
+  overlapFiles: string[]
+  /** Files git predicts as conflicts (merge-tree). */
+  conflictFiles: string[]
+  conflict: boolean
+  /** Whether merge-tree actually ran. */
+  checked: boolean
+  /** Whether the local git supports merge-tree --write-tree (>= 2.38). */
+  supported: boolean
+  reason?: string
+  error?: string
 }
 
 /** A published task with its snapshot, as returned to the client and tools. */
