@@ -134,13 +134,13 @@ export function registerTools(app: App): () => void {
     reg({
       name: 'worktree_act',
       description:
-        'Act on a worktree task: checkout (switch the main repo to the task branch for acceptance), back (switch back to the recorded original branch), merge (merge --no-ff into the base branch), cleanup (remove the worktree, optionally delete the branch), delete (remove the record).',
+        'Act on a worktree task: checkout (switch the main repo to the task branch for acceptance), back (switch back to the recorded original branch), merge (merge --no-ff into the base branch), cleanup (remove the worktree, optionally delete the branch), archive (hide a merged/cleaned task from the board default list), unarchive (restore it), delete (remove the record).',
       output: outDef(),
       parameters: {
         type: 'object',
         properties: {
           id: { type: 'string', description: 'Task id from worktree_tasks.' },
-          action: { type: 'string', enum: ['checkout', 'back', 'merge', 'cleanup', 'delete'], description: 'Operation.' },
+          action: { type: 'string', enum: ['checkout', 'back', 'merge', 'cleanup', 'archive', 'unarchive', 'delete'], description: 'Operation.' },
           force: { type: 'boolean', description: 'For cleanup: remove even with uncommitted changes.' },
           delete_branch: { type: 'boolean', description: 'For cleanup: also delete the task branch.' },
         },
@@ -157,6 +157,8 @@ export function registerTools(app: App): () => void {
             const t = await app.runtime.cleanup(id, { force: !!args.force, deleteBranch: !!args.delete_branch })
             return clean({ ok: true, task: brief(await app.runtime.view(t)) })
           }
+          if (action === 'archive') return clean({ ok: true, task: brief(await app.runtime.view(await app.runtime.archive(id))) })
+          if (action === 'unarchive') return clean({ ok: true, task: brief(await app.runtime.view(app.runtime.unarchive(id))) })
           if (action === 'delete') {
             app.runtime.delete(id)
             return clean({ ok: true })

@@ -63,6 +63,8 @@ export interface WorktreeTask {
   parentId?: string
   /** Set when the worktree has been removed. */
   cleanedAt?: number
+  /** Set when the task is archived: hidden from the board by default, but not deleted. */
+  archivedAt?: number
   createdAt: number
   updatedAt: number
 }

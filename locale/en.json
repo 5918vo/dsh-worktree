@@ -327,5 +327,16 @@
   "baseNotMergeTarget": "This base is not the previous task's merge target {base}; publishing will verify it contains the merged results.",
   "syncPromptSent": "Sync request sent",
   "syncNoSession": "Create a session before syncing the base",
-  "syncPrompt": "Please sync the base: merge local {base} into {branch} inside the worktree.\nWorkbench pre-check: {files}.\nFollow the \"sync base\" rules in your task prompt, then tell me the conflict files and how they were resolved."
+  "syncPrompt": "Please sync the base: merge local {base} into {branch} inside the worktree.\nWorkbench pre-check: {files}.\nFollow the \"sync base\" rules in your task prompt, then tell me the conflict files and how they were resolved.",
+  "archive": "Archive",
+  "unarchive": "Unarchive",
+  "archived": "Archived",
+  "archiveSection": "Archive",
+  "archiveHintOff": "Archiving hides this task from the left list by default. Use \"Show archived\" in the sidebar to see it again.",
+  "archiveHintOn": "This task is archived and hidden from the default list. Unarchiving puts it back.",
+  "archiveDone": "Task archived",
+  "unarchiveDone": "Task unarchived",
+  "showArchived": "Show archived",
+  "hideArchived": "Hide archived",
+  "archiveToggleTitle": "{n} archived tasks — click to toggle"
 }
