@@ -216,8 +216,10 @@ async function branchExists(gitPath, dir, branch) {
   const r = await tryRun(gitPath, dir, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]);
   return !!r && r.stdout.trim().length > 0;
 }
-async function isDirty(gitPath, dir) {
-  const r = await tryRun(gitPath, dir, ["status", "--porcelain"]);
+async function isDirty(gitPath, dir, includeUntracked = true) {
+  const args = ["status", "--porcelain"];
+  if (!includeUntracked) args.push("--untracked-files=no");
+  const r = await tryRun(gitPath, dir, args);
   if (!r) return 0;
   return r.stdout.split("\n").filter((l) => l.trim().length > 0).length;
 }
@@ -564,7 +566,9 @@ var Runtime = class {
       if (repoIsRepo) {
         const [cur, dirty] = await Promise.all([
           currentBranch(this.gitPath, task.repoPath),
-          isDirty(this.gitPath, task.repoPath)
+          // Untracked files in the main repo do not belong to the task branch and
+          // must not block checkout or merge. Tracked edits still do.
+          isDirty(this.gitPath, task.repoPath, false)
         ]);
         snap.repo.currentBranch = cur;
         snap.repo.dirtyCount = dirty;
@@ -622,14 +626,14 @@ var Runtime = class {
     if (!task) throw new TaskError(`\u4EFB\u52A1\u4E0D\u5B58\u5728\uFF1A${id}`, 404);
     return task;
   }
-  async refuseDirty(dir, what) {
-    const dirty = await isDirty(this.gitPath, dir);
+  async refuseDirty(dir, what, includeUntracked = true) {
+    const dirty = await isDirty(this.gitPath, dir, includeUntracked);
     if (dirty > 0) throw new TaskError(`${what}\u6709 ${dirty} \u5904\u672A\u63D0\u4EA4\u6539\u52A8\uFF0C\u8BF7\u5148\u5904\u7406\u540E\u518D\u64CD\u4F5C`);
   }
   async checkout(id) {
     const task = this.needTask(id);
     if (task.cleanedAt) throw new TaskError("worktree \u5DF2\u6E05\u7406\uFF0C\u65E0\u6CD5\u9A8C\u6536\u5207\u6362");
-    await this.refuseDirty(task.repoPath, "\u4E3B\u4ED3\u5E93");
+    await this.refuseDirty(task.repoPath, "\u4E3B\u4ED3\u5E93", false);
     const cur = await currentBranch(this.gitPath, task.repoPath);
     if (cur !== task.branch) {
       task.originalBranch = cur ?? task.originalBranch;
@@ -644,7 +648,7 @@ var Runtime = class {
     if (!await branchExists(this.gitPath, task.repoPath, task.originalBranch)) {
       throw new TaskError(`\u539F\u5206\u652F\u5DF2\u4E0D\u5B58\u5728\uFF1A${task.originalBranch}`);
     }
-    await this.refuseDirty(task.repoPath, "\u4E3B\u4ED3\u5E93");
+    await this.refuseDirty(task.repoPath, "\u4E3B\u4ED3\u5E93", false);
     const cur = await currentBranch(this.gitPath, task.repoPath);
     if (cur !== task.originalBranch) {
       await switchBranch(this.gitPath, task.repoPath, task.originalBranch);
@@ -657,7 +661,7 @@ var Runtime = class {
     if (!await branchExists(this.gitPath, task.repoPath, task.branch)) {
       throw new TaskError(`\u4EFB\u52A1\u5206\u652F\u4E0D\u5B58\u5728\uFF1A${task.branch}`);
     }
-    await this.refuseDirty(task.repoPath, "\u4E3B\u4ED3\u5E93");
+    await this.refuseDirty(task.repoPath, "\u4E3B\u4ED3\u5E93", false);
     const cur = await currentBranch(this.gitPath, task.repoPath);
     if (cur !== task.baseBranch) {
       await switchBranch(this.gitPath, task.repoPath, task.baseBranch);

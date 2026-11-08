@@ -89,8 +89,10 @@ export async function branchExists(gitPath: string, dir: string, branch: string)
   return !!r && r.stdout.trim().length > 0
 }
 
-export async function isDirty(gitPath: string, dir: string): Promise<number> {
-  const r = await tryRun(gitPath, dir, ['status', '--porcelain'])
+export async function isDirty(gitPath: string, dir: string, includeUntracked = true): Promise<number> {
+  const args = ['status', '--porcelain']
+  if (!includeUntracked) args.push('--untracked-files=no')
+  const r = await tryRun(gitPath, dir, args)
   if (!r) return 0
   return r.stdout.split('\n').filter((l) => l.trim().length > 0).length
 }

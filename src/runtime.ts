@@ -285,7 +285,9 @@ export class Runtime {
       if (repoIsRepo) {
         const [cur, dirty] = await Promise.all([
           gitx.currentBranch(this.gitPath, task.repoPath),
-          gitx.isDirty(this.gitPath, task.repoPath),
+          // Untracked files in the main repo do not belong to the task branch and
+          // must not block checkout or merge. Tracked edits still do.
+          gitx.isDirty(this.gitPath, task.repoPath, false),
         ])
         snap.repo.currentBranch = cur
         snap.repo.dirtyCount = dirty
@@ -352,15 +354,15 @@ export class Runtime {
     return task
   }
 
-  private async refuseDirty(dir: string, what: string): Promise<void> {
-    const dirty = await gitx.isDirty(this.gitPath, dir)
+  private async refuseDirty(dir: string, what: string, includeUntracked = true): Promise<void> {
+    const dirty = await gitx.isDirty(this.gitPath, dir, includeUntracked)
     if (dirty > 0) throw new TaskError(`${what}有 ${dirty} 处未提交改动，请先处理后再操作`)
   }
 
   async checkout(id: string): Promise<WorktreeTask> {
     const task = this.needTask(id)
     if (task.cleanedAt) throw new TaskError('worktree 已清理，无法验收切换')
-    await this.refuseDirty(task.repoPath, '主仓库')
+    await this.refuseDirty(task.repoPath, '主仓库', false)
     const cur = await gitx.currentBranch(this.gitPath, task.repoPath)
     if (cur !== task.branch) {
       task.originalBranch = cur ?? task.originalBranch
@@ -376,7 +378,7 @@ export class Runtime {
     if (!(await gitx.branchExists(this.gitPath, task.repoPath, task.originalBranch))) {
       throw new TaskError(`原分支已不存在：${task.originalBranch}`)
     }
-    await this.refuseDirty(task.repoPath, '主仓库')
+    await this.refuseDirty(task.repoPath, '主仓库', false)
     const cur = await gitx.currentBranch(this.gitPath, task.repoPath)
     if (cur !== task.originalBranch) {
       await gitx.switchBranch(this.gitPath, task.repoPath, task.originalBranch)
@@ -390,7 +392,7 @@ export class Runtime {
     if (!(await gitx.branchExists(this.gitPath, task.repoPath, task.branch))) {
       throw new TaskError(`任务分支不存在：${task.branch}`)
     }
-    await this.refuseDirty(task.repoPath, '主仓库')
+    await this.refuseDirty(task.repoPath, '主仓库', false)
     const cur = await gitx.currentBranch(this.gitPath, task.repoPath)
     if (cur !== task.baseBranch) {
       await gitx.switchBranch(this.gitPath, task.repoPath, task.baseBranch)
