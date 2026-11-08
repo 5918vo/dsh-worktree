@@ -458,7 +458,7 @@ test('checkout rejects when the main repo is dirty', async () => {
     await fs.writeFile(join(f.repo, 'README.md'), '# dirty\n', 'utf8')
     await assert.rejects(
       () => f.runtime.checkout(task.id),
-      (e: any) => e instanceof TaskError && /主仓库有 1 处未提交改动/.test(e.message),
+      (e: any) => e instanceof TaskError && /主仓库有 1 处未提交改动/.test(e.message) && /README\.md/.test(e.message),
     )
   } finally {
     await teardown(f)

@@ -676,9 +676,15 @@ export class Runtime {
     return task
   }
 
+  /** Changed-file count plus a short, human-readable sample. */
+  private async dirtySummary(dir: string, includeUntracked = true): Promise<{ count: number; shown: string }> {
+    const files = await gitx.dirtyFiles(this.gitPath, dir, includeUntracked)
+    return { count: files.length, shown: files.slice(0, 5).join('、') + (files.length > 5 ? '…' : '') }
+  }
+
   private async refuseDirty(dir: string, what: string, includeUntracked = true): Promise<void> {
-    const dirty = await gitx.isDirty(this.gitPath, dir, includeUntracked)
-    if (dirty > 0) throw new TaskError(`${what}有 ${dirty} 处未提交改动，请先处理后再操作`)
+    const { count, shown } = await this.dirtySummary(dir, includeUntracked)
+    if (count > 0) throw new TaskError(`${what}有 ${count} 处未提交改动（${shown}），请先处理后再操作`)
   }
 
   /** Another task of the same repo whose branch is currently checked out in the main repo. */
@@ -693,8 +699,8 @@ export class Runtime {
   }
 
   private async assertRepoClean(repoPath: string): Promise<void> {
-    const dirty = await gitx.isDirty(this.gitPath, repoPath, false)
-    if (dirty > 0) throw new TaskError(`主仓库有 ${dirty} 处未提交改动，请先处理后再操作`)
+    const { count, shown } = await this.dirtySummary(repoPath, false)
+    if (count > 0) throw new TaskError(`主仓库有 ${count} 处未提交改动（${shown}），请先处理后再操作`)
   }
 
   private async assertNoInProgress(repoPath: string): Promise<void> {
@@ -719,12 +725,12 @@ export class Runtime {
     // Acceptance reviews committed work; uncommitted worktree edits would not be visible.
     const ahead = await gitx.countCommits(this.gitPath, repoPath, `${task.baseBranch}..${task.branch}`)
     if (ahead === 0) {
-      const dirty = await gitx.isDirty(this.gitPath, task.worktreePath)
-      if (dirty > 0) throw new TaskError(`worktree 有 ${dirty} 处未提交改动，请先让 Agent 提交后再验收`)
+      const dirty = await this.dirtySummary(task.worktreePath)
+      if (dirty.count > 0) throw new TaskError(`worktree 有 ${dirty.count} 处未提交改动（${dirty.shown}），请先让 Agent 提交后再验收`)
       throw new TaskError('还没有可验收的提交')
     }
-    const wtDirty = await gitx.isDirty(this.gitPath, task.worktreePath)
-    if (wtDirty > 0) throw new TaskError(`worktree 有 ${wtDirty} 处未提交改动，请先让 Agent 提交后再验收`)
+    const wtDirty = await this.dirtySummary(task.worktreePath)
+    if (wtDirty.count > 0) throw new TaskError(`worktree 有 ${wtDirty.count} 处未提交改动（${wtDirty.shown}），请先让 Agent 提交后再验收`)
     task.originalBranch = cur ?? task.originalBranch
     await gitx.switchBranch(this.gitPath, repoPath, task.branch)
     this.store.putTask(task)
@@ -769,8 +775,8 @@ export class Runtime {
     }
     const ahead = await gitx.countCommits(this.gitPath, repoPath, `${task.baseBranch}..${task.branch}`)
     if (ahead === 0) throw new TaskError('没有领先基线的提交，无需合并')
-    const wtDirty = await gitx.isDirty(this.gitPath, task.worktreePath)
-    if (wtDirty > 0) throw new TaskError(`worktree 有 ${wtDirty} 处未提交改动，这些改动不会被合并；请先让 Agent 提交`)
+    const wtDirty = await this.dirtySummary(task.worktreePath)
+    if (wtDirty.count > 0) throw new TaskError(`worktree 有 ${wtDirty.count} 处未提交改动（${wtDirty.shown}），这些改动不会被合并；请先让 Agent 提交`)
     // Capture the tip that is about to be merged.
     const mergedTip = await gitx.revParse(this.gitPath, repoPath, task.branch)
     try {

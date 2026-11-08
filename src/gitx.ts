@@ -491,6 +491,25 @@ export async function listUntracked(gitPath: string, dir: string): Promise<strin
   return r.stdout.split('\0').filter((path) => path.length > 0)
 }
 
+/** Repo-relative paths of changed files reported by `git status --porcelain`. */
+export async function dirtyFiles(gitPath: string, dir: string, includeUntracked = true): Promise<string[]> {
+  const args = ['status', '--porcelain']
+  if (!includeUntracked) args.push('--untracked-files=no')
+  const r = await tryRun(gitPath, dir, args)
+  if (!r) return []
+  const out: string[] = []
+  for (const line of r.stdout.split('\n')) {
+    if (!line.trim()) continue
+    // "XY path" or "XY old -> new" (rename); strip the status prefix.
+    let p = line.slice(3).trim()
+    const arrow = p.indexOf(' -> ')
+    if (arrow >= 0) p = p.slice(arrow + 4)
+    p = p.replace(/^"(.*)"$/, '$1')
+    if (p) out.push(p)
+  }
+  return out
+}
+
 export type InProgressKind = 'merge' | 'rebase' | 'cherry-pick' | 'revert'
 
 /** Absolute path of this working tree's git dir (correct for linked worktrees). */
