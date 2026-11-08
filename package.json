@@ -40,7 +40,8 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "node build.mjs",
-    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "test": "node scripts/test.mjs",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true}); require('fs').rmSync('.test-dist',{recursive:true,force:true})\"",
     "prepublishOnly": "npm run typecheck && npm run build",
     "pack:check": "npm pack --dry-run",
     "publish:dry": "npm publish --dry-run"
