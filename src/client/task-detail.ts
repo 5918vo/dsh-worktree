@@ -485,7 +485,9 @@ export function TaskDetail(props: any) {
             disabled: busy !== '',
             onClick: () => { setPreview(null); setMergeOpen(true); void loadPreview() },
           }, t.mergeAgain),
-          props.onContinue
+          // "继续任务" is already the hero primary action on a continued task,
+          // so only surface it here for the rare task whose hero cannot.
+          props.onContinue && !continued
             ? h(Btn, {
               size: 'sm',
               variant: 'primary',
@@ -613,13 +615,8 @@ export function TaskDetail(props: any) {
     const showMerge = snap.status !== 'merged' && snap.status !== 'cleaned'
 
     type AcceptReason = { text: string; action?: any; key?: string }
-    const openSessionAction = task.sessionId && props.onOpenSession
-      ? h(Btn, {
-        size: 'sm',
-        icon: 'external',
-        onClick: () => { const ok = props.onOpenSession(); if (ok === false) props.notify(t.openSessionFailed, 'error') },
-      }, t.openSessionBtn)
-      : null
+    // "打开会话" lives in the hero action area; blockers below only explain why
+    // an acceptance action is unavailable, so they must not repeat that button.
     const goOtherAction = otherReviewing && props.onSelectTask
       ? h(Btn, { size: 'sm', onClick: () => props.onSelectTask(otherReviewing.task.id) }, t.acceptReviewOther)
       : null
@@ -632,11 +629,11 @@ export function TaskDetail(props: any) {
       else if (snap.status !== 'review') checkoutReasons.push({ text: t.acceptNoCommits })
       else if (ahead === 0) checkoutReasons.push({ text: dirty > 0 ? String(t.acceptWorktreeDirtyCommit).replace('{n}', String(dirty)) : t.acceptNoCommits })
       else {
-        if (dirty > 0) checkoutReasons.push({ text: String(t.acceptWorktreeDirtyCommit).replace('{n}', String(dirty)), action: openSessionAction, key: 'wt-dirty' })
+        if (dirty > 0) checkoutReasons.push({ text: String(t.acceptWorktreeDirtyCommit).replace('{n}', String(dirty)), key: 'wt-dirty' })
         if (repoDirty > 0) checkoutReasons.push({ text: String(t.acceptanceHintRepoDirty).replace('{n}', String(repoDirty)) })
         if (inProgress) checkoutReasons.push({ text: t.acceptInProgress })
         if (otherReviewing) checkoutReasons.push({ text: String(t.acceptOtherReviewing).replace('{task}', otherReviewing.task.title), action: goOtherAction })
-        if (agentRunning) checkoutReasons.push({ text: t.acceptAgentRunning, action: openSessionAction })
+        if (agentRunning) checkoutReasons.push({ text: t.acceptAgentRunning })
       }
     }
     const checkoutEnabled = showCheckout && checkoutReasons.length === 0
@@ -656,11 +653,11 @@ export function TaskDetail(props: any) {
       else if (onTaskBranch) mergeReasons.push({ text: t.acceptMergeReviewing })
       else if (snap.status !== 'review' || ahead === 0) mergeReasons.push({ text: t.acceptNoCommits })
       else {
-        if (dirty > 0) mergeReasons.push({ text: String(t.acceptanceHintDirty).replace('{n}', String(dirty)), action: openSessionAction, key: 'wt-dirty' })
+        if (dirty > 0) mergeReasons.push({ text: String(t.acceptanceHintDirty).replace('{n}', String(dirty)), key: 'wt-dirty' })
         if (!curOnBase) mergeReasons.push({ text: String(t.acceptNotOnBase).replace('{branch}', snap.repo.currentBranch || '—') })
         if (repoDirty > 0) mergeReasons.push({ text: String(t.acceptanceHintRepoDirty).replace('{n}', String(repoDirty)) })
         if (inProgress) mergeReasons.push({ text: t.acceptInProgress })
-        if (agentRunning) mergeReasons.push({ text: t.acceptAgentRunning, action: openSessionAction })
+        if (agentRunning) mergeReasons.push({ text: t.acceptAgentRunning })
         if (conflictNow) mergeReasons.push({ text: t.mergePreviewConflictHint, action: syncAction })
       }
     }
