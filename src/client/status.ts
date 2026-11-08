@@ -33,6 +33,17 @@ export function pendingLabel(t: any, kind: string | null | undefined): string {
   return t.pendingApproval
 }
 
+/**
+ * Whether the task has work ready to be inspected/accepted.
+ * Acceptance actions (switching the main repo to the task branch) only make
+ * sense once the worktree holds commits or changes to review — i.e. `review`
+ * and the already-checked-out `reviewing` state. `ready`/`developing` still
+ * mean the work is not done, so acceptance must stay disabled.
+ */
+export function isReviewable(status: string): boolean {
+  return status === 'review' || status === 'reviewing'
+}
+
 export function statusMeta(t: any, status: string, pendingKind?: string | null) {
   const terminal = status === 'merged' || status === 'cleaned'
   if (pendingKind && !terminal) return { label: pendingLabel(t, pendingKind), tone: 'warn', pending: true }

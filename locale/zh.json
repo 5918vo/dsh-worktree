@@ -176,6 +176,8 @@
   "acceptanceHintClean": "worktree 已清理，验收操作不可用。",
   "acceptanceHintMerged": "任务已合并进基线，可以清理 worktree。",
   "acceptanceHintBroken": "worktree 状态异常，修复后再执行验收操作。",
+  "acceptanceHintDeveloping": "任务进行中，完成开发后才能切到任务分支验收。",
+  "acceptanceHintNotStarted": "任务尚未开始，完成开发后才能切到任务分支验收。",
   "acceptanceHintDirty": "worktree 有 {n} 处未提交改动，合并与切换前需要先提交或暂存。",
   "acceptanceHintRepoDirty": "主仓库有 {n} 处未提交改动，切换分支前需要先提交或暂存。",
   "acceptanceHintNoAhead": "还没有领先基线的提交，完成开发后再合并。",

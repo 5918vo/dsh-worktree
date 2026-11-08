@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { STATUS_TONE, pendingLabel, resolveStatus, statusMeta } from '../src/client/status.js'
+import { STATUS_TONE, isReviewable, pendingLabel, resolveStatus, statusMeta } from '../src/client/status.js'
 
 const T = {
   ready: '准备',
@@ -25,6 +25,17 @@ test('STATUS_TONE maps lifecycle states to tones', () => {
     merged: 'success',
     broken: 'error',
   })
+})
+
+test('isReviewable: only review states allow the acceptance switch', () => {
+  assert.equal(isReviewable('review'), true)
+  assert.equal(isReviewable('reviewing'), true)
+  // Not-yet-developed tasks must not enter acceptance early.
+  assert.equal(isReviewable('developing'), false)
+  assert.equal(isReviewable('ready'), false)
+  assert.equal(isReviewable('merged'), false)
+  assert.equal(isReviewable('cleaned'), false)
+  assert.equal(isReviewable('broken'), false)
 })
 
 test('pendingLabel resolves each interaction kind', () => {
