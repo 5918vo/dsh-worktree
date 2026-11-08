@@ -327,5 +327,16 @@
   "baseNotMergeTarget": "所选基线不是前序任务的合并目标 {base}；发布时会校验它是否包含前序成果。",
   "syncPromptSent": "已发送同步基线指令",
   "syncNoSession": "先创建会话后才能同步基线",
-  "syncPrompt": "请同步基线：在 worktree 内把本地 {base} 合并进 {branch}。\n工作台预检结果：{files}。\n按提示词中“同步基线”的规则处理，完成后告诉我冲突文件和解决方式。"
+  "syncPrompt": "请同步基线：在 worktree 内把本地 {base} 合并进 {branch}。\n工作台预检结果：{files}。\n按提示词中“同步基线”的规则处理，完成后告诉我冲突文件和解决方式。",
+  "archive": "归档",
+  "unarchive": "取消归档",
+  "archived": "已归档",
+  "archiveSection": "归档",
+  "archiveHintOff": "归档后，该任务会从左侧列表默认隐藏；需要时可在侧栏切换「显示已归档」查看。",
+  "archiveHintOn": "该任务已归档，默认从左侧列表隐藏。取消归档后会重新出现在列表中。",
+  "archiveDone": "任务已归档",
+  "unarchiveDone": "已取消归档",
+  "showArchived": "显示已归档",
+  "hideArchived": "隐藏已归档",
+  "archiveToggleTitle": "已归档 {n} 个任务，点击切换显示"
 }

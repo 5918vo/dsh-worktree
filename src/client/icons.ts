@@ -115,5 +115,16 @@ export const ICONS: Record<string, any[]> = {
     ['path', { d: 'M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5' }],
     ['path', { d: 'M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3' }],
   ],
+  archive: [
+    ['rect', { x: 3, y: 4, width: 18, height: 4, rx: 1 }],
+    ['path', { d: 'M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8' }],
+    ['path', { d: 'M10 12h4' }],
+  ],
+  archiveRestore: [
+    ['rect', { x: 3, y: 4, width: 18, height: 4, rx: 1 }],
+    ['path', { d: 'M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8' }],
+    ['path', { d: 'M12 18v-5' }],
+    ['path', { d: 'm9.5 15.5 2.5-2.5 2.5 2.5' }],
+  ],
 }
 

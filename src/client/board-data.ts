@@ -1,4 +1,33 @@
-import type { ProjectView, TaskSnapshot, TaskStatus, TaskView, WorktreeTask } from '../models'
+import type { ProjectStats, ProjectView, TaskSnapshot, TaskStatus, TaskView, WorktreeTask } from '../models'
+
+/**
+ * Board views with archived tasks hidden unless `showArchived` is true.
+ *
+ * The server can already filter archived tasks, but the board fetches them all
+ * so the "show archived" toggle can flip instantly and an already-selected
+ * archived task stays resolvable. Per-project stats are recomputed from the
+ * visible rows so the sidebar count matches what is rendered. Returns the input
+ * arrays untouched when nothing is filtered out.
+ */
+export function visibleProjectViews(views: ProjectView[], showArchived: boolean): ProjectView[] {
+  if (showArchived) return views
+  return views.map((view) => {
+    const tasks = view.tasks.filter((item) => !item.task.archivedAt)
+    if (tasks.length === view.tasks.length) return view
+    const byStatus: Partial<Record<TaskStatus, number>> = {}
+    for (const item of tasks) {
+      const status = item.snapshot.status
+      byStatus[status] = (byStatus[status] || 0) + 1
+    }
+    const stats: ProjectStats = {
+      tasks: tasks.length,
+      byStatus,
+      running: tasks.filter((item) => item.snapshot.status === 'developing').length,
+    }
+    return { ...view, tasks, stats }
+  })
+}
+
 
 /**
  * Best-effort snapshot for a task the user just published. It is only shown

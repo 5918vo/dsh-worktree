@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { provisionalSnapshot, upsertPublishedTask } from '../src/client/board-data.js'
+import { provisionalSnapshot, upsertPublishedTask, visibleProjectViews } from '../src/client/board-data.js'
 
 const project = (id, repoPath, name = id) => ({ id, name, repoPath, baseBranch: 'main', createdAt: 1 })
 
@@ -63,4 +63,26 @@ test('upsertPublishedTask leaves the board untouched for an unknown repo', () =>
   const views = [view(project('p1', 'C:/repo'), [])]
   const next = upsertPublishedTask(views, { ...task('new', 'x', 20), repoPath: 'C:/other' }, 'x', 'ready')
   assert.equal(next[0].tasks.length, 0)
+})
+
+test('visibleProjectViews hides archived tasks and recomputes stats', () => {
+  const keep = task('a', 'p1', 2)
+  const gone = task('b', 'p1', 1, { archivedAt: 5 })
+  const views = [
+    {
+      project: project('p1', 'C:/repo'),
+      stats: { tasks: 2, byStatus: { merged: 2 }, running: 0 },
+      tasks: [
+        { task: keep, snapshot: provisionalSnapshot(keep, 'merged') },
+        { task: gone, snapshot: provisionalSnapshot(gone, 'merged') },
+      ],
+    },
+  ]
+  const shown = visibleProjectViews(views, false)
+  assert.equal(shown[0].tasks.length, 1)
+  assert.equal(shown[0].tasks[0].task.id, 'a')
+  assert.equal(shown[0].stats.tasks, 1)
+  assert.equal(shown[0].stats.byStatus.merged, 1)
+  assert.equal(views[0].tasks.length, 2, 'input must not be mutated')
+  assert.equal(visibleProjectViews(views, true), views, 'showing archived keeps the input list')
 })

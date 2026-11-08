@@ -222,3 +222,35 @@ test('publish with an unknown parentId returns 404', async () => {
   })
   assert.equal(res.status, 404)
 })
+
+test('task/archive hides a merged task from the default listing and unarchive restores it', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
+  const projectId = added.body.project.id
+  const published = await call('publish', {
+    body: { projectId, title: '归档任务', description: '实现后归档', branchName: 'feat/http-archive' },
+    headers: auth,
+  })
+  assert.equal(published.status, 200, JSON.stringify(published.body))
+  const task = published.body.task
+  await commitFile(task.worktreePath, 'src/http-archive.txt', 'x\n', 'feat: archive')
+  const merged = await call('task/merge', { body: { id: task.id }, headers: auth })
+  assert.equal(merged.status, 200, JSON.stringify(merged.body))
+
+  const archived = await call('task/archive', { body: { id: task.id }, headers: auth })
+  assert.equal(archived.status, 200, JSON.stringify(archived.body))
+  assert.ok(archived.body.view.task.archivedAt, 'archive returns the updated view')
+
+  const def = await call('tasks', { method: 'GET', headers: auth })
+  assert.equal(def.body.tasks.some((v: any) => v.task.id === task.id), false, 'archived task hidden by default')
+  const route = findRoute(routes, `${PREFIX}/tasks`)
+  const all = await callRoute(route.handler, { method: 'GET', url: `${PREFIX}/tasks?includeArchived=1`, headers: auth })
+  assert.equal(all.status, 200, JSON.stringify(all.body))
+  assert.equal(all.body.tasks.some((v: any) => v.task.id === task.id), true, 'includeArchived returns it')
+
+  const restored = await call('task/unarchive', { body: { id: task.id }, headers: auth })
+  assert.equal(restored.status, 200, JSON.stringify(restored.body))
+  assert.equal(restored.body.view.task.archivedAt, undefined)
+  const def2 = await call('tasks', { method: 'GET', headers: auth })
+  assert.equal(def2.body.tasks.some((v: any) => v.task.id === task.id), true, 'unarchive restores the default listing')
+})

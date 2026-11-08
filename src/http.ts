@@ -137,7 +137,8 @@ export function registerHttp(app: App): () => void {
 
   route('projects', 'GET', async (req, res) => {
     requireToken(req)
-    const views = await app.runtime.projectViews()
+    const includeArchived = q(req, 'includeArchived') === '1'
+    const views = await app.runtime.projectViews({ includeArchived })
     send(res, 200, { projects: views })
   })
 
@@ -192,7 +193,8 @@ export function registerHttp(app: App): () => void {
 
   route('tasks', 'GET', async (req, res) => {
     requireToken(req)
-    const views = await app.runtime.views()
+    const includeArchived = q(req, 'includeArchived') === '1'
+    const views = await app.runtime.views({ includeArchived })
     send(res, 200, { tasks: views })
   })
 
@@ -257,6 +259,8 @@ export function registerHttp(app: App): () => void {
   act('back', async (id) => app.runtime.back(id))
   act('merge', async (id) => app.runtime.merge(id))
   act('cleanup', async (id, body) => app.runtime.cleanup(id, { force: !!body.force, deleteBranch: !!body.deleteBranch }))
+  act('archive', async (id) => app.runtime.archive(id))
+  act('unarchive', async (id) => app.runtime.unarchive(id))
   act('delete', async (id) => app.runtime.delete(id))
 
   const routes: RouteDef[] = []
