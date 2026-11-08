@@ -339,7 +339,7 @@ npm run build       # 生产构建
 ## 设计要点
 
 - 验收切换时，如果任务分支已被 worktree 检出，主仓库切换会失败，自动回退 `--ignore-other-worktrees`。
-- `checkout`、`merge`、`back` 前使用 `status --porcelain` 拒绝脏工作区。
+- `checkout`、`merge`、`back` 前拒绝主仓库中已跟踪文件的未提交改动；未跟踪文件不再阻止操作，真实冲突仍由 `git` 拒绝。清理 worktree 时仍统计未跟踪文件。
 - `checkout` 会记录 `originalBranch`，供验收后切回。
 - worktree 父目录为 `<repo>/.dsh-worktrees/<id8>`，并幂等写入 `.git/info/exclude` 的 `/.dsh-worktrees/`。
 - 会话被删除后，host 通过 `session/disposed` 解绑，看板可重新创建会话，不会自动重启旧会话。
