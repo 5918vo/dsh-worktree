@@ -316,7 +316,7 @@ export const CSS = `
 /* forms ------------------------------------------------------------------ */
 .dshw-form-rows{display:flex;flex-direction:column;gap:13px}
 .dshw-form-row{display:grid;grid-template-columns:96px minmax(0,1fr);gap:12px;align-items:start}
-.dshw-form-row>label{padding-top:9px;font-size:12px;color:var(--dshw-text-2);font-weight:600}
+.dshw-form-row>label, .dshw-form-row>.dshw-form-label{padding-top:9px;font-size:12px;color:var(--dshw-text-2);font-weight:600}
 .dshw-form-foot{display:flex;align-items:center;gap:10px;margin-top:16px;padding-top:13px;border-top:1px solid var(--dshw-border-soft)}
 .dshw-save-state{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--dshw-success);font-weight:600;min-height:18px}
 .dshw-save-state .dshw-ico{width:13px;height:13px}
@@ -350,7 +350,12 @@ export const CSS = `
 .dshw-check small{display:block;font-size:11px;color:var(--dshw-text-3);margin-top:2px;line-height:1.5}
 .dshw-check+.dshw-check{margin-top:10px}
 .dshw-check:has(input:disabled){opacity:.55}
-.dshw-publish-start{margin:2px 0 14px;padding:10px 12px;border:1px solid var(--dshw-border);border-radius:9px;background:var(--dshw-surface-2)}
+.dshw-choice-group{display:inline-flex;gap:8px;flex-wrap:wrap;margin-top:1px}
+.dshw-choice{display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:6px 16px;border:1px solid var(--dshw-border-strong);border-radius:8px;background:var(--dshw-surface);font-size:12.5px;color:var(--dshw-text);cursor:pointer;transition:border-color .14s,background .14s,color .14s,box-shadow .14s}
+.dshw-choice:hover{border-color:var(--dshw-text-3)}
+.dshw-choice input{width:14px;height:14px;margin:0;accent-color:var(--dshw-brand);cursor:pointer}
+.dshw-choice:has(input:checked){border-color:var(--dshw-brand);background:var(--dshw-brand-soft);color:var(--dshw-brand);font-weight:600}
+.dshw-choice:has(input:focus-visible){box-shadow:var(--dshw-focus-ring)}
 
 /* menus ------------------------------------------------------------------ */
 .dshw-menu{position:relative;flex:none}
