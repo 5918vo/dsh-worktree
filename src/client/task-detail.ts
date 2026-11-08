@@ -2,7 +2,7 @@ import { React, h } from './ui'
 import { Banner, Btn, Card, CardHead, Chip, CopyBtn, Dot, Icon, KV, Modal, Spinner } from './primitives'
 import { post } from './context'
 import { clipText, cx, firstLine, fmtDuration, fmtK, jp, pad2, relTime } from './format'
-import { pendingLabel, statusMeta } from './status'
+import { pendingLabel, resolveStatus, statusMeta } from './status'
 import { fallbackEntries } from './timeline'
 import type { TimelineEntry } from './timeline'
 
@@ -171,7 +171,7 @@ export function TaskDetail(props: any) {
     const [delBranch, setDelBranch] = React.useState(false)
     const actionRef = React.useRef(false)
 
-    const meta = statusMeta(t, snap.status, props.pendingKind)
+    const meta = statusMeta(t, resolveStatus(snap.status, props.running), props.pendingKind)
     const liveData = readLive(props.live)
     const modelText = modelLabel(liveData && liveData.model) || '—'
     const liveCwd = liveData && liveData.cwd ? String(liveData.cwd) : ''

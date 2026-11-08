@@ -3,6 +3,7 @@ import { Banner, Btn, Card, CardHead, CopyBtn, Icon, KV, MenuItem, Modal, Spinne
 import { useBranchInfo } from './hooks'
 import { post } from './context'
 import { copyText, cx } from './format'
+import { resolveStatus } from './status'
 
 export function ProjectDetail(props: any) {
     const t = props.t
@@ -24,11 +25,16 @@ export function ProjectDetail(props: any) {
     const saveTimer = React.useRef(null)
     const actionRef = React.useRef(false)
 
-    const counts = {
-      total: v.stats.tasks,
-      active: (v.stats.byStatus.developing || 0) + (v.stats.byStatus.reviewing || 0),
-      review: v.stats.byStatus.review || 0,
-      merged: v.stats.byStatus.merged || 0,
+    // The overview must agree with the sidebar. A Git-derived `review` on a
+    // still-running session is really "in progress", so resolve the live
+    // session state before bucketing tasks.
+    const isRunning = (task: any) => !!(task && task.sessionId && props.sessionMap && props.sessionMap[task.sessionId])
+    const counts = { total: v.tasks.length, active: 0, review: 0, merged: 0 }
+    for (const item of v.tasks) {
+      const status = resolveStatus(item.snapshot.status, isRunning(item.task))
+      if (status === 'developing' || status === 'reviewing') counts.active += 1
+      else if (status === 'review') counts.review += 1
+      else if (status === 'merged') counts.merged += 1
     }
     const pendingTasks = v.tasks.filter((item: any) => item.task.sessionId && props.pendingMap && props.pendingMap[item.task.sessionId])
     const firstPending = pendingTasks[0]
