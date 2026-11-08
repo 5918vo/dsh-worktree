@@ -319,6 +319,12 @@
   "acceptBusy": "正在执行：{action}",
   "acceptWorktreeDirtyCommit": "worktree 有 {n} 处未提交改动，请先让 Agent 提交",
   "acceptNoCommits": "还没有可验收的提交",
+  "continueMergedOnly": "仅基于已合并成果继续",
+  "continueCarry": "迁移合并后的新增改动",
+  "continueMergedOnlyHint": "忽略前序分支合并后的新提交；它们仍留在旧分支，不会进入新任务。",
+  "continueCarryHint": "会把前序分支合并后的 {n} 个新提交列进首条指令，由 Agent 用 cherry-pick 带入并处理冲突。",
+  "publishAsPlain": "作为普通任务发布（不关联前序任务）",
+  "baseNotMergeTarget": "所选基线不是前序任务的合并目标 {base}；发布时会校验它是否包含前序成果。",
   "syncPromptSent": "已发送同步基线指令",
   "syncNoSession": "先创建会话后才能同步基线",
   "syncPrompt": "请同步基线：在 worktree 内把本地 {base} 合并进 {branch}。\n工作台预检结果：{files}。\n按提示词中“同步基线”的规则处理，完成后告诉我冲突文件和解决方式。"

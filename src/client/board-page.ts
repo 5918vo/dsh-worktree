@@ -727,8 +727,8 @@ export function BoardPage(props: any) {
           onClose: () => { setPublishFor(null); setPublishParent(null) },
           onRefresh: () => { void refresh() },
           onError: (message: string) => notify(message, 'error'),
-          onPublished: (task: any, project: any, warning?: string) => {
-            const predecessor = publishParent ? publishParent.view : null
+          onPublished: (task: any, project: any, warning?: string, continued?: boolean) => {
+            const predecessor = continued && publishParent ? publishParent.view : null
             setPublishFor(null)
             setPublishParent(null)
             if (project && project.id) setSelectedProjectId(project.id)

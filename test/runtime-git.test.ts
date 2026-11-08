@@ -414,7 +414,7 @@ test('publish with parentId works after the predecessor worktree and branch are 
   }
 })
 
-test('follow-up prompt lists leftover commits with a cherry-pick hint', async () => {
+test('continue with carryLeftover lists leftover commits with a cherry-pick hint', async () => {
   const f = await fixture()
   try {
     const parent = await f.runtime.publish({ repoPath: f.repo, title: 'p', description: 'd' })
@@ -425,11 +425,54 @@ test('follow-up prompt lists leftover commits with a cherry-pick hint', async ()
     const view = await f.runtime.view(parent)
     assert.equal(view.snapshot.postMergeAhead, 1)
 
-    const child = await f.runtime.publish({ repoPath: f.repo, title: 'c', description: 'd', parentId: parent.id })
-    assert.ok(child.firstPrompt.includes('feat: leftover work'), 'leftover commit subject should be listed')
-    assert.ok(child.firstPrompt.includes('cherry-pick'), 'cherry-pick hint should be present')
+    const carried = await f.runtime.publish({ repoPath: f.repo, title: 'c', description: 'd', parentId: parent.id, carryLeftover: true })
+    assert.ok(carried.firstPrompt.includes('feat: leftover work'), 'carried: leftover commit subject should be listed')
+    assert.ok(carried.firstPrompt.includes('cherry-pick'), 'carried: cherry-pick hint should be present')
     // The follow-up branch starts from base, so the leftover file is not present yet.
-    assert.equal(await exists(join(child.worktreePath, 'src/b.txt')), false)
+    assert.equal(await exists(join(carried.worktreePath, 'src/b.txt')), false)
+
+    // Default (carryLeftover omitted) must NOT silently migrate the leftover commits.
+    const mergedOnly = await f.runtime.publish({ repoPath: f.repo, title: 'c2', description: 'd', parentId: parent.id })
+    assert.equal(mergedOnly.firstPrompt.includes('feat: leftover work'), false, 'default: leftover commit must not be listed')
+    assert.equal(mergedOnly.firstPrompt.includes('cherry-pick'), false, 'default: no cherry-pick hint')
+    assert.ok(mergedOnly.firstPrompt.includes('前序任务'), 'still links the predecessor')
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('continue defaults its base to the predecessor merge target even if the project base moved', async () => {
+  const f = await fixture()
+  try {
+    const parent = await f.runtime.publish({ repoPath: f.repo, title: 'p', description: 'd' })
+    await commitFile(parent.worktreePath, 'src/a.txt', 'a\n', 'feat: a')
+    await f.runtime.merge(parent.id)
+    // Move the project default base to a branch that does not exist.
+    const project = f.store.getProject(parent.projectId)!
+    project.baseBranch = 'does-not-exist'
+    f.store.putProject(project)
+
+    const child = await f.runtime.publish({ repoPath: f.repo, title: 'c', description: 'd', parentId: parent.id })
+    assert.equal(child.baseBranch, parent.baseBranch, 'base should default to the predecessor merge target')
+    assert.equal(child.parentId, parent.id)
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('continue rejects a chosen base that does not contain the predecessor merge', async () => {
+  const f = await fixture()
+  try {
+    // Create a side branch at the initial commit, before the task is merged into main.
+    await git(f.repo, ['branch', 'side'])
+    const parent = await f.runtime.publish({ repoPath: f.repo, title: 'p', description: 'd' })
+    await commitFile(parent.worktreePath, 'src/a.txt', 'a\n', 'feat: a')
+    await f.runtime.merge(parent.id)
+
+    await assert.rejects(
+      () => f.runtime.publish({ repoPath: f.repo, title: 'c', description: 'd', parentId: parent.id, baseBranch: 'side' }),
+      (e: any) => e instanceof TaskError && /未包含前序任务已合并的成果/.test(e.message),
+    )
   } finally {
     await teardown(f)
   }

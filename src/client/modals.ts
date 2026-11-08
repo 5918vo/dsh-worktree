@@ -207,7 +207,7 @@ export function AddProjectModal(props: { t: any; onClose: () => void; onAdded: (
       err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null))
   }
 
-export function PublishModal(props: { t: any; project: any; cfg: any; parentView?: any; onClose: () => void; onRefresh: () => void; onError: (message: string) => void; onPublished: (task: any, project: any, warning?: string) => void }) {
+export function PublishModal(props: { t: any; project: any; cfg: any; parentView?: any; onClose: () => void; onRefresh: () => void; onError: (message: string) => void; onPublished: (task: any, project: any, warning?: string, continued?: boolean) => void }) {
     const t = props.t
     const remotes = appCtx && appCtx.remote
     const project = props.project
@@ -215,10 +215,14 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
     const parentTask = props.parentView && props.parentView.task ? props.parentView.task : null
     const parentAhead = (props.parentView && props.parentView.snapshot && props.parentView.snapshot.postMergeAhead) || 0
     const branches = useBranchInfo(project.repoPath)
-    const [baseBranch, setBaseBranch] = React.useState(project.baseBranch || '')
+    // Continue tasks default to the predecessor's actual merge target, never the
+    // project default (which may have moved since the merge).
+    const [baseBranch, setBaseBranch] = React.useState(parentTask ? (parentTask.baseBranch || project.baseBranch || '') : (project.baseBranch || ''))
     const [branchName, setBranchName] = React.useState('')
     const [title, setTitle] = React.useState(parentTask ? String(parentTask.title) + String(t.continueTitleSuffix) : '')
     const [description, setDescription] = React.useState('')
+    const [carryLeftover, setCarryLeftover] = React.useState(false)
+    const [asPlain, setAsPlain] = React.useState(false)
     const [start, setStart] = React.useState(true)
     const [busy, setBusy] = React.useState(false)
     const [err, setErr] = React.useState('')
@@ -271,7 +275,7 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
           title: title.trim(),
           description,
           branchName: branchName.trim() || undefined,
-          ...(parentTask ? { parentId: parentTask.id } : {}),
+          ...(parentTask && !asPlain ? { parentId: parentTask.id, carryLeftover } : {}),
           start,
         }), 30000, t.publishTimeout)
         const task = r.task
@@ -284,11 +288,11 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
             // the follow-up refresh lands.
             if (sessionId) publishedTask = Object.assign({}, task, { sessionId })
           } catch (e: any) {
-            props.onPublished(task, project, (e && e.message) || t.failed)
+            props.onPublished(task, project, (e && e.message) || t.failed, !!(parentTask && !asPlain))
             return
           }
         }
-        props.onPublished(publishedTask, project)
+        props.onPublished(publishedTask, project, undefined, !!(parentTask && !asPlain))
       } catch (e: any) {
         if (e && (e as any).timeout) {
           // The request may have reached the server; reconcile the board instead of trapping the user.
@@ -328,7 +332,7 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
 
     return h(Modal, {
       t,
-      title: parentTask ? t.continueTask : t.publish,
+      title: parentTask && !asPlain ? t.continueTask : t.publish,
       subtitle: project.name,
       icon: 'play',
       size: 'lg',
@@ -353,9 +357,23 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
               h('div', { className: 'dshw-readonly-box' },
                 h('span', { className: 'dshw-folder-tile dshw-folder-tile--purple' }, h(Icon, { name: 'branch' })),
                 h('span', { className: 'dshw-nowrap' }, parentTask.title)),
-              h('div', { className: 'dshw-hint' },
-                String(t.parentTaskMerged).replace('{base}', baseBranch || project.baseBranch || ''),
-                parentAhead > 0 ? ' · ' + String(t.carryNote).replace('{n}', String(parentAhead)) : '')))
+              h('div', { className: 'dshw-hint' }, String(t.parentTaskMerged).replace('{base}', parentTask.baseBranch || '—')),
+              h('label', { className: 'dshw-check' },
+                h('input', { type: 'checkbox', checked: asPlain, onChange: (e: any) => setAsPlain(e.target.checked) }),
+                h('span', { className: 'dshw-check-copy' }, t.publishAsPlain)),
+              parentAhead > 0 && !asPlain
+                ? h('div', null,
+                  h('div', { className: 'dshw-choice-group', role: 'radiogroup', style: { marginTop: '6px' } },
+                    h('label', { className: 'dshw-choice' },
+                      h('input', { type: 'radio', name: 'dshw-continue-carry', checked: !carryLeftover, onChange: () => setCarryLeftover(false) }),
+                      h('span', null, t.continueMergedOnly)),
+                    h('label', { className: 'dshw-choice' },
+                      h('input', { type: 'radio', name: 'dshw-continue-carry', checked: carryLeftover, onChange: () => setCarryLeftover(true) }),
+                      h('span', null, t.continueCarry))),
+                  h('div', { className: 'dshw-hint' }, carryLeftover
+                    ? String(t.continueCarryHint).replace('{n}', String(parentAhead))
+                    : t.continueMergedOnlyHint))
+                : null))
           : null,
         h('div', { className: 'dshw-form-row' },
           h('label', { htmlFor: 'dshw-publish-title' }, t.taskTitle, h('span', { className: 'dshw-req', 'aria-hidden': 'true' }, '*')),
@@ -395,7 +413,10 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
           h('label', { htmlFor: 'dshw-publish-base' }, t.baseBranch),
           h('div', null,
             branchControl,
-            branchHint ? h('div', { className: 'dshw-hint' }, branchHint) : null)),
+            branchHint ? h('div', { className: 'dshw-hint' }, branchHint) : null,
+            parentTask && !asPlain && baseBranch && parentTask.baseBranch && baseBranch !== parentTask.baseBranch
+              ? h('div', { className: 'dshw-hint' }, String(t.baseNotMergeTarget).replace('{base}', parentTask.baseBranch))
+              : null)),
         h('div', { className: 'dshw-form-row' },
           h('span', { className: 'dshw-form-label', id: 'dshw-publish-start-label' }, t.startNow),
           h('div', null,

@@ -65,6 +65,7 @@ export function registerTools(app: App): () => void {
           task: { type: 'string', description: 'Full task description for the session that will develop it.' },
           branch_name: { type: 'string', description: 'Optional task branch name; auto-generated when omitted.' },
           parent_id: { type: 'string', description: 'Optional id of an already-merged task to continue from; creates a follow-up task on a new branch of the base.' },
+          carry_leftover: { type: 'boolean', description: 'When continuing: also migrate commits added to the old branch after its merge (default false).' },
           start: { type: 'boolean', description: 'Auto-start the bound session with the task prompt (default true).' },
         },
         required: ['title', 'task'],
@@ -80,6 +81,7 @@ export function registerTools(app: App): () => void {
             description: String(args.task || ''),
             branchName: args.branch_name ? String(args.branch_name) : undefined,
             parentId: args.parent_id ? String(args.parent_id) : undefined,
+            carryLeftover: args.carry_leftover === true,
             start: args.start === false ? false : true,
           })
           return clean({

@@ -124,6 +124,7 @@ export function registerHttp(app: App): () => void {
         description: String(body.description || ''),
         branchName: body.branchName ? String(body.branchName) : undefined,
         parentId: body.parentId ? String(body.parentId) : undefined,
+        carryLeftover: body.carryLeftover === true,
         start: body.start !== false,
         autoBind: false,
       })

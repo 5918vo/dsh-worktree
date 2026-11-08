@@ -319,6 +319,12 @@
   "acceptBusy": "Running: {action}",
   "acceptWorktreeDirtyCommit": "The worktree has {n} uncommitted changes; ask the agent to commit first",
   "acceptNoCommits": "No commits to review yet",
+  "continueMergedOnly": "Continue from merged results only",
+  "continueCarry": "Migrate the post-merge changes",
+  "continueMergedOnlyHint": "Ignore commits added to the old branch after the merge; they stay on the old branch.",
+  "continueCarryHint": "List the {n} post-merge commits in the first prompt and let the agent cherry-pick them in.",
+  "publishAsPlain": "Publish as a normal task (not linked to the previous task)",
+  "baseNotMergeTarget": "This base is not the previous task's merge target {base}; publishing will verify it contains the merged results.",
   "syncPromptSent": "Sync request sent",
   "syncNoSession": "Create a session before syncing the base",
   "syncPrompt": "Please sync the base: merge local {base} into {branch} inside the worktree.\nWorkbench pre-check: {files}.\nFollow the \"sync base\" rules in your task prompt, then tell me the conflict files and how they were resolved."

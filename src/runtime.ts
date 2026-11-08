@@ -21,6 +21,8 @@ export interface PublishInput {
   start?: boolean
   /** Continue from an already-merged task; the new task records this as its parent. */
   parentId?: string
+  /** When continuing: explicitly migrate commits added to the old branch after its merge. */
+  carryLeftover?: boolean
   /** Client publishes bind their own session; tools rely on the board retry. */
   autoBind?: boolean
 }
@@ -407,7 +409,7 @@ export class Runtime {
     // even after newer commits land on the old branch.
     const ref = parent.mergedBranchTip || parent.branch
     if (!(await gitx.isAncestor(this.gitPath, repoPath, ref, base))) {
-      throw new TaskError(`前序任务的改动不在基线分支 ${base} 的历史中，无法作为续作发布`)
+      throw new TaskError(`所选基线 ${base} 未包含前序任务已合并的成果。请改选原合并目标 ${parent.baseBranch}，或改为普通任务发布。`)
     }
     return { parent, info: await this.parentPromptInfo(parent, base) }
   }
@@ -447,7 +449,11 @@ export class Runtime {
     }
 
     const { current, default: defaultBranch } = await gitx.listBranches(this.gitPath, repoPath)
-    const base = (input.baseBranch || project.baseBranch || current || defaultBranch || '').trim()
+    // When continuing, the baseline defaults to the predecessor's actual merge
+    // target (never the current project default, which may have moved on).
+    const parentRecord = input.parentId ? this.store.getTask(input.parentId) : undefined
+    if (input.parentId && !parentRecord) throw new TaskError(`前序任务不存在：${input.parentId}`, 404)
+    const base = (input.baseBranch || (parentRecord && parentRecord.baseBranch) || project.baseBranch || current || defaultBranch || '').trim()
     if (!base || !(await gitx.branchExists(this.gitPath, repoPath, base))) {
       throw new TaskError(`基线分支不存在：${base || '(未指定)'}`)
     }
@@ -458,6 +464,11 @@ export class Runtime {
       const loaded = await this.loadContinuableParent(input.parentId, repoPath, base)
       parentInfo = loaded.info
       parentId = loaded.parent.id
+      if (!input.carryLeftover) {
+        // Default: continue from what was merged; do not silently migrate newer commits.
+        parentInfo.leftoverCommits = []
+        parentInfo.leftoverRange = undefined
+      }
     }
 
     const eff = this.effective(project)
