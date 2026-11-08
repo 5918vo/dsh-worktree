@@ -194,6 +194,20 @@ export function registerHttp(app: App): () => void {
     send(res, 200, { tasks: views })
   })
 
+  // Per-file diff for the review screen. Read-only, so it stays on GET with an
+  // id query param alongside the other board reads.
+  route('task/diff', 'GET', async (req, res) => {
+    requireToken(req)
+    const id = q(req, 'id')
+    if (!id) return send(res, 400, { error: 'id required' })
+    try {
+      send(res, 200, { diff: await app.runtime.diff(id) })
+    } catch (error) {
+      if (error instanceof TaskError) return send(res, error.status, { error: error.message })
+      send(res, 500, { error: error instanceof Error ? error.message : String(error) })
+    }
+  })
+
   route('bind', 'POST', async (req, res) => {
     requireToken(req)
     const body = await readJson(req)

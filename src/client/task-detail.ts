@@ -1,6 +1,6 @@
 import { React, h } from './ui'
-import { Banner, Btn, Card, CardHead, Chip, CopyBtn, Dot, Icon, KV, Modal, Spinner } from './primitives'
-import { appCtx, post } from './context'
+import { Banner, Btn, Card, CardHead, Chip, CopyBtn, Dot, Icon, IconBtn, KV, Modal, Spinner } from './primitives'
+import { appCtx, getJson, post } from './context'
 import { clipText, cx, firstLine, fmtDuration, fmtK, jp, pad2, relTime, uuid } from './format'
 import { pendingLabel, resolveStatus, statusMeta } from './status'
 import { fallbackEntries } from './timeline'
@@ -156,6 +156,146 @@ export function LiveCard(props: { t: any; task: any; running: boolean | null; pe
               h('div', { className: 'dshw-meter' }, h('i', { style: { '--v': (pct === null ? 0 : pct) + '%' } })))))))
   }
 
+function diffStatusMeta(status: string): { letter: string; tone: string } {
+  switch (status) {
+    case 'added': return { letter: 'A', tone: 'success' }
+    case 'deleted': return { letter: 'D', tone: 'error' }
+    case 'renamed': return { letter: 'R', tone: 'purple' }
+    case 'untracked': return { letter: 'U', tone: 'success' }
+    default: return { letter: 'M', tone: 'warn' }
+  }
+}
+
+/** Colour a raw unified-diff line like a terminal `git diff`. */
+function diffLineKind(line: string): string {
+  if (line.startsWith('@@')) return 'hunk'
+  if (line.startsWith('diff --git ') || line.startsWith('index ') || line.startsWith('new file') ||
+    line.startsWith('deleted file') || line.startsWith('rename ') || line.startsWith('similarity') ||
+    line.startsWith('old mode') || line.startsWith('new mode') || line.startsWith('Binary files ') || line.startsWith('\\')) {
+    return 'meta'
+  }
+  if (line.startsWith('+++ ') || line.startsWith('--- ')) return 'meta'
+  if (line.startsWith('+')) return 'add'
+  if (line.startsWith('-')) return 'del'
+  return 'ctx'
+}
+
+/** Review-stage file list + per-file unified diff, fetched from `task/diff`. */
+export function DiffCard(props: any) {
+  const t = props.t
+  const task = props.task
+  const version = props.version
+  const [data, setData] = React.useState(null)
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState('')
+  const [expanded, setExpanded] = React.useState({})
+  const [tick, setTick] = React.useState(0)
+
+  React.useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError('')
+    getJson('task/diff?id=' + encodeURIComponent(task.id))
+      .then((d: any) => {
+        if (cancelled) return
+        setData(d && d.diff ? d.diff : null)
+        setLoading(false)
+      })
+      .catch((e: any) => {
+        if (cancelled) return
+        setError(String((e && e.message) || t.loadFailed))
+        setLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [task.id, version, tick])
+
+  const files: any[] = (data && Array.isArray(data.files)) ? data.files : []
+  // Small change sets open by default so the reviewer sees the diff right away.
+  React.useEffect(() => {
+    if (!data) return
+    if (files.length === 0 || files.length > 5) { setExpanded({}); return }
+    const next: any = {}
+    for (const file of files) next[file.path] = true
+    setExpanded(next)
+  }, [data])
+
+  const allOpen = files.length > 0 && files.every((file: any) => expanded[file.path])
+  const toggleAll = () => {
+    if (allOpen) { setExpanded({}); return }
+    const next: any = {}
+    for (const file of files) next[file.path] = true
+    setExpanded(next)
+  }
+  const toggle = (path: string) => setExpanded((prev: any) => Object.assign({}, prev, { [path]: !prev[path] }))
+  const rawDiff = files.map((file: any) => file.patch).filter(Boolean).join('\n')
+
+  const reasonText = () => {
+    if (!data || !data.reason) return ''
+    if (data.reason === 'worktree-missing') return String(t.diffUnavailable).replace('{reason}', t.diffReasonMissing)
+    if (data.reason === 'no-merge-base') return String(t.diffUnavailable).replace('{reason}', t.diffReasonNoBase)
+    return String(t.diffUnavailable).replace('{reason}', data.error || t.diffReasonError)
+  }
+
+  const summary = data
+    ? h('span', { className: 'dshw-diff-summary' },
+      h('span', null, String(t.diffFiles).replace('{n}', String(files.length))),
+      h('span', { className: 'dshw-diff-add' }, '+' + (data.totalAdditions || 0)),
+      h('span', { className: 'dshw-diff-del' }, '-' + (data.totalDeletions || 0)))
+    : null
+
+  const head = h(CardHead, {
+    icon: 'file',
+    title: t.changedFiles,
+    right: h('span', { className: 'dshw-diff-tools' },
+      summary,
+      files.length ? h(Btn, { size: 'sm', onClick: toggleAll }, allOpen ? t.collapseAll : t.expandAll) : null,
+      rawDiff ? h(CopyBtn, { text: rawDiff, label: t.copyDiff, t, notify: props.notify }) : null,
+      h(IconBtn, { icon: 'refresh', label: t.refresh, disabled: loading, onClick: () => setTick((n: number) => n + 1) }, loading ? h(Spinner) : null)),
+  })
+
+  let body: any
+  if (loading && !data) {
+    body = h('div', { className: 'dshw-diff-status' }, h(Spinner), h('span', null, t.diffLoading))
+  } else if (error) {
+    body = h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, error))
+  } else if (reasonText()) {
+    body = h('div', { className: 'dshw-diff-status dshw-diff-status--muted' }, h(Icon, { name: 'info' }), h('span', null, reasonText()))
+  } else if (!files.length) {
+    body = h('div', { className: 'dshw-diff-status dshw-diff-status--muted' }, h(Icon, { name: 'checkCircle' }), h('span', null, t.diffEmpty))
+  } else {
+    body = [
+      data && data.truncated ? h('div', { className: 'dshw-diff-trunc', key: 'trunc' }, h(Icon, { name: 'info' }), h('span', null, t.diffTruncated)) : null,
+      h('div', { className: 'dshw-diff-list', key: 'list' }, files.map((file: any) => {
+        const meta = diffStatusMeta(file.status)
+        const open = !!expanded[file.path]
+        const lines = String(file.patch || '').split('\n')
+        const shown = lines.slice(0, 4000).map((line: string, i: number) =>
+          h('span', { key: i, className: 'dshw-diff-line dshw-diff-line--' + diffLineKind(line) }, line === '' ? '\u00a0' : line))
+        if (lines.length > 4000) shown.push(h('span', { key: 'more', className: 'dshw-diff-line dshw-diff-line--meta' }, '…'))
+        return h('div', { key: file.path, className: 'dshw-diff-file' },
+          h('button', {
+            type: 'button',
+            className: 'dshw-diff-file-head',
+            'aria-expanded': open,
+            onClick: () => toggle(file.path),
+          },
+            h(Chip, { tone: meta.tone, small: true, className: 'dshw-diff-badge' }, meta.letter),
+            h('span', { className: 'dshw-diff-path', title: file.path },
+              h('span', { className: 'dshw-mono' }, file.path),
+              file.oldPath ? h('span', { className: 'dshw-diff-old' }, ' ← ' + file.oldPath) : null),
+            h('span', { className: 'dshw-diff-stat' },
+              file.binary
+                ? h('span', { className: 'dshw-diff-binary' }, t.diffBinary)
+                : [h('span', { key: 'a', className: 'dshw-diff-add' }, '+' + (file.additions || 0)),
+                  h('span', { key: 'd', className: 'dshw-diff-del' }, '-' + (file.deletions || 0))]),
+            h(Icon, { name: 'chevronDown', className: 'dshw-diff-chevron' })),
+          open ? h('pre', { className: 'dshw-diff-patch' }, shown) : null)
+      }))]
+  }
+
+  return h(Card, { className: 'dshw-diff-card' }, head, h('div', { className: 'dshw-diff-body' }, body))
+}
+
 export function TaskDetail(props: any) {
     const t = props.t
     const v = props.view
@@ -217,6 +357,11 @@ export function TaskDetail(props: any) {
     const canStart = sessionBlank && !props.running && !!props.onStartTask && !!task.sessionId
     const ahead = snap.worktree.ahead
     const branch = task.branch || snap.worktree.branch || ''
+    // The review-only diff card: shown while the task is waiting for acceptance
+    // (or being reviewed on the main repo), where "what changed" matters most.
+    const effectiveStatus = resolveStatus(snap.status, props.running)
+    const showDiff = !cleaned && !broken && (effectiveStatus === 'review' || effectiveStatus === 'reviewing')
+    const diffVersion = [snap.worktree.ahead, snap.worktree.dirtyCount, snap.worktree.lastCommitAt || 0, snap.status].join(':')
 
     const act = async (key: string, success: string, fn: () => Promise<any>): Promise<boolean> => {
       if (actionRef.current || busy) return false
@@ -595,6 +740,7 @@ export function TaskDetail(props: any) {
       previewNode,
       errorNode,
       h(LiveCard, { t, task, running: props.running, pendingKind: props.pendingKind, live: props.live, history: props.history }),
+      showDiff ? h(DiffCard, { t, task, version: diffVersion, notify: props.notify }) : null,
       h(Card, null,
         h(CardHead, {
           icon: 'message',
