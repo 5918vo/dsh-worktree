@@ -231,11 +231,15 @@ Host 配置位于 `cordis.patch.yml`：
 
 项目级设置可以覆盖 `dirName` 和 `branchPrefix`。
 
-同一台机器运行多个 DSH 实例时，建议用 `DSH_WORKTREE_STATE_DIR` 为每个实例指定独立的任务台账目录，避免多个进程同时写同一份 `tasks.json`：
+项目、任务和最近目录统一保存在：
 
-```bash
-DSH_WORKTREE_STATE_DIR=C:/Users/liang/.dsh/worktree-web dsh web
+```text
+~/.dsh/worktree-tasks
 ```
+
+该目录与 DSH profile、`dsh web` 端口无关。同一台机器上的多个 DSH 实例会读取同一份任务台账，并通过 `.store.lock` 做读改写，避免一个端口看不到另一个端口新建的项目或任务。
+
+首次加载新版本时会迁移旧的 profile 目录和 `DSH_WORKTREE_STATE_DIR` 目录，迁移完成后写入 `.migrated-v2` 标记；旧目录保留，不再重复导入。相同 `repoPath` 的重复项目会自动合并到任务历史最多的那个项目。
 
 发布任务使用同步提交锁；UI 发布由客户端绑定会话，HTTP 发布不会触发工作台自动绑定，避免重复创建同一任务的会话。
 

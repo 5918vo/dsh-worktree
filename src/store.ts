@@ -1,73 +1,305 @@
-import { promises as fs } from 'node:fs'
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { Project, WorktreeTask } from './models.js'
 
+/**
+ * One global task store for every DSH process on this machine.
+ *
+ * Deliberately independent of the DSH profile and the web port: a task
+ * published from `dsh web --port 3080` must be visible from `--port 3090`.
+ */
 export function stateDir(): string {
-  const explicit = process.env.DSH_WORKTREE_STATE_DIR
-  if (explicit) return explicit
-  const profileDir = process.env.DSH_PROFILE_DIR
-  if (profileDir) return join(profileDir, 'deepseek-worktree')
   return join(homedir(), '.dsh', 'worktree-tasks')
 }
 
-async function readJson<T>(file: string, fallback: T): Promise<T> {
+function readJsonSync<T>(file: string, fallback: T): T {
   try {
-    const text = await fs.readFile(file, 'utf8')
-    return JSON.parse(text) as T
+    return JSON.parse(readFileSync(file, 'utf8')) as T
   } catch {
     return fallback
   }
 }
 
-async function writeJson(file: string, value: unknown): Promise<void> {
-  await fs.mkdir(dirname(file), { recursive: true })
+function writeJsonSync(file: string, value: unknown): void {
+  mkdirSync(dirname(file), { recursive: true })
+  const text = JSON.stringify(value, null, 2)
   const tmp = `${file}.${process.pid}.${Date.now()}.tmp`
-  await fs.writeFile(tmp, JSON.stringify(value, null, 2), { encoding: 'utf8', mode: 0o600 })
-  // Windows can hold the destination briefly (EPERM on rename); retry, then
-  // fall back to a plain overwrite so a lost race never crashes the host.
-  for (let i = 0; i < 5; i++) {
-    try {
-      await fs.rename(tmp, file)
-      return
-    } catch {
-      await new Promise((resolve) => setTimeout(resolve, 50 * (i + 1)))
-    }
-  }
   try {
-    await fs.writeFile(file, JSON.stringify(value, null, 2), { encoding: 'utf8' })
+    writeFileSync(tmp, text, { encoding: 'utf8', mode: 0o600 })
+    renameSync(tmp, file)
+    return
   } catch {
-    /* give up silently; next save retries */
+    /* Windows may briefly hold the destination; fall through */
   }
   try {
-    await fs.rm(tmp, { force: true })
+    writeFileSync(file, text, { encoding: 'utf8' })
+  } catch {
+    /* a failed save must never take the host down; the next save retries */
+  }
+  try {
+    rmSync(tmp, { force: true })
   } catch {
     /* noop */
   }
 }
 
-/** Durable, debounced store for projects, task records and recent target directories. */
+function sleepSync(ms: number): void {
+  const end = Date.now() + ms
+  while (Date.now() < end) {
+    /* short critical section */
+  }
+}
+
+/**
+ * Durable store for projects, task records and recent target directories.
+ *
+ * All reads and writes go through the files under `dir`, so multiple DSH
+ * processes share the same state even when they were started from different
+ * profiles or ports. Mutations take a small cross-process lock and are
+ * read-modify-write, which keeps one process from overwriting another's task.
+ */
 export class Store {
   private readonly dir: string
+  private readonly migrateLegacy: boolean
   private projects = new Map<string, Project>()
   private tasks = new Map<string, WorktreeTask>()
   private recents: string[] = []
-  private saveTimer: NodeJS.Timeout | null = null
 
   constructor(dir = stateDir()) {
     this.dir = dir
+    this.migrateLegacy = dir === stateDir()
   }
 
   private file(name: string): string {
     return join(this.dir, name)
   }
 
+  private readProjects(): Record<string, Project> {
+    return readJsonSync<Record<string, Project>>(this.file('projects.json'), {})
+  }
+
+  private readTasks(): Record<string, WorktreeTask> {
+    return readJsonSync<Record<string, WorktreeTask>>(this.file('tasks.json'), {})
+  }
+
+  private readRecents(): string[] {
+    const value = readJsonSync<any>(this.file('recents.json'), [])
+    return Array.isArray(value) ? value.filter((item) => typeof item === 'string') : []
+  }
+
+  private refreshProjects(): void {
+    const disk = this.readProjects()
+    const next = new Map<string, Project>()
+    for (const [id, project] of Object.entries(disk)) {
+      const current = this.projects.get(id)
+      if (current) {
+        Object.assign(current, project)
+        next.set(id, current)
+      } else {
+        next.set(id, project)
+      }
+    }
+    this.projects = next
+  }
+
+  private refreshTasks(): void {
+    const disk = this.readTasks()
+    const next = new Map<string, WorktreeTask>()
+    for (const [id, task] of Object.entries(disk)) {
+      const current = this.tasks.get(id)
+      if (current) {
+        Object.assign(current, task)
+        next.set(id, current)
+      } else {
+        next.set(id, task)
+      }
+    }
+    this.tasks = next
+  }
+
+  private refreshRecents(): void {
+    this.recents = this.readRecents()
+  }
+
+  private saveProjects(): void {
+    writeJsonSync(this.file('projects.json'), Object.fromEntries(this.projects))
+  }
+
+  private saveTasks(): void {
+    writeJsonSync(this.file('tasks.json'), Object.fromEntries(this.tasks))
+  }
+
+  private saveRecents(): void {
+    writeJsonSync(this.file('recents.json'), this.recents)
+  }
+
+  private saveAll(): void {
+    this.saveProjects()
+    this.saveTasks()
+    this.saveRecents()
+  }
+
+  private withLock<T>(fn: () => T): T {
+    mkdirSync(this.dir, { recursive: true })
+    const lock = this.file('.store.lock')
+    const start = Date.now()
+    let fd: number | null = null
+    while (fd === null) {
+      try {
+        fd = openSync(lock, 'wx')
+      } catch {
+        try {
+          const info = statSync(lock)
+          if (Date.now() - info.mtimeMs > 5000) unlinkSync(lock)
+        } catch {
+          /* lock disappeared between open and stat */
+        }
+        if (Date.now() - start > 3000) {
+          // Never take the host down over a stale lock; the write is still atomic.
+          return fn()
+        }
+        sleepSync(5)
+      }
+    }
+    try {
+      return fn()
+    } finally {
+      try {
+        closeSync(fd)
+      } catch {
+        /* noop */
+      }
+      try {
+        unlinkSync(lock)
+      } catch {
+        /* noop */
+      }
+    }
+  }
+
   async load(): Promise<void> {
-    const projects = await readJson<Record<string, Project>>(this.file('projects.json'), {})
-    this.projects = new Map(Object.entries(projects))
-    const tasks = await readJson<Record<string, WorktreeTask>>(this.file('tasks.json'), {})
-    this.tasks = new Map(Object.entries(tasks))
-    this.recents = await readJson<string[]>(this.file('recents.json'), [])
+    this.refreshProjects()
+    this.refreshTasks()
+    this.refreshRecents()
+    if (!this.migrateLegacy) return
+    const marker = this.file('.migrated-v2')
+    this.withLock(() => {
+      if (!existsSync(marker)) {
+        this.migrateFromLegacyDirs()
+        try {
+          writeFileSync(marker, new Date().toISOString(), { encoding: 'utf8' })
+        } catch {
+          /* retry on the next boot */
+        }
+      }
+      this.dedupeProjects()
+    })
+  }
+
+  /**
+   * One repository must have one project row. Older builds could create a
+   * second row when two servers had separate stores; fold those tasks into the
+   * project that has the most task history.
+   */
+  private dedupeProjects(): void {
+    const groups = new Map<string, Project[]>()
+    for (const project of this.projects.values()) {
+      const key = project.repoPath.replace(/[\\/]+$/, '').toLowerCase()
+      const list = groups.get(key)
+      if (list) list.push(project)
+      else groups.set(key, [project])
+    }
+    let changed = false
+    for (const list of groups.values()) {
+      if (list.length < 2) continue
+      const taskCount = (project: Project) => {
+        let count = 0
+        for (const task of this.tasks.values()) if (task.projectId === project.id) count += 1
+        return count
+      }
+      list.sort((a, b) => taskCount(b) - taskCount(a) || a.createdAt - b.createdAt)
+      const canonical = list[0]
+      for (const duplicate of list.slice(1)) {
+        for (const task of this.tasks.values()) {
+          if (task.projectId === duplicate.id) {
+            task.projectId = canonical.id
+            changed = true
+          }
+        }
+        this.projects.delete(duplicate.id)
+        changed = true
+      }
+    }
+    if (!changed) return
+    this.saveProjects()
+    this.saveTasks()
+  }
+
+  /**
+   * Pull tasks out of stores created by older builds (profile directories or
+   * a custom DSH_WORKTREE_STATE_DIR). The old files are left in place.
+   */
+  private migrateFromLegacyDirs(): void {
+    const candidates = new Set<string>()
+    const explicit = process.env.DSH_WORKTREE_STATE_DIR
+    if (explicit) candidates.add(explicit)
+    const profile = process.env.DSH_PROFILE_DIR
+    if (profile) candidates.add(join(profile, 'deepseek-worktree'))
+    candidates.add(join(homedir(), '.dsh', 'worktree-web'))
+    const profilesDir = join(homedir(), '.dsh', 'profiles')
+    try {
+      for (const name of readdirSync(profilesDir)) {
+        candidates.add(join(profilesDir, name, 'deepseek-worktree'))
+      }
+    } catch {
+      /* no profiles directory */
+    }
+    candidates.delete(this.dir)
+
+    let changed = false
+    for (const dir of candidates) {
+      const projects = readJsonSync<Record<string, Project>>(join(dir, 'projects.json'), {})
+      const tasks = readJsonSync<Record<string, WorktreeTask>>(join(dir, 'tasks.json'), {})
+      const recents = readJsonSync<any>(join(dir, 'recents.json'), [])
+
+      for (const [id, project] of Object.entries(projects)) {
+        if (!this.projects.has(id)) {
+          this.projects.set(id, project)
+          changed = true
+        }
+      }
+      for (const [id, task] of Object.entries(tasks)) {
+        const current = this.tasks.get(id)
+        if (!current || (task.updatedAt || 0) > (current.updatedAt || 0)) {
+          this.tasks.set(id, task)
+          changed = true
+        }
+      }
+      if (Array.isArray(recents)) {
+        for (const item of recents) {
+          if (typeof item === 'string' && !this.recents.includes(item)) {
+            this.recents.push(item)
+            changed = true
+          }
+        }
+      }
+    }
+    if (!changed) return
+    this.recents = this.recents.slice(0, 10)
+    this.saveAll()
   }
 
   directory(): string {
@@ -77,32 +309,44 @@ export class Store {
   // ---- projects ----
 
   listProjects(): Project[] {
+    this.refreshProjects()
     return [...this.projects.values()].sort((a, b) => a.name.localeCompare(b.name))
   }
 
   getProject(id: string): Project | undefined {
+    this.refreshProjects()
     return this.projects.get(id)
   }
 
   findProjectByRepo(repoPath: string): Project | undefined {
+    this.refreshProjects()
     const norm = repoPath.replace(/[\\/]+$/, '').toLowerCase()
-    return this.listProjects().find((p) => p.repoPath.replace(/[\\/]+$/, '').toLowerCase() === norm)
+    return [...this.projects.values()].find((p) => p.repoPath.replace(/[\\/]+$/, '').toLowerCase() === norm)
   }
 
   putProject(project: Project): void {
-    this.projects.set(project.id, project)
-    this.scheduleSave()
+    const next = { ...project }
+    this.withLock(() => {
+      this.refreshProjects()
+      Object.assign(project, next)
+      this.projects.set(project.id, project)
+      this.saveProjects()
+    })
   }
 
   deleteProject(id: string): boolean {
-    const ok = this.projects.delete(id)
-    if (ok) this.scheduleSave()
-    return ok
+    return this.withLock(() => {
+      this.refreshProjects()
+      const ok = this.projects.delete(id)
+      if (ok) this.saveProjects()
+      return ok
+    })
   }
 
   // ---- tasks ----
 
   listTasks(): WorktreeTask[] {
+    this.refreshTasks()
     return [...this.tasks.values()].sort((a, b) => b.createdAt - a.createdAt)
   }
 
@@ -111,61 +355,69 @@ export class Store {
   }
 
   getTask(id: string): WorktreeTask | undefined {
+    this.refreshTasks()
     return this.tasks.get(id)
   }
 
   putTask(task: WorktreeTask): void {
     task.updatedAt = Date.now()
-    this.tasks.set(task.id, task)
-    this.scheduleSave()
+    // Snapshot after the caller's mutation: refreshing from disk below may
+    // update this same object, and must not erase fields like sessionId.
+    const next = { ...task }
+    this.withLock(() => {
+      this.refreshTasks()
+      Object.assign(task, next)
+      this.tasks.set(task.id, task)
+      this.saveTasks()
+    })
   }
 
   deleteTask(id: string): boolean {
-    const ok = this.tasks.delete(id)
-    if (ok) this.scheduleSave()
-    return ok
+    return this.withLock(() => {
+      this.refreshTasks()
+      const ok = this.tasks.delete(id)
+      if (ok) this.saveTasks()
+      return ok
+    })
   }
 
   // ---- misc ----
 
   listRecents(): string[] {
+    this.refreshRecents()
     return [...this.recents]
   }
 
   addRecent(dir: string): void {
-    const norm = dir.replace(/[\\/]+$/, '')
-    this.recents = [norm, ...this.recents.filter((d) => d !== norm)].slice(0, 10)
-    this.scheduleSave()
+    this.withLock(() => {
+      this.refreshRecents()
+      const norm = dir.replace(/[\\/]+$/, '')
+      this.recents = [norm, ...this.recents.filter((d) => d !== norm)].slice(0, 10)
+      this.saveRecents()
+    })
   }
 
   clearRecents(): void {
-    this.recents = []
-    this.scheduleSave()
-  }
-
-  scheduleSave(): void {
-    if (this.saveTimer) clearTimeout(this.saveTimer)
-    this.saveTimer = setTimeout(() => {
-      void this.flush()
-    }, 300)
+    this.withLock(() => {
+      this.refreshRecents()
+      this.recents = []
+      this.saveRecents()
+    })
   }
 
   async flush(): Promise<void> {
-    try {
-      const projects = Object.fromEntries(this.projects)
-      const tasks = Object.fromEntries(this.tasks)
-      await Promise.all([
-        writeJson(this.file('projects.json'), projects),
-        writeJson(this.file('tasks.json'), tasks),
-        writeJson(this.file('recents.json'), this.recents),
-      ])
-    } catch {
-      /* a failed save must never take the host down; the next save retries */
-    }
+    this.withLock(() => {
+      this.saveAll()
+    })
   }
 
   dispose(): void {
-    if (this.saveTimer) clearTimeout(this.saveTimer)
-    void this.flush()
+    try {
+      this.withLock(() => {
+        this.saveAll()
+      })
+    } catch {
+      /* shutdown must never throw */
+    }
   }
 }
