@@ -586,46 +586,95 @@ export function TaskDetail(props: any) {
       }, health.message || (health.kind === 'error' ? t.sessionErrorHint : t.sessionInterruptedHint))
       : null
 
-    // A task merged through the workbench with newer branch commits is reviewable
-    // again for that pending patch, even though its lifecycle status is `merged`.
-    const acceptStatus = postMerge > 0 ? 'review' : effStatus
-    const disabled = cleaned || (merged && postMerge === 0)
-    // Acceptance ("switch to the task branch") is only meaningful once the task
-    // is waiting for review. While the task is still developing (or not started),
-    // switching the main repo branch would enter acceptance too early. Use the
-    // session-aware status so a still-running session counts as in progress.
-    const reviewable = isReviewable(acceptStatus)
-    const checkoutDisabled = disabled || checkedOut || broken || dirty > 0 || repoDirty > 0 || !snap.worktree.exists || !reviewable
-    // "Switch back" is only meaningful while the main repo is away from the recorded branch.
-    const onOriginalBranch = !!task.originalBranch && snap.repo.currentBranch === task.originalBranch
-    const backDisabled = !task.originalBranch || cleaned || merged || onOriginalBranch
-    const mergeDisabled = disabled || dirty > 0 || ahead === 0 || !snap.worktree.exists
-    const checkoutTitle = checkedOut
-      ? t.onBranch
-      : effStatus === 'developing'
-        ? t.acceptanceHintDeveloping
-        : effStatus === 'ready'
-          ? t.acceptanceHintNotStarted
-          : dirty > 0
-            ? t.acceptanceHintDirty.replace('{n}', String(dirty))
-            : repoDirty > 0
-              ? t.acceptanceHintRepoDirty.replace('{n}', String(repoDirty))
-              : broken
-                ? t.acceptanceHintBroken
-                : t.checkout
-    const mergeTitle = ahead === 0 ? t.acceptanceHintNoAhead : dirty > 0 ? t.acceptanceHintDirty.replace('{n}', String(dirty)) : t.merge
+    // ---- Acceptance actions: visibility + blocking reasons ----
+    // Every action mutates the main repo, so we gate on three things: the task
+    // lifecycle, whether the main repo can safely switch/merge, and whether the
+    // agent is still writing. The backend repeats every git-level check.
+    const onTaskBranch = !!branch && snap.repo.currentBranch === branch
+    const curOnBase = !!task.baseBranch && snap.repo.currentBranch === task.baseBranch
+    const inProgress = snap.repo.inProgress || null
+    const originalBranchExists = !!task.originalBranch && (snap.repo.originalBranchExists === undefined ? true : snap.repo.originalBranchExists)
+    const siblings = Array.isArray(props.siblings) ? props.siblings : []
+    const otherReviewing = onTaskBranch
+      ? null
+      : siblings.find((v: any) => v.task && !v.task.cleanedAt && v.task.branch && v.task.branch === snap.repo.currentBranch) || null
+    const agentRunning = props.running === true
+    const repoLockLabel = props.repoLockLabel || ''
+    const conflictNow = !!(preview && preview.conflict)
 
-    let acceptanceHint = t.acceptanceHintDefault
-    if (cleaned) acceptanceHint = t.acceptanceHintClean
-    else if (merged && postMerge > 0) acceptanceHint = String(t.acceptanceHintPostMerge).replace('{n}', String(postMerge))
-    else if (merged) acceptanceHint = t.acceptanceHintMerged
-    else if (broken) acceptanceHint = t.acceptanceHintBroken
-    else if (effStatus === 'developing') acceptanceHint = t.acceptanceHintDeveloping
-    else if (effStatus === 'ready') acceptanceHint = t.acceptanceHintNotStarted
-    else if (dirty > 0) acceptanceHint = t.acceptanceHintDirty.replace('{n}', String(dirty))
-    else if (repoDirty > 0) acceptanceHint = t.acceptanceHintRepoDirty.replace('{n}', String(repoDirty))
-    else if (ahead === 0) acceptanceHint = t.acceptanceHintNoAhead
-    else if (checkedOut) acceptanceHint = t.acceptanceHintCheckedOut
+    const showBack = onTaskBranch
+    const showCheckout = !onTaskBranch && snap.status !== 'cleaned'
+    const showMerge = snap.status !== 'merged' && snap.status !== 'cleaned'
+
+    type AcceptReason = { text: string; action?: any }
+    const openSessionAction = task.sessionId && props.onOpenSession
+      ? h(Btn, {
+        size: 'sm',
+        icon: 'external',
+        onClick: () => { const ok = props.onOpenSession(); if (ok === false) props.notify(t.openSessionFailed, 'error') },
+      }, t.openSessionBtn)
+      : null
+    const goOtherAction = otherReviewing && props.onSelectTask
+      ? h(Btn, { size: 'sm', onClick: () => props.onSelectTask(otherReviewing.task.id) }, t.acceptReviewOther)
+      : null
+
+    const checkoutReasons: AcceptReason[] = []
+    if (showCheckout) {
+      if (repoLockLabel) checkoutReasons.push({ text: String(t.acceptBusy).replace('{action}', repoLockLabel) })
+      else if (snap.status === 'merged') checkoutReasons.push({ text: t.acceptanceHintMerged })
+      else if (snap.status === 'broken') checkoutReasons.push({ text: snap.error || t.acceptanceHintBroken })
+      else if (snap.status !== 'review') checkoutReasons.push({ text: t.acceptNoCommits })
+      else if (ahead === 0) checkoutReasons.push({ text: dirty > 0 ? String(t.acceptWorktreeDirtyCommit).replace('{n}', String(dirty)) : t.acceptNoCommits })
+      else {
+        if (dirty > 0) checkoutReasons.push({ text: String(t.acceptWorktreeDirtyCommit).replace('{n}', String(dirty)), action: openSessionAction })
+        if (repoDirty > 0) checkoutReasons.push({ text: String(t.acceptanceHintRepoDirty).replace('{n}', String(repoDirty)) })
+        if (inProgress) checkoutReasons.push({ text: t.acceptInProgress })
+        if (otherReviewing) checkoutReasons.push({ text: String(t.acceptOtherReviewing).replace('{task}', otherReviewing.task.title), action: goOtherAction })
+        if (agentRunning) checkoutReasons.push({ text: t.acceptAgentRunning, action: openSessionAction })
+      }
+    }
+    const checkoutEnabled = showCheckout && checkoutReasons.length === 0
+
+    const backReasons: AcceptReason[] = []
+    if (showBack) {
+      if (repoLockLabel) backReasons.push({ text: String(t.acceptBusy).replace('{action}', repoLockLabel) })
+      if (repoDirty > 0) backReasons.push({ text: String(t.acceptanceHintRepoDirty).replace('{n}', String(repoDirty)) })
+      if (inProgress) backReasons.push({ text: t.acceptInProgress })
+    }
+    const backEnabled = showBack && backReasons.length === 0
+
+    const mergeReasons: AcceptReason[] = []
+    if (showMerge) {
+      if (repoLockLabel) mergeReasons.push({ text: String(t.acceptBusy).replace('{action}', repoLockLabel) })
+      else if (snap.status === 'broken') mergeReasons.push({ text: snap.error || t.acceptanceHintBroken })
+      else if (onTaskBranch) mergeReasons.push({ text: t.acceptMergeReviewing })
+      else if (snap.status !== 'review' || ahead === 0) mergeReasons.push({ text: t.acceptNoCommits })
+      else {
+        if (dirty > 0) mergeReasons.push({ text: String(t.acceptanceHintDirty).replace('{n}', String(dirty)), action: openSessionAction })
+        if (!curOnBase) mergeReasons.push({ text: String(t.acceptNotOnBase).replace('{branch}', snap.repo.currentBranch || '—') })
+        if (repoDirty > 0) mergeReasons.push({ text: String(t.acceptanceHintRepoDirty).replace('{n}', String(repoDirty)) })
+        if (inProgress) mergeReasons.push({ text: t.acceptInProgress })
+        if (agentRunning) mergeReasons.push({ text: t.acceptAgentRunning, action: openSessionAction })
+        if (conflictNow) mergeReasons.push({ text: t.mergePreviewConflictHint, action: syncAction })
+      }
+    }
+    const mergeEnabled = showMerge && !onTaskBranch && snap.status === 'review' && ahead > 0 && dirty === 0 && repoDirty === 0 && !inProgress && curOnBase && !agentRunning && !repoLockLabel && !conflictNow
+
+    const reasonsNode = (() => {
+      const list: AcceptReason[] = []
+      const seen = new Set<string>()
+      const push = (r: AcceptReason) => { if (r && r.text && !seen.has(r.text)) { seen.add(r.text); list.push(r) } }
+      if (showCheckout) checkoutReasons.forEach(push)
+      if (showBack) backReasons.forEach(push)
+      if (showMerge) mergeReasons.forEach(push)
+      if (!list.length) return h('div', { className: 'dshw-hint' }, h(Icon, { name: 'info' }), t.acceptanceHintDefault)
+      return h('div', { className: 'dshw-accept-reasons' }, list.map((r, i) => h('div', {
+        key: i,
+        className: 'dshw-hint',
+        role: 'status',
+        style: { margin: '0 0 6px', alignItems: 'center', flexWrap: 'wrap' },
+      }, h(Icon, { name: 'info' }), h('span', null, r.text), r.action ? r.action : null)))
+    })()
 
     const worktreeState = cleaned
       ? { label: t.cleaned, tone: 'neutral' }
@@ -651,11 +700,13 @@ export function TaskDetail(props: any) {
           h(Btn, {
             key: 'ok',
             variant: 'primary',
-            disabled: busy === 'merge' || dirty > 0 || previewBusy || !!(preview && preview.conflict),
+            disabled: busy === 'merge' || dirty > 0 || !curOnBase || agentRunning || previewBusy || !!(preview && preview.conflict),
             title: preview && preview.conflict ? t.mergePreviewConflictHint : undefined,
             onClick: () => {
+              props.onRepoBusy && props.onRepoBusy(true, t.merging)
               void act('merge', String(t.mergeDone).replace('{base}', task.baseBranch), () => post('task/merge', { id: task.id }))
                 .then((ok) => { if (ok) setMergeOpen(false) })
+                .finally(() => { props.onRepoBusy && props.onRepoBusy(false, '') })
             },
           }, busy === 'merge' ? h(Spinner) : null, busy === 'merge' ? t.merging : t.mergeConfirm),
         ],
@@ -681,6 +732,8 @@ export function TaskDetail(props: any) {
             previewFiles.length ? h('div', { className: 'dshw-hint' }, t.mergePreviewFiles + '：' + previewFilesText) : null,
             preview.supported === false || preview.checked === false ? h('div', { className: 'dshw-hint' }, t.mergePreviewNoCheck) : null)
           : null,
+        !curOnBase ? h(Banner, { tone: 'warn', icon: 'alert', title: String(t.acceptNotOnBase).replace('{branch}', snap.repo.currentBranch || '—') }) : null,
+        agentRunning ? h(Banner, { tone: 'warn', icon: 'clock', title: t.acceptAgentRunning }) : null,
         dirty > 0
           ? h(Banner, { tone: 'warn', icon: 'alert', title: t.mergeDirtyTitle }, t.mergeDirtyHint)
           : h(Banner, { tone: 'info', icon: 'info' }, t.mergeCleanHint),
@@ -866,24 +919,28 @@ export function TaskDetail(props: any) {
           right: h('span', { className: 'dshw-hint', style: { margin: 0 } }, t.mainRepo + ' · ' + task.baseBranch),
         }),
         h('div', { className: 'dshw-action-grid' },
-          h(Btn, {
+          showCheckout ? h(Btn, {
             icon: 'branch',
-            disabled: checkoutDisabled || busy !== '',
-            title: checkoutTitle,
-            onClick: () => void actPost('checkout', 'task/checkout', {}, t.checkout),
-          }, busy === 'checkout' ? h(Spinner) : null, checkedOut ? t.onBranch : t.checkout),
-          h(Btn, {
+            disabled: !checkoutEnabled || busy !== '',
+            onClick: () => {
+              props.onRepoBusy && props.onRepoBusy(true, t.checkout)
+              void actPost('checkout', 'task/checkout', {}, t.checkout).finally(() => { props.onRepoBusy && props.onRepoBusy(false, '') })
+            },
+          }, busy === 'checkout' ? h(Spinner) : null, t.checkout) : null,
+          showBack ? h(Btn, {
             icon: 'arrowLeft',
-            disabled: backDisabled || busy !== '',
-            onClick: () => void actPost('back', 'task/back', {}, t.back),
-          }, busy === 'back' ? h(Spinner) : null, t.back),
-          h(Btn, {
+            disabled: !backEnabled || busy !== '',
+            onClick: () => {
+              props.onRepoBusy && props.onRepoBusy(true, t.back)
+              void actPost('back', 'task/back', {}, t.back).finally(() => { props.onRepoBusy && props.onRepoBusy(false, '') })
+            },
+          }, busy === 'back' ? h(Spinner) : null, originalBranchExists ? t.back : t.switchToBase) : null,
+          showMerge ? h(Btn, {
             icon: 'merge',
-            disabled: mergeDisabled || busy !== '',
-            title: mergeTitle,
+            disabled: !mergeEnabled || busy !== '',
             onClick: () => { setPreview(null); setMergeOpen(true); void loadPreview() },
-          }, t.merge)),
-        h('div', { className: 'dshw-hint' }, h(Icon, { name: 'info' }), acceptanceHint)),
+          }, t.merge) : null),
+        reasonsNode),
       h(Card, null,
         h(CardHead, {
           icon: 'branch',

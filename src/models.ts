@@ -81,6 +81,10 @@ export interface TaskSnapshot {
     exists: boolean
     currentBranch: string | null
     dirtyCount: number
+    /** An unfinished merge/rebase/cherry-pick/revert in the main repo, if any. */
+    inProgress?: 'merge' | 'rebase' | 'cherry-pick' | 'revert' | null
+    /** Whether the recorded originalBranch still exists (undefined when none recorded). */
+    originalBranchExists?: boolean
   }
   branchExists: boolean
   merged: boolean

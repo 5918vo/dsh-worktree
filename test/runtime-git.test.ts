@@ -434,3 +434,137 @@ test('follow-up prompt lists leftover commits with a cherry-pick hint', async ()
     await teardown(f)
   }
 })
+
+test('checkout rejects when the worktree only has uncommitted changes (no commits ahead)', async () => {
+  const f = await fixture()
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'dirty-only', description: 'd' })
+    await fs.mkdir(join(task.worktreePath, 'src'), { recursive: true })
+    await fs.writeFile(join(task.worktreePath, 'src', 'scratch.txt'), 'x\n', 'utf8')
+    await assert.rejects(
+      () => f.runtime.checkout(task.id),
+      (e: any) => e instanceof TaskError && /worktree 有 1 处未提交改动/.test(e.message),
+    )
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('checkout rejects when the main repo is dirty', async () => {
+  const f = await fixture()
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'repo-dirty', description: 'd' })
+    await commitFile(task.worktreePath, 'src/a.txt', 'a\n', 'feat: a')
+    await fs.writeFile(join(f.repo, 'README.md'), '# dirty\n', 'utf8')
+    await assert.rejects(
+      () => f.runtime.checkout(task.id),
+      (e: any) => e instanceof TaskError && /主仓库有 1 处未提交改动/.test(e.message),
+    )
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('checkout rejects while another task of the same repo is being reviewed', async () => {
+  const f = await fixture()
+  try {
+    const a = await f.runtime.publish({ repoPath: f.repo, title: '任务A', description: 'd' })
+    const b = await f.runtime.publish({ repoPath: f.repo, title: '任务B', description: 'd' })
+    await commitFile(a.worktreePath, 'src/a.txt', 'a\n', 'feat: a')
+    await commitFile(b.worktreePath, 'src/b.txt', 'b\n', 'feat: b')
+    await f.runtime.checkout(a.id)
+    await assert.rejects(
+      () => f.runtime.checkout(b.id),
+      (e: any) => e instanceof TaskError && /任务「任务A」正在验收/.test(e.message),
+    )
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('checkout/merge refuse while a merge is in progress', async () => {
+  const f = await fixture()
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'in-progress', description: 'd' })
+    await commitFile(task.worktreePath, 'src/a.txt', 'a\n', 'feat: a')
+    const gitDir = (await git(f.repo, ['rev-parse', '--absolute-git-dir'])).trim()
+    const marker = join(gitDir, 'MERGE_HEAD')
+    await fs.writeFile(marker, 'deadbeef\n', 'utf8')
+    try {
+      await assert.rejects(
+        () => f.runtime.checkout(task.id),
+        (e: any) => e instanceof TaskError && /未完成的 merge/.test(e.message),
+      )
+      await assert.rejects(
+        () => f.runtime.merge(task.id),
+        (e: any) => e instanceof TaskError && /未完成的 merge/.test(e.message),
+      )
+    } finally {
+      await fs.rm(marker, { force: true })
+    }
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('merge refuses when the main repo is not on the base branch (no silent switch)', async () => {
+  const f = await fixture()
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'not-on-base', description: 'd' })
+    await commitFile(task.worktreePath, 'src/a.txt', 'a\n', 'feat: a')
+    await f.runtime.checkout(task.id) // main repo now on the task branch
+    await assert.rejects(
+      () => f.runtime.merge(task.id),
+      (e: any) => e instanceof TaskError && /请先切到基线分支/.test(e.message),
+    )
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('merge refuses when the worktree has uncommitted changes', async () => {
+  const f = await fixture()
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'merge-dirty', description: 'd' })
+    await commitFile(task.worktreePath, 'src/a.txt', 'a\n', 'feat: a')
+    await fs.writeFile(join(task.worktreePath, 'src', 'extra.txt'), 'x\n', 'utf8')
+    await assert.rejects(
+      () => f.runtime.merge(task.id),
+      (e: any) => e instanceof TaskError && /这些改动不会被合并/.test(e.message),
+    )
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('back falls back to the base branch when no original branch is recorded', async () => {
+  const f = await fixture()
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'back-fallback', description: 'd' })
+    await commitFile(task.worktreePath, 'src/a.txt', 'a\n', 'feat: a')
+    await f.runtime.checkout(task.id)
+    task.originalBranch = undefined
+    f.store.putTask(task)
+    await f.runtime.back(task.id)
+    const view = await f.runtime.view(task)
+    assert.equal(view.snapshot.repo.currentBranch, task.baseBranch)
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('back refuses when the main repo is dirty', async () => {
+  const f = await fixture()
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'back-dirty', description: 'd' })
+    await commitFile(task.worktreePath, 'src/a.txt', 'a\n', 'feat: a')
+    await f.runtime.checkout(task.id)
+    await fs.writeFile(join(f.repo, 'README.md'), '# dirty\n', 'utf8')
+    await assert.rejects(
+      () => f.runtime.back(task.id),
+      (e: any) => e instanceof TaskError && /主仓库有 1 处未提交改动/.test(e.message),
+    )
+  } finally {
+    await teardown(f)
+  }
+})

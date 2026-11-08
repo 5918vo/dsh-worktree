@@ -520,6 +520,10 @@ export class Runtime {
         ])
         snap.repo.currentBranch = cur
         snap.repo.dirtyCount = dirty
+        snap.repo.inProgress = await gitx.inProgress(this.gitPath, task.repoPath)
+        if (task.originalBranch) {
+          snap.repo.originalBranchExists = await gitx.branchExists(this.gitPath, task.repoPath, task.originalBranch)
+        }
         if (cur && snap.branchExists) {
           // Merged means the branch tip is an ancestor of base AND the branch
           // actually diverged (a freshly created branch points at base itself).
@@ -677,29 +681,74 @@ export class Runtime {
     if (dirty > 0) throw new TaskError(`${what}有 ${dirty} 处未提交改动，请先处理后再操作`)
   }
 
+  /** Another task of the same repo whose branch is currently checked out in the main repo. */
+  private otherReviewingTask(task: WorktreeTask, cur: string | null): WorktreeTask | null {
+    if (!cur || cur === task.branch) return null
+    const norm = (p: string) => p.replace(/[\\/]+$/, '').toLowerCase()
+    return (
+      this.store
+        .listTasks()
+        .find((t) => t.id !== task.id && !t.cleanedAt && norm(t.repoPath) === norm(task.repoPath) && t.branch === cur) || null
+    )
+  }
+
+  private async assertRepoClean(repoPath: string): Promise<void> {
+    const dirty = await gitx.isDirty(this.gitPath, repoPath, false)
+    if (dirty > 0) throw new TaskError(`主仓库有 ${dirty} 处未提交改动，请先处理后再操作`)
+  }
+
+  private async assertNoInProgress(repoPath: string): Promise<void> {
+    const state = await gitx.inProgress(this.gitPath, repoPath)
+    if (state) throw new TaskError(`主仓库有未完成的 ${state} 操作，请先处理后再继续`)
+  }
+
   async checkout(id: string): Promise<WorktreeTask> {
     const task = this.needTask(id)
     if (task.cleanedAt) throw new TaskError('worktree 已清理，无法验收切换')
-    await this.refuseDirty(task.repoPath, '主仓库', false)
-    const cur = await gitx.currentBranch(this.gitPath, task.repoPath)
-    if (cur !== task.branch) {
-      task.originalBranch = cur ?? task.originalBranch
-      await gitx.switchBranch(this.gitPath, task.repoPath, task.branch)
-      this.store.putTask(task)
+    const repoPath = task.repoPath
+    await this.assertNoInProgress(repoPath)
+    await this.assertRepoClean(repoPath)
+    const cur = await gitx.currentBranch(this.gitPath, repoPath)
+    if (cur === task.branch) return task
+    // The main repo can only check out one task branch at a time.
+    const other = this.otherReviewingTask(task, cur)
+    if (other) throw new TaskError(`任务「${other.title}」正在验收，请先切回原分支`, 409)
+    if (!(await gitx.branchExists(this.gitPath, repoPath, task.branch))) {
+      throw new TaskError(`任务分支不存在：${task.branch}`)
     }
+    // Acceptance reviews committed work; uncommitted worktree edits would not be visible.
+    const ahead = await gitx.countCommits(this.gitPath, repoPath, `${task.baseBranch}..${task.branch}`)
+    if (ahead === 0) {
+      const dirty = await gitx.isDirty(this.gitPath, task.worktreePath)
+      if (dirty > 0) throw new TaskError(`worktree 有 ${dirty} 处未提交改动，请先让 Agent 提交后再验收`)
+      throw new TaskError('还没有可验收的提交')
+    }
+    const wtDirty = await gitx.isDirty(this.gitPath, task.worktreePath)
+    if (wtDirty > 0) throw new TaskError(`worktree 有 ${wtDirty} 处未提交改动，请先让 Agent 提交后再验收`)
+    task.originalBranch = cur ?? task.originalBranch
+    await gitx.switchBranch(this.gitPath, repoPath, task.branch)
+    this.store.putTask(task)
     return task
   }
 
   async back(id: string): Promise<WorktreeTask> {
     const task = this.needTask(id)
-    if (!task.originalBranch) throw new TaskError('没有记录验收前的分支')
-    if (!(await gitx.branchExists(this.gitPath, task.repoPath, task.originalBranch))) {
-      throw new TaskError(`原分支已不存在：${task.originalBranch}`)
+    const repoPath = task.repoPath
+    await this.assertNoInProgress(repoPath)
+    await this.assertRepoClean(repoPath)
+    const cur = await gitx.currentBranch(this.gitPath, repoPath)
+    let target: string | null = null
+    if (task.originalBranch && (await gitx.branchExists(this.gitPath, repoPath, task.originalBranch))) {
+      target = task.originalBranch
+    } else if (await gitx.branchExists(this.gitPath, repoPath, task.baseBranch)) {
+      // Escape hatch: the recorded branch is gone (or was never recorded) → use base.
+      target = task.baseBranch
     }
-    await this.refuseDirty(task.repoPath, '主仓库', false)
-    const cur = await gitx.currentBranch(this.gitPath, task.repoPath)
-    if (cur !== task.originalBranch) {
-      await gitx.switchBranch(this.gitPath, task.repoPath, task.originalBranch)
+    if (!target) throw new TaskError('原分支与基线分支都不存在，无法切回')
+    if (cur !== target) await gitx.switchBranch(this.gitPath, repoPath, target)
+    if (!task.originalBranch) {
+      task.originalBranch = target
+      this.store.putTask(task)
     }
     return task
   }
@@ -707,18 +756,25 @@ export class Runtime {
   async merge(id: string): Promise<WorktreeTask> {
     const task = this.needTask(id)
     if (task.cleanedAt) throw new TaskError('worktree 已清理，分支若仍在可手动合并')
-    if (!(await gitx.branchExists(this.gitPath, task.repoPath, task.branch))) {
+    const repoPath = task.repoPath
+    if (!(await gitx.branchExists(this.gitPath, repoPath, task.branch))) {
       throw new TaskError(`任务分支不存在：${task.branch}`)
     }
-    await this.refuseDirty(task.repoPath, '主仓库', false)
-    // Capture the tip that is about to be merged, before any switch.
-    const mergedTip = await gitx.revParse(this.gitPath, task.repoPath, task.branch)
-    const cur = await gitx.currentBranch(this.gitPath, task.repoPath)
+    await this.assertNoInProgress(repoPath)
+    await this.assertRepoClean(repoPath)
+    // Never silently move the user's branch: merging must happen on the base branch.
+    const cur = await gitx.currentBranch(this.gitPath, repoPath)
     if (cur !== task.baseBranch) {
-      await gitx.switchBranch(this.gitPath, task.repoPath, task.baseBranch)
+      throw new TaskError(`主仓库当前在 ${cur || '(未知)'} 分支，请先切到基线分支 ${task.baseBranch} 再合并`)
     }
+    const ahead = await gitx.countCommits(this.gitPath, repoPath, `${task.baseBranch}..${task.branch}`)
+    if (ahead === 0) throw new TaskError('没有领先基线的提交，无需合并')
+    const wtDirty = await gitx.isDirty(this.gitPath, task.worktreePath)
+    if (wtDirty > 0) throw new TaskError(`worktree 有 ${wtDirty} 处未提交改动，这些改动不会被合并；请先让 Agent 提交`)
+    // Capture the tip that is about to be merged.
+    const mergedTip = await gitx.revParse(this.gitPath, repoPath, task.branch)
     try {
-      await gitx.mergeNoFF(this.gitPath, task.repoPath, task.branch)
+      await gitx.mergeNoFF(this.gitPath, repoPath, task.branch)
     } catch (error) {
       const text = error instanceof Error ? error.message : String(error)
       if (/CONFLICT|Automatic merge failed/i.test(text)) {
@@ -731,12 +787,10 @@ export class Runtime {
       }
       throw error
     }
-    // After a successful merge the working branch is the base; keep the
-    // original-branch hint only if the user never went through checkout.
     if (cur && cur !== task.branch && !task.originalBranch) task.originalBranch = cur
     task.mergedAt = Date.now()
     if (mergedTip) task.mergedBranchTip = mergedTip
-    const mergeCommit = await gitx.revParse(this.gitPath, task.repoPath, 'HEAD')
+    const mergeCommit = await gitx.revParse(this.gitPath, repoPath, 'HEAD')
     if (mergeCommit) task.mergedCommit = mergeCommit
     this.store.putTask(task)
     return task

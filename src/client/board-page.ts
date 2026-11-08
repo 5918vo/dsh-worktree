@@ -26,6 +26,7 @@ export function BoardPage(props: any) {
     const [publishFor, setPublishFor] = React.useState(null)
     const [publishParent, setPublishParent] = React.useState(null)
     const [cleanupPredecessor, setCleanupPredecessor] = React.useState(null)
+    const [repoBusy, setRepoBusy] = React.useState({} as Record<string, string>)
     const [predecessorBusy, setPredecessorBusy] = React.useState(false)
     const [predecessorErr, setPredecessorErr] = React.useState('')
     const [predecessorForce, setPredecessorForce] = React.useState(false)
@@ -454,6 +455,18 @@ export function BoardPage(props: any) {
       await refresh()
     }
 
+    // Repo-level git action lock: while one task of a repo runs a git operation,
+    // every task of that repo shows its buttons disabled with the action label.
+    const repoActionBusy = (repoPath: string, active: boolean, label: string) => {
+      if (!repoPath) return
+      setRepoBusy((prev: Record<string, string>) => {
+        const next = Object.assign({}, prev)
+        if (active) next[repoPath] = label || '…'
+        else delete next[repoPath]
+        return next
+      })
+    }
+
     const projectColor = (id: string) => {
       let n = 0
       for (let i = 0; i < id.length; i += 1) n = (n * 31 + id.charCodeAt(i)) | 0
@@ -652,6 +665,9 @@ export function BoardPage(props: any) {
         onStartTask: selectedTask.task.sessionId ? () => startBoundSession(selectedTask) : undefined,
         parentView: selectedTask.task.parentId ? (allTasks.find((v: any) => v.task.id === selectedTask.task.parentId) || null) : null,
         followUps: allTasks.filter((v: any) => v.task.parentId === selectedTask.task.id),
+        siblings: allTasks.filter((v: any) => v.task.id !== selectedTask.task.id && String(v.task.repoPath).toLowerCase() === String(selectedTask.task.repoPath).toLowerCase()),
+        repoLockLabel: repoBusy[selectedTask.task.repoPath] || '',
+        onRepoBusy: (active: boolean, label: string) => repoActionBusy(selectedTask.task.repoPath, active, label),
         onContinue: () => openContinue(selectedTask),
         onSelectTask: (id: string) => selectTask(id),
       })

@@ -490,3 +490,24 @@ export async function listUntracked(gitPath: string, dir: string): Promise<strin
   if (!r) return []
   return r.stdout.split('\0').filter((path) => path.length > 0)
 }
+
+export type InProgressKind = 'merge' | 'rebase' | 'cherry-pick' | 'revert'
+
+/** Absolute path of this working tree's git dir (correct for linked worktrees). */
+export async function absoluteGitDir(gitPath: string, dir: string): Promise<string | null> {
+  const r = await tryRun(gitPath, dir, ['rev-parse', '--absolute-git-dir'])
+  const out = r?.stdout.trim()
+  return out ? out : null
+}
+
+/** Detect an unfinished multi-step git operation (merge/rebase/cherry-pick/revert). */
+export async function inProgress(gitPath: string, dir: string): Promise<InProgressKind | null> {
+  const gd = await absoluteGitDir(gitPath, dir)
+  if (!gd) return null
+  const has = async (name: string) => fs.stat(join(gd, name)).then(() => true).catch(() => false)
+  if (await has('MERGE_HEAD')) return 'merge'
+  if ((await has('rebase-merge')) || (await has('rebase-apply'))) return 'rebase'
+  if (await has('CHERRY_PICK_HEAD')) return 'cherry-pick'
+  if (await has('REVERT_HEAD')) return 'revert'
+  return null
+}
