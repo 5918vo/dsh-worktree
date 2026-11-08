@@ -175,6 +175,7 @@ export const CSS = `
 .dshw-icon-btn:hover{background:var(--dshw-surface-2);color:var(--dshw-text);border-color:var(--dshw-border)}
 .dshw-icon-btn--sm{width:27px;height:27px;border-radius:7px}
 .dshw-icon-btn--sm .dshw-ico{width:14px;height:14px}
+.dshw-icon-btn--on{background:var(--dshw-brand-soft);color:var(--dshw-brand-strong);border-color:var(--dshw-brand-border)}
 .dshw-spinner{width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:dshw-spin .7s linear infinite;flex:none;display:inline-block}
 @keyframes dshw-spin{to{transform:rotate(360deg)}}
 

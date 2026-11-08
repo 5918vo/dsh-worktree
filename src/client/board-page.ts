@@ -4,7 +4,7 @@ import { AddProjectModal, PublishModal } from './modals'
 import { useToast } from './hooks'
 import { TaskDetail } from './task-detail'
 import { ProjectDetail } from './project-detail'
-import { upsertPublishedTask } from './board-data'
+import { upsertPublishedTask, visibleProjectViews } from './board-data'
 import { appCtx, bindSession, getJson, post } from './context'
 import { uuid } from './format'
 import { STATUS_TONE, pendingLabel, postMergeLabel, resolveStatus, statusMeta } from './status'
@@ -19,6 +19,9 @@ export function BoardPage(props: any) {
     const [refreshing, setRefreshing] = React.useState(false)
     const [err, setErr] = React.useState('')
     const [query, setQuery] = React.useState('')
+    // Archived tasks are hidden from the sidebar by default; this toggle reveals
+    // them so they can be reviewed or restored.
+    const [showArchived, setShowArchived] = React.useState(false)
     const [selectedProjectId, setSelectedProjectId] = React.useState('')
     const [selectedTaskId, setSelectedTaskId] = React.useState('')
     const [showDetail, setShowDetail] = React.useState(false)
@@ -27,6 +30,7 @@ export function BoardPage(props: any) {
     const [publishParent, setPublishParent] = React.useState(null)
     const [cleanupPredecessor, setCleanupPredecessor] = React.useState(null)
     const [repoBusy, setRepoBusy] = React.useState({} as Record<string, string>)
+    const [taskBusy, setTaskBusy] = React.useState({} as Record<string, string>)
     const [predecessorBusy, setPredecessorBusy] = React.useState(false)
     const [predecessorErr, setPredecessorErr] = React.useState('')
     const [predecessorForce, setPredecessorForce] = React.useState(false)
@@ -50,7 +54,10 @@ export function BoardPage(props: any) {
       const seq = ++refreshSeqRef.current
       if (manual) setRefreshing(true)
       try {
-        const d = await getJson('projects')
+        // Fetch archived rows too: the board filters them locally so the
+        // "show archived" toggle is instant and a selected archived task stays
+        // resolvable after its archive action refresh.
+        const d = await getJson('projects?includeArchived=1')
         if (seq !== refreshSeqRef.current) return
         const list: any[] = d.projects || []
         setProjectViews(list)
@@ -256,7 +263,15 @@ export function BoardPage(props: any) {
     }
 
     const allTasks = projectViews.flatMap((pv: any) => pv.tasks)
-    const selectedProject = projectViews.find((pv: any) => pv.project.id === selectedProjectId) || null
+    // Sidebar/detail rows with archived tasks hidden unless the toggle is on.
+    const shownViews: any[] = visibleProjectViews(projectViews, showArchived)
+    const archivedCount = allTasks.filter((v: any) => !!v.task.archivedAt).length
+    // Look up the selected project from the visible rows so its overview counts
+    // match the sidebar; fall back to the full list for an archived-only project.
+    const selectedProject =
+      shownViews.find((pv: any) => pv.project.id === selectedProjectId)
+      || projectViews.find((pv: any) => pv.project.id === selectedProjectId)
+      || null
     const selectedTask = allTasks.find((v: any) => v.task.id === selectedTaskId) || null
 
     // Live session projections for the selected task's conversation (polled).
@@ -455,6 +470,27 @@ export function BoardPage(props: any) {
       await refresh()
     }
 
+    /** Archive / restore a finished task straight from the left tree. */
+    const toggleArchive = async (v: any) => {
+      const task = v.task
+      const archiving = !task.archivedAt
+      if (taskBusy[task.id]) return
+      setTaskBusy((prev: Record<string, string>) => ({ ...prev, [task.id]: archiving ? 'archive' : 'unarchive' }))
+      try {
+        await post(archiving ? 'task/archive' : 'task/unarchive', { id: task.id })
+        notify(archiving ? t.archiveDone : t.unarchiveDone)
+        await refresh()
+      } catch (e: any) {
+        notify((e && e.message) || t.failed, 'error')
+      } finally {
+        setTaskBusy((prev: Record<string, string>) => {
+          const next = { ...prev }
+          delete next[task.id]
+          return next
+        })
+      }
+    }
+
     // Repo-level git action lock: while one task of a repo runs a git operation,
     // every task of that repo shows its buttons disabled with the action label.
     const repoActionBusy = (repoPath: string, active: boolean, label: string) => {
@@ -474,7 +510,7 @@ export function BoardPage(props: any) {
     }
 
     const q = query.trim().toLowerCase()
-    const filtered = projectViews.map((pv: any) => {
+    const filtered = shownViews.map((pv: any) => {
       const nameHit = !q || pv.project.name.toLowerCase().includes(q) || pv.project.repoPath.toLowerCase().includes(q)
       const tasks = nameHit
         ? pv.tasks
@@ -487,7 +523,7 @@ export function BoardPage(props: any) {
       return { pv, nameHit, tasks }
     }).filter((item: any) => !q || item.nameHit || item.tasks.length > 0)
 
-    const totalTasks = projectViews.reduce((sum: number, pv: any) => sum + pv.tasks.length, 0)
+    const totalTasks = shownViews.reduce((sum: number, pv: any) => sum + pv.tasks.length, 0)
 
     const projectRow = (item: any) => {
       const pv = item.pv
@@ -534,6 +570,7 @@ export function BoardPage(props: any) {
               const healthActive = !!health && !running
               const dotTone = meta.pending && !meta.note ? 'warn' : healthActive ? (health.kind === 'error' ? 'error' : 'warn') : STATUS_TONE[effectiveStatus] || 'neutral'
               const bound = !!v.task.sessionId
+              const terminal = effectiveStatus === 'merged' || effectiveStatus === 'cleaned'
               return h('div', { key: v.task.id, role: 'listitem', className: 'dshw-task' + (active ? ' dshw-task--on' : '') },
                 h('button', {
                   className: 'dshw-task-select',
@@ -548,6 +585,7 @@ export function BoardPage(props: any) {
                     h('span', { className: 'dshw-task-meta' },
                       h(Chip, { tone: meta.tone, small: true }, meta.label),
                       meta.note ? h(Chip, { tone: 'warn', small: true }, meta.note) : null,
+                      v.task.archivedAt ? h(Chip, { tone: 'neutral', small: true }, t.archived) : null,
                       v.snapshot.postMergeAhead > 0
                         ? h(Chip, { tone: 'warn', small: true }, postMergeLabel(t, v.snapshot.postMergeAhead))
                         : null,
@@ -568,7 +606,17 @@ export function BoardPage(props: any) {
                   'aria-label': (bound ? t.openSessionBtn : t.noSession) + ': ' + v.task.title,
                   disabled: !bound,
                   onClick: () => { if (bound && !openTaskSession(v.task.sessionId)) notify(t.openSessionFailed, 'error') },
-                }, h(Icon, { name: 'external' })))
+                }, h(Icon, { name: 'external' })),
+                terminal
+                  ? h('button', {
+                    className: 'dshw-task-open',
+                    type: 'button',
+                    title: v.task.archivedAt ? t.unarchive : t.archive,
+                    'aria-label': (v.task.archivedAt ? t.unarchive : t.archive) + ': ' + v.task.title,
+                    disabled: !!taskBusy[v.task.id],
+                    onClick: () => void toggleArchive(v),
+                  }, taskBusy[v.task.id] ? h(Spinner) : h(Icon, { name: v.task.archivedAt ? 'archiveRestore' : 'archive' }))
+                  : null)
             }))
             : h('div', { className: 'dshw-tree-inline-empty' },
               h('span', null, t.noTasks),
@@ -621,6 +669,16 @@ export function BoardPage(props: any) {
           disabled: refreshing,
           onClick: () => { void refresh(true).then(() => notify(t.refreshed)) },
         }, refreshing ? h(Spinner) : null),
+        archivedCount > 0
+          ? h(IconBtn, {
+            icon: 'archive',
+            label: showArchived ? t.hideArchived : t.showArchived,
+            title: String(t.archiveToggleTitle).replace('{n}', String(archivedCount)),
+            'aria-pressed': showArchived ? 'true' : 'false',
+            className: showArchived ? 'dshw-icon-btn--on' : undefined,
+            onClick: () => setShowArchived((value: boolean) => !value),
+          })
+          : null,
         h(IconBtn, { icon: 'plus', label: t.addProject, onClick: () => setProjectModalOpen(true) })),
       err
         ? projectViews.length
