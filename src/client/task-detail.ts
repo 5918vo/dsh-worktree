@@ -2,7 +2,7 @@ import { React, h } from './ui'
 import { Banner, Btn, Card, CardHead, Chip, CopyBtn, Dot, Icon, KV, Modal, Spinner } from './primitives'
 import { post } from './context'
 import { clipText, cx, firstLine, fmtDuration, fmtK, jp, pad2, relTime } from './format'
-import { isReviewable, pendingLabel, statusMeta } from './status'
+import { isReviewable, pendingLabel, resolveStatus, statusMeta } from './status'
 import { fallbackEntries } from './timeline'
 import type { TimelineEntry } from './timeline'
 
@@ -171,7 +171,8 @@ export function TaskDetail(props: any) {
     const [delBranch, setDelBranch] = React.useState(false)
     const actionRef = React.useRef(false)
 
-    const meta = statusMeta(t, snap.status, props.pendingKind)
+    const effStatus = resolveStatus(snap.status, props.running)
+    const meta = statusMeta(t, effStatus, props.pendingKind)
     const liveData = readLive(props.live)
     const modelText = modelLabel(liveData && liveData.model) || '—'
     const liveCwd = liveData && liveData.cwd ? String(liveData.cwd) : ''
@@ -287,8 +288,9 @@ export function TaskDetail(props: any) {
     const disabled = cleaned || merged
     // Acceptance ("switch to the task branch") is only meaningful once the task
     // is waiting for review. While the task is still developing (or not started),
-    // switching the main repo branch would enter acceptance too early.
-    const reviewable = isReviewable(snap.status)
+    // switching the main repo branch would enter acceptance too early. Use the
+    // session-aware status so a still-running session counts as in progress.
+    const reviewable = isReviewable(effStatus)
     const checkoutDisabled = disabled || checkedOut || broken || dirty > 0 || repoDirty > 0 || !snap.worktree.exists || !reviewable
     // "Switch back" is only meaningful while the main repo is away from the recorded branch.
     const onOriginalBranch = !!task.originalBranch && snap.repo.currentBranch === task.originalBranch
@@ -296,9 +298,9 @@ export function TaskDetail(props: any) {
     const mergeDisabled = disabled || dirty > 0 || ahead === 0 || !snap.worktree.exists
     const checkoutTitle = checkedOut
       ? t.onBranch
-      : snap.status === 'developing'
+      : effStatus === 'developing'
         ? t.acceptanceHintDeveloping
-        : snap.status === 'ready'
+        : effStatus === 'ready'
           ? t.acceptanceHintNotStarted
           : dirty > 0
             ? t.acceptanceHintDirty.replace('{n}', String(dirty))
@@ -313,8 +315,8 @@ export function TaskDetail(props: any) {
     if (cleaned) acceptanceHint = t.acceptanceHintClean
     else if (merged) acceptanceHint = t.acceptanceHintMerged
     else if (broken) acceptanceHint = t.acceptanceHintBroken
-    else if (snap.status === 'developing') acceptanceHint = t.acceptanceHintDeveloping
-    else if (snap.status === 'ready') acceptanceHint = t.acceptanceHintNotStarted
+    else if (effStatus === 'developing') acceptanceHint = t.acceptanceHintDeveloping
+    else if (effStatus === 'ready') acceptanceHint = t.acceptanceHintNotStarted
     else if (dirty > 0) acceptanceHint = t.acceptanceHintDirty.replace('{n}', String(dirty))
     else if (repoDirty > 0) acceptanceHint = t.acceptanceHintRepoDirty.replace('{n}', String(repoDirty))
     else if (ahead === 0) acceptanceHint = t.acceptanceHintNoAhead

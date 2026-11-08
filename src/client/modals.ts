@@ -272,15 +272,20 @@ export function PublishModal(props: { t: any; project: any; cfg: any; onClose: (
           start,
         }), 30000, t.publishTimeout)
         const task = r.task
+        let publishedTask = task
         if (start && remotes && remotes.session) {
           try {
-            await withTimeout(bindSession(remotes, task, project.name, start), 60000, t.bindTimeout)
+            const sessionId = await withTimeout(bindSession(remotes, task, project.name, start), 60000, t.bindTimeout)
+            // Carry the freshly bound session id so the board's optimistic row
+            // shows the correct status and an active "open session" entry before
+            // the follow-up refresh lands.
+            if (sessionId) publishedTask = Object.assign({}, task, { sessionId })
           } catch (e: any) {
             props.onPublished(task, project, (e && e.message) || t.failed)
             return
           }
         }
-        props.onPublished(task, project)
+        props.onPublished(publishedTask, project)
       } catch (e: any) {
         if (e && (e as any).timeout) {
           // The request may have reached the server; reconcile the board instead of trapping the user.
@@ -376,18 +381,35 @@ export function PublishModal(props: { t: any; project: any; cfg: any; onClose: (
           h('label', { htmlFor: 'dshw-publish-base' }, t.baseBranch),
           h('div', null,
             branchControl,
-            branchHint ? h('div', { className: 'dshw-hint' }, branchHint) : null))),
-      h('label', { className: 'dshw-check dshw-publish-start' },
-        h('input', {
-          id: 'dshw-publish-start',
-          type: 'checkbox',
-          checked: start,
-          'aria-describedby': 'dshw-publish-start-hint',
-          onChange: (e: any) => setStart(e.target.checked),
-        }),
-        h('span', { className: 'dshw-check-copy' },
-          t.startNow,
-          h('small', { id: 'dshw-publish-start-hint' }, t.startNowHint))),
+            branchHint ? h('div', { className: 'dshw-hint' }, branchHint) : null)),
+        h('div', { className: 'dshw-form-row' },
+          h('span', { className: 'dshw-form-label', id: 'dshw-publish-start-label' }, t.startNow),
+          h('div', null,
+            h('div', {
+              className: 'dshw-choice-group',
+              role: 'radiogroup',
+              'aria-labelledby': 'dshw-publish-start-label',
+              'aria-describedby': 'dshw-publish-start-hint',
+            },
+              h('label', { className: 'dshw-choice' },
+                h('input', {
+                  type: 'radio',
+                  name: 'dshw-publish-start',
+                  value: 'yes',
+                  checked: start,
+                  onChange: () => setStart(true),
+                }),
+                h('span', null, t.yes)),
+              h('label', { className: 'dshw-choice' },
+                h('input', {
+                  type: 'radio',
+                  name: 'dshw-publish-start',
+                  value: 'no',
+                  checked: !start,
+                  onChange: () => setStart(false),
+                }),
+                h('span', null, t.no))),
+            h('div', { className: 'dshw-hint', id: 'dshw-publish-start-hint' }, t.startNowHint)))),
       h('details', { className: 'dshw-advanced', ref: advancedRef },
         h('summary', null, h(Icon, { name: 'chevronDown' }), t.advanced),
         h('div', { className: 'dshw-advanced-body' },

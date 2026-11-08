@@ -12,7 +12,9 @@
   "branchNameHint": "自动生成（Hash）",
   "taskTitle": "标题",
   "taskDescription": "任务描述",
-  "startNow": "创建后立即开始",
+  "startNow": "创建后立即执行",
+  "yes": "是",
+  "no": "否",
   "publishing": "发布中…",
   "openSessionBtn": "打开会话",
   "live": "实时",
@@ -262,5 +264,5 @@
   "startTask": "启动任务",
   "startingTask": "正在启动…",
   "taskStarted": "任务已开始",
-  "startNowHint": "发布后立即创建会话并发送任务描述；取消勾选则任务保持待开始状态。"
+  "startNowHint": "选择「是」时立即创建会话并发送任务描述；选择「否」则任务保持待开始状态。"
 }

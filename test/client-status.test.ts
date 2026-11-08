@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { STATUS_TONE, isReviewable, pendingLabel, statusMeta } from '../src/client/status.js'
+import { STATUS_TONE, isReviewable, pendingLabel, resolveStatus, statusMeta } from '../src/client/status.js'
 
 const T = {
   ready: '准备',
@@ -63,4 +63,17 @@ test('statusMeta keeps the terminal lifecycle label even when pending', () => {
   assert.equal(meta.tone, 'success')
   assert.equal(meta.pending, true)
   assert.equal(meta.note, '待回答')
+})
+
+test('resolveStatus keeps review only once the session stopped running', () => {
+  assert.equal(resolveStatus('review', true), 'developing')
+  assert.equal(resolveStatus('review', false), 'review')
+  assert.equal(resolveStatus('review', null), 'review')
+  assert.equal(resolveStatus('review', undefined), 'review')
+})
+
+test('resolveStatus leaves other lifecycle states untouched while running', () => {
+  for (const status of ['ready', 'developing', 'reviewing', 'merged', 'cleaned', 'broken']) {
+    assert.equal(resolveStatus(status, true), status)
+  }
 })

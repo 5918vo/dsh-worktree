@@ -8,6 +8,23 @@ export const STATUS_TONE: Record<string, string> = {
   broken: 'error',
 }
 
+/**
+ * Blend the host's Git-derived status with the live session state.
+ *
+ * The host derives `review` ("waiting for acceptance") purely from Git: a
+ * worktree with commits ahead of base or uncommitted changes. That flips the
+ * moment a developing agent makes its first commit or writes a file, even while
+ * its session is still running — so the board showed "待验收" for a task that is
+ * very much still in progress. Session activity is only visible on the client,
+ * so resolve it here: a Git-derived `review` means `developing` while the bound
+ * session is actively running. Every other state (including terminal states and
+ * `reviewing`, which the user starts by checking the branch out) is untouched.
+ */
+export function resolveStatus(status: string, running?: boolean | null): string {
+  if (running === true && status === 'review') return 'developing'
+  return status
+}
+
 export function pendingLabel(t: any, kind: string | null | undefined): string {
   if (!kind) return ''
   if (kind === 'approval') return t.pendingApproval

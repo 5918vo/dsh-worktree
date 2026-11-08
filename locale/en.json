@@ -12,7 +12,9 @@
   "branchNameHint": "Auto (hash)",
   "taskTitle": "Title",
   "taskDescription": "Task description",
-  "startNow": "Start immediately after creation",
+  "startNow": "Run immediately after creation",
+  "yes": "Yes",
+  "no": "No",
   "publishing": "Publishing…",
   "openSessionBtn": "Open session",
   "live": "Live",
@@ -262,5 +264,5 @@
   "startTask": "Start task",
   "startingTask": "Starting…",
   "taskStarted": "Task started",
-  "startNowHint": "Create the session and send the task description right away. Unchecked keeps the task ready to start later."
+  "startNowHint": "Choosing Yes creates the session and sends the task description right away. Choosing No keeps the task ready to start later."
 }

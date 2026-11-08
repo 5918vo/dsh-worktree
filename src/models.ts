@@ -52,6 +52,8 @@ export interface WorktreeTask {
   startOnBind: boolean
   /** Branch the main repo was on before switching to the task branch. */
   originalBranch?: string
+  /** Set when this task branch was merged through the workbench. */
+  mergedAt?: number
   /** Set when the worktree has been removed. */
   cleanedAt?: number
   createdAt: number

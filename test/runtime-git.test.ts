@@ -248,3 +248,20 @@ test('snapshot of a task whose repo vanished resolves instead of throwing', asyn
     await teardown(f)
   }
 })
+
+test('a branch left at an older base is not reported as merged', async () => {
+  const f = await fixture()
+  try {
+    const behind = await f.runtime.publish({ repoPath: f.repo, title: 'behind', description: 'd' })
+    const merged = await f.runtime.publish({ repoPath: f.repo, title: 'merged', description: 'd' })
+
+    await commitFile(merged.worktreePath, 'src/ahead.txt', 'ahead\n', 'feat: ahead')
+    await f.runtime.merge(merged.id)
+
+    const view = await f.runtime.view(behind)
+    assert.equal(view.snapshot.merged, false)
+    assert.notEqual(view.snapshot.status, 'merged')
+  } finally {
+    await teardown(f)
+  }
+})
