@@ -4,6 +4,7 @@ import { AddProjectModal, PublishModal } from './modals'
 import { useToast } from './hooks'
 import { TaskDetail } from './task-detail'
 import { ProjectDetail } from './project-detail'
+import { upsertPublishedTask } from './board-data'
 import { appCtx, bindSession, getJson } from './context'
 import { uuid } from './format'
 import { STATUS_TONE, pendingLabel, statusMeta } from './status'
@@ -33,13 +34,18 @@ export function BoardPage(props: any) {
     const shellRef = React.useRef(null)
     const failuresRef = React.useRef(0)
     const onlineRef = React.useRef(true)
+    // Monotonic id so a slow, older poll response cannot overwrite a newer
+    // refresh (e.g. the one fired right after publishing a task).
+    const refreshSeqRef = React.useRef(0)
 
     const remotes = appCtx && appCtx.remote
 
     const refresh = React.useCallback(async (manual?: boolean) => {
+      const seq = ++refreshSeqRef.current
       if (manual) setRefreshing(true)
       try {
         const d = await getJson('projects')
+        if (seq !== refreshSeqRef.current) return
         const list: any[] = d.projects || []
         setProjectViews(list)
         setSelectedTaskId((prev: string) => (prev && list.some((pv: any) => pv.tasks.some((v: any) => v.task.id === prev)) ? prev : ''))
@@ -51,13 +57,14 @@ export function BoardPage(props: any) {
         onlineRef.current = true
         setErr('')
       } catch (e: any) {
+        if (seq !== refreshSeqRef.current) return
         failuresRef.current += 1
         onlineRef.current = false
         const message = String((e && e.message) || '')
         const offline = !navigator.onLine || /failed to fetch|networkerror|load failed|network request failed|abort|timed out/i.test(message)
         setErr(offline ? t.connectionLost : message || t.loadFailed)
       } finally {
-        setLoaded(true)
+        if (seq === refreshSeqRef.current) setLoaded(true)
         if (manual) setRefreshing(false)
       }
     }, [])
@@ -77,6 +84,22 @@ export function BoardPage(props: any) {
       return () => {
         cancelled = true
         if (timer) window.clearTimeout(timer)
+      }
+    }, [refresh])
+
+    // Polling pauses while the tab is hidden; refresh the moment the user comes
+    // back so returning to the page always shows current data without needing a
+    // full re-mount.
+    React.useEffect(() => {
+      const onShow = () => {
+        if (document.hidden) return
+        void refresh()
+      }
+      window.addEventListener('focus', onShow)
+      document.addEventListener('visibilitychange', onShow)
+      return () => {
+        window.removeEventListener('focus', onShow)
+        document.removeEventListener('visibilitychange', onShow)
       }
     }, [refresh])
 
@@ -647,6 +670,14 @@ export function BoardPage(props: any) {
             if (project && project.id) setSelectedProjectId(project.id)
             if (task && task.id) setSelectedTaskId(task.id)
             setShowDetail(true)
+            // Reflect the new task in the left tree right away instead of waiting
+            // for the async refresh, which can race with a slow poll or briefly
+            // fail. `refresh()` below reconciles this provisional row with the
+            // real Git-derived snapshot.
+            if (task && task.id) {
+              const status = task.sessionId ? 'developing' : 'ready'
+              setProjectViews((prev: any[]) => upsertPublishedTask(prev, task, project && project.id, status))
+            }
             void refresh()
             notify(warning || String(t.published).replace('{branch}', task && task.branch ? task.branch : ''), warning ? 'error' : 'ok')
           },
