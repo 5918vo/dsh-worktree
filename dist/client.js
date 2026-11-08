@@ -481,6 +481,7 @@
 .dshw-check small{display:block;font-size:11px;color:var(--dshw-text-3);margin-top:2px;line-height:1.5}
 .dshw-check+.dshw-check{margin-top:10px}
 .dshw-check:has(input:disabled){opacity:.55}
+.dshw-publish-start{margin:2px 0 14px;padding:10px 12px;border:1px solid var(--dshw-border);border-radius:9px;background:var(--dshw-surface-2)}
 
 /* menus ------------------------------------------------------------------ */
 .dshw-menu{position:relative;flex:none}
@@ -1282,7 +1283,8 @@
     taskNotStartedHint: "The task was published, but its first instruction never ran. Start it to continue.",
     startTask: "Start task",
     startingTask: "Starting\u2026",
-    taskStarted: "Task started"
+    taskStarted: "Task started",
+    startNowHint: "Create the session and send the task description right away. Unchecked keeps the task ready to start later."
   };
 
   // locale/zh.json
@@ -1545,7 +1547,8 @@
     taskNotStartedHint: "\u4EFB\u52A1\u5DF2\u521B\u5EFA\uFF0C\u4F46\u7B2C\u4E00\u6761\u6307\u4EE4\u6CA1\u6709\u6267\u884C\u3002\u70B9\u51FB\u5F00\u59CB\u7EE7\u7EED\u3002",
     startTask: "\u542F\u52A8\u4EFB\u52A1",
     startingTask: "\u6B63\u5728\u542F\u52A8\u2026",
-    taskStarted: "\u4EFB\u52A1\u5DF2\u5F00\u59CB"
+    taskStarted: "\u4EFB\u52A1\u5DF2\u5F00\u59CB",
+    startNowHint: "\u53D1\u5E03\u540E\u7ACB\u5373\u521B\u5EFA\u4F1A\u8BDD\u5E76\u53D1\u9001\u4EFB\u52A1\u63CF\u8FF0\uFF1B\u53D6\u6D88\u52FE\u9009\u5219\u4EFB\u52A1\u4FDD\u6301\u5F85\u5F00\u59CB\u72B6\u6001\u3002"
   };
 
   // src/client/i18n.ts
@@ -2424,6 +2427,23 @@
           )
         ),
         h(
+          "label",
+          { className: "dshw-check dshw-publish-start" },
+          h("input", {
+            id: "dshw-publish-start",
+            type: "checkbox",
+            checked: start,
+            "aria-describedby": "dshw-publish-start-hint",
+            onChange: (e) => setStart(e.target.checked)
+          }),
+          h(
+            "span",
+            { className: "dshw-check-copy" },
+            t.startNow,
+            h("small", { id: "dshw-publish-start-hint" }, t.startNowHint)
+          )
+        ),
+        h(
           "details",
           { className: "dshw-advanced", ref: advancedRef },
           h("summary", null, h(Icon, { name: "chevronDown" }), t.advanced),
@@ -2449,12 +2469,6 @@
                 }
               }),
               fieldErrors.branchName ? h("div", { className: "dshw-err", id: "dshw-publish-branch-error", role: "alert" }, h(Icon, { name: "alert" }), h("span", null, fieldErrors.branchName)) : null
-            ),
-            h(
-              "label",
-              { className: "dshw-check", style: { marginTop: "12px" } },
-              h("input", { type: "checkbox", checked: start, onChange: (e) => setStart(e.target.checked) }),
-              h("span", { className: "dshw-check-copy" }, t.startNow)
             )
           )
         ),

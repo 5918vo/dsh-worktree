@@ -257,5 +257,6 @@
   "taskNotStartedHint": "任务已创建，但第一条指令没有执行。点击开始继续。",
   "startTask": "启动任务",
   "startingTask": "正在启动…",
-  "taskStarted": "任务已开始"
+  "taskStarted": "任务已开始",
+  "startNowHint": "发布后立即创建会话并发送任务描述；取消勾选则任务保持待开始状态。"
 }

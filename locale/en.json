@@ -257,5 +257,6 @@
   "taskNotStartedHint": "The task was published, but its first instruction never ran. Start it to continue.",
   "startTask": "Start task",
   "startingTask": "Starting…",
-  "taskStarted": "Task started"
+  "taskStarted": "Task started",
+  "startNowHint": "Create the session and send the task description right away. Unchecked keeps the task ready to start later."
 }

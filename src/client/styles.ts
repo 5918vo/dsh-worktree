@@ -350,6 +350,7 @@ export const CSS = `
 .dshw-check small{display:block;font-size:11px;color:var(--dshw-text-3);margin-top:2px;line-height:1.5}
 .dshw-check+.dshw-check{margin-top:10px}
 .dshw-check:has(input:disabled){opacity:.55}
+.dshw-publish-start{margin:2px 0 14px;padding:10px 12px;border:1px solid var(--dshw-border);border-radius:9px;background:var(--dshw-surface-2)}
 
 /* menus ------------------------------------------------------------------ */
 .dshw-menu{position:relative;flex:none}
