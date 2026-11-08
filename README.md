@@ -1,12 +1,13 @@
 # DeepSeek Worktree 任务插件
 
-`@5318vo/dsh-worktree` · v1.0.0 · 最后更新：2026-11-08
+`@5318vo/dsh-worktree` · v1.1.0 · 最后更新：2026-11-08
 
 每个任务对应一个真实的 DSH 会话。发布任务时创建独立的 Git worktree 和任务分支，会话以 worktree 为工作目录出现在左侧工作区。任务对话、审批、追问、中止和继续均使用 DSH 原生能力，工作台负责发布、查看状态和验收。
 
 ## 文档
 
 - [前端设计说明](docs/frontend-design.md)：布局、视觉系统、组件、交互、可访问性和验收清单。
+- [更新日志](CHANGELOG.md)：各版本新增、变更与修复记录。
 
 ## 功能概览
 
@@ -319,7 +320,7 @@ npm publish
 ```
 
 - `prepublishOnly` 会在发布前执行 `typecheck` 和 `build`。
-- 发布内容由 `files` 白名单控制：`dist`、`cordis.patch.yml`、`locale`、`icon.svg`、`README.md`、`LICENSE`。
+- 发布内容由 `files` 白名单控制：`dist`、`cordis.patch.yml`、`locale`、`icon.svg`、`README.md`、`CHANGELOG.md`、`LICENSE`。
 - 包名变更时需同步 `cordis.patch.yml` 和 `src/client.ts` 的 `MODULE_ID`。
 
 ## 自动化测试
