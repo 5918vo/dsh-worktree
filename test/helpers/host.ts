@@ -1,9 +1,11 @@
 import { apply } from '../../src/index.js'
+import { Store } from '../../src/store.js'
 
 export interface HostHarness {
   ctx: any
   tools: any[]
   routes: any[]
+  app: ReturnType<typeof apply>
 }
 
 /**
@@ -53,8 +55,13 @@ export function makeCtx(): { ctx: any; tools: any[]; routes: any[] } {
 }
 
 /** Boot the host plugin (registers tools + HTTP routes) and return the harness. */
-export function bootHost(rawConfig?: unknown): HostHarness {
+export function bootHost(rawConfig?: unknown, options?: { stateDir?: string }): HostHarness {
   const { ctx, tools, routes } = makeCtx()
-  apply(ctx, rawConfig)
-  return { ctx, tools, routes }
+  // Tests that exercise writes must pass `stateDir` so the plugin records
+  // projects/tasks in an isolated temp ledger instead of the shared global one
+  // (`~/.dsh/worktree-tasks`). Without this, every run would leave a test
+  // project and its subtasks behind on the user's real board.
+  const store = options?.stateDir ? new Store(options.stateDir) : undefined
+  const app = apply(ctx, rawConfig, store ? { store } : undefined)
+  return { ctx, tools, routes, app }
 }

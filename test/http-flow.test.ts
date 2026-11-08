@@ -12,7 +12,6 @@ let root = ''
 let repo = ''
 let routes: any[] = []
 let token = ''
-let prevStateDir: string | undefined
 
 async function call(name: string, opts: { method?: string; body?: unknown; headers?: Record<string, string> }) {
   const route = findRoute(routes, `${PREFIX}/${name}`)
@@ -29,9 +28,11 @@ before(async () => {
   repo = join(root, 'repo')
   await fs.mkdir(repo, { recursive: true })
   await initRepo(repo)
-  prevStateDir = process.env.DSH_WORKTREE_STATE_DIR
-  process.env.DSH_WORKTREE_STATE_DIR = join(root, 'state')
-  const harness = bootHost({})
+  // Isolate the task ledger: the host plugin writes projects/tasks into this
+  // temp dir instead of the real `~/.dsh/worktree-tasks`, so a test run never
+  // leaves a "test project + subtasks" behind on the user's board. The temp
+  // root (including `state/`) is removed in the after() hook below.
+  const harness = bootHost({}, { stateDir: join(root, 'state') })
   routes = harness.routes
   const res = await call('session', { body: {} })
   token = res.body.token
@@ -39,10 +40,9 @@ before(async () => {
 })
 
 after(async () => {
-  if (prevStateDir === undefined) delete process.env.DSH_WORKTREE_STATE_DIR
-  else process.env.DSH_WORKTREE_STATE_DIR = prevStateDir
-  // Let the host store's debounced saves settle before deleting the temp tree.
-  await new Promise((resolve) => setTimeout(resolve, 500))
+  // The store writes synchronously, but give the host a beat to finish any
+  // in-flight request before deleting the temp tree that also holds `state/`.
+  await new Promise((resolve) => setTimeout(resolve, 100))
   if (root) await rmrf(root)
 })
 
