@@ -252,5 +252,10 @@
   "contentSize": "内容：{n} 字符",
   "durationSec": "{n} 秒",
   "durationMin": "{n} 分",
-  "durationMinSec": "{m} 分 {s} 秒"
+  "durationMinSec": "{m} 分 {s} 秒",
+  "taskNotStarted": "会话尚未开始",
+  "taskNotStartedHint": "任务已创建，但第一条指令没有执行。点击开始继续。",
+  "startTask": "启动任务",
+  "startingTask": "正在启动…",
+  "taskStarted": "任务已开始"
 }

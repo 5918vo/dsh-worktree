@@ -5,6 +5,7 @@ import { useToast } from './hooks'
 import { TaskDetail } from './task-detail'
 import { ProjectDetail } from './project-detail'
 import { appCtx, bindSession, getJson } from './context'
+import { uuid } from './format'
 import { STATUS_TONE, pendingLabel, statusMeta } from './status'
 import { buildHistoryEntries } from './timeline'
 
@@ -385,9 +386,28 @@ export function BoardPage(props: any) {
       if (!remotes || !remotes.session) throw new Error(t.failed)
       const owner = projectViews.find((pv: any) => pv.project.id === v.task.projectId)
         || projectViews.find((pv: any) => pv.project.repoPath === v.task.repoPath)
-      const sessionId = await bindSession(remotes, v.task, owner && owner.project.name)
+      const sessionId = await bindSession(remotes, v.task, owner && owner.project.name, true)
       if (!openTaskSession(sessionId)) selectTask(v.task.id, owner && owner.project.id)
       return sessionId
+    }
+
+    /** Repair an already-bound but blank session (old publishes never sent the first prompt). */
+    const startBoundSession = async (v: any) => {
+      if (!remotes || !remotes.session || !v.task.sessionId) throw new Error(t.failed)
+      const text = String(v.task.firstPrompt || v.task.description || '').trim()
+      if (!text) throw new Error(t.failed)
+      const sent = await remotes.session.prompt({
+        requestId: uuid(),
+        sessionId: v.task.sessionId,
+        mode: 'queue',
+        content: [{ type: 'text', text }],
+      })
+      if (sent && sent.ok === false) {
+        const msg = sent.error && (sent.error.message || sent.error.code) ? sent.error.message || sent.error.code : t.failed
+        throw new Error(String(msg))
+      }
+      if (!openTaskSession(v.task.sessionId)) selectTask(v.task.id, v.task.projectId)
+      await refresh()
     }
 
     const afterChange = async () => {
@@ -583,6 +603,7 @@ export function BoardPage(props: any) {
         onChanged: afterChange,
         onOpenSession: selectedTask.task.sessionId ? () => openTaskSession(selectedTask.task.sessionId) : undefined,
         onCreateSession: selectedTask.task.sessionId ? undefined : () => createTaskSession(selectedTask),
+        onStartTask: selectedTask.task.sessionId ? () => startBoundSession(selectedTask) : undefined,
       })
     } else if (selectedProject) {
       detailBody = h(ProjectDetail, {

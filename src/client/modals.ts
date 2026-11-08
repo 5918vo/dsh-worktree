@@ -274,7 +274,7 @@ export function PublishModal(props: { t: any; project: any; cfg: any; onClose: (
         const task = r.task
         if (start && remotes && remotes.session) {
           try {
-            await withTimeout(bindSession(remotes, task, project.name), 60000, t.bindTimeout)
+            await withTimeout(bindSession(remotes, task, project.name, start), 60000, t.bindTimeout)
           } catch (e: any) {
             props.onPublished(task, project, (e && e.message) || t.failed)
             return

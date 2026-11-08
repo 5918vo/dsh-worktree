@@ -184,6 +184,8 @@ export function TaskDetail(props: any) {
     const repoDirty = snap.repo.dirtyCount
     const health = props.health
     const healthActive = !!health && !props.running
+    const sessionBlank = !!(liveData && liveData.meta && (liveData.meta as any).blank === true)
+    const canStart = sessionBlank && !props.running && !!props.onStartTask && !!task.sessionId
     const ahead = snap.worktree.ahead
     const branch = task.branch || snap.worktree.branch || ''
 
@@ -211,27 +213,35 @@ export function TaskDetail(props: any) {
 
     const primary = cleaned
       ? h(Btn, { variant: 'primary', size: 'lg', icon: 'trash', disabled: true }, t.cleaned)
-      : task.sessionId
+      : canStart
         ? h(Btn, {
           variant: 'primary',
           size: 'lg',
-          icon: 'external',
-          disabled: !props.onOpenSession,
-          onClick: () => {
-            const opened = props.onOpenSession && props.onOpenSession()
-            if (opened === false) props.notify(t.openSessionFailed, 'error')
-          },
-        }, t.openSessionBtn)
-        : h(Btn, {
-          variant: 'primary',
-          size: 'lg',
-          icon: busy === 'session' ? undefined : 'message',
-          disabled: !props.onCreateSession || busy !== '',
-          onClick: () => {
-            if (!props.onCreateSession) return
-            void act('session', t.sessionCreated, () => Promise.resolve(props.onCreateSession()))
-          },
-        }, busy === 'session' ? h(Spinner) : null, busyLabel('session', t.createSession, t.creatingSession))
+          icon: busy === 'start' ? undefined : 'play',
+          disabled: busy !== '',
+          onClick: () => { void act('start', t.taskStarted, () => Promise.resolve(props.onStartTask())) },
+        }, busy === 'start' ? h(Spinner) : null, busyLabel('start', t.startTask, t.startingTask))
+        : task.sessionId
+          ? h(Btn, {
+            variant: 'primary',
+            size: 'lg',
+            icon: 'external',
+            disabled: !props.onOpenSession,
+            onClick: () => {
+              const opened = props.onOpenSession && props.onOpenSession()
+              if (opened === false) props.notify(t.openSessionFailed, 'error')
+            },
+          }, t.openSessionBtn)
+          : h(Btn, {
+            variant: 'primary',
+            size: 'lg',
+            icon: busy === 'session' ? undefined : 'message',
+            disabled: !props.onCreateSession || busy !== '',
+            onClick: () => {
+              if (!props.onCreateSession) return
+              void act('session', t.sessionCreated, () => Promise.resolve(props.onCreateSession()))
+            },
+          }, busy === 'session' ? h(Spinner) : null, busyLabel('session', t.createSession, t.creatingSession))
 
     const lastActivity = task.sessionId && task.updatedAt ? t.lastActivity + ' · ' + relTime(task.updatedAt, t) : ''
 
@@ -253,6 +263,14 @@ export function TaskDetail(props: any) {
         title: t.statusSyncFailed,
         actions: h(Btn, { size: 'sm', icon: 'refresh', onClick: () => void props.onChanged() }, t.retry),
       }, snap.error)
+      : null
+
+    const notStartedNode = canStart
+      ? h(Banner, {
+        tone: 'warn',
+        icon: 'clock',
+        title: t.taskNotStarted,
+      }, t.taskNotStartedHint)
       : null
 
     const healthNode = healthActive
@@ -448,6 +466,7 @@ export function TaskDetail(props: any) {
             primary,
             h('span', { className: 'dshw-hint' }, lastActivity))),
         err ? h('div', { className: 'dshw-err', role: 'alert', style: { marginTop: '12px' } }, h(Icon, { name: 'alert' }), h('span', null, err)) : null),
+      notStartedNode,
       pendingNode,
       healthNode,
       errorNode,

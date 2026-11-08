@@ -972,7 +972,7 @@
     );
   }
   var post = (path, body) => sendJson(path, body, "POST");
-  async function bindSession(remotes, task, projectTitle) {
+  async function bindSession(remotes, task, projectTitle, start = task.startOnBind !== false) {
     let workspaceId;
     try {
       const w = await remotes.workspace.create({ path: task.repoPath });
@@ -998,7 +998,7 @@
       await remotes.session.rename({ sessionId, title: task.title });
     } catch {
     }
-    if (task.startOnBind !== false && task.firstPrompt) {
+    if (start && task.firstPrompt) {
       const tz = (() => {
         try {
           return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
@@ -1015,8 +1015,6 @@
       });
       if (sent && sent.ok === false) {
         const msg = sent.error && (sent.error.message || sent.error.code) ? sent.error.message || sent.error.code : "prompt failed";
-        await post("bind", { id: task.id, sessionId }).catch(() => {
-        });
         throw new Error(String(msg));
       }
     }
@@ -1279,7 +1277,12 @@
     contentSize: "Content: {n} chars",
     durationSec: "{n}s",
     durationMin: "{n}m",
-    durationMinSec: "{m}m {s}s"
+    durationMinSec: "{m}m {s}s",
+    taskNotStarted: "Session not started",
+    taskNotStartedHint: "The task was published, but its first instruction never ran. Start it to continue.",
+    startTask: "Start task",
+    startingTask: "Starting\u2026",
+    taskStarted: "Task started"
   };
 
   // locale/zh.json
@@ -1537,7 +1540,12 @@
     contentSize: "\u5185\u5BB9\uFF1A{n} \u5B57\u7B26",
     durationSec: "{n} \u79D2",
     durationMin: "{n} \u5206",
-    durationMinSec: "{m} \u5206 {s} \u79D2"
+    durationMinSec: "{m} \u5206 {s} \u79D2",
+    taskNotStarted: "\u4F1A\u8BDD\u5C1A\u672A\u5F00\u59CB",
+    taskNotStartedHint: "\u4EFB\u52A1\u5DF2\u521B\u5EFA\uFF0C\u4F46\u7B2C\u4E00\u6761\u6307\u4EE4\u6CA1\u6709\u6267\u884C\u3002\u70B9\u51FB\u5F00\u59CB\u7EE7\u7EED\u3002",
+    startTask: "\u542F\u52A8\u4EFB\u52A1",
+    startingTask: "\u6B63\u5728\u542F\u52A8\u2026",
+    taskStarted: "\u4EFB\u52A1\u5DF2\u5F00\u59CB"
   };
 
   // src/client/i18n.ts
@@ -2286,7 +2294,7 @@
         const task = r.task;
         if (start && remotes && remotes.session) {
           try {
-            await withTimeout(bindSession(remotes, task, project.name), 6e4, t.bindTimeout);
+            await withTimeout(bindSession(remotes, task, project.name, start), 6e4, t.bindTimeout);
           } catch (e) {
             props.onPublished(task, project, e && e.message || t.failed);
             return;
@@ -2832,6 +2840,8 @@
     const repoDirty = snap.repo.dirtyCount;
     const health = props.health;
     const healthActive = !!health && !props.running;
+    const sessionBlank = !!(liveData && liveData.meta && liveData.meta.blank === true);
+    const canStart = sessionBlank && !props.running && !!props.onStartTask && !!task.sessionId;
     const ahead = snap.worktree.ahead;
     const branch = task.branch || snap.worktree.branch || "";
     const act = async (key, success, fn) => {
@@ -2854,7 +2864,15 @@
     };
     const actPost = (key, path, body, success) => act(key, success, () => post(path, Object.assign({ id: task.id }, body)));
     const busyLabel = (key, label, working) => busy === key ? working : label;
-    const primary = cleaned ? h(Btn, { variant: "primary", size: "lg", icon: "trash", disabled: true }, t.cleaned) : task.sessionId ? h(Btn, {
+    const primary = cleaned ? h(Btn, { variant: "primary", size: "lg", icon: "trash", disabled: true }, t.cleaned) : canStart ? h(Btn, {
+      variant: "primary",
+      size: "lg",
+      icon: busy === "start" ? void 0 : "play",
+      disabled: busy !== "",
+      onClick: () => {
+        void act("start", t.taskStarted, () => Promise.resolve(props.onStartTask()));
+      }
+    }, busy === "start" ? h(Spinner) : null, busyLabel("start", t.startTask, t.startingTask)) : task.sessionId ? h(Btn, {
       variant: "primary",
       size: "lg",
       icon: "external",
@@ -2886,6 +2904,11 @@
       title: t.statusSyncFailed,
       actions: h(Btn, { size: "sm", icon: "refresh", onClick: () => void props.onChanged() }, t.retry)
     }, snap.error) : null;
+    const notStartedNode = canStart ? h(Banner, {
+      tone: "warn",
+      icon: "clock",
+      title: t.taskNotStarted
+    }, t.taskNotStartedHint) : null;
     const healthNode = healthActive ? h(Banner, {
       tone: health.kind === "error" ? "error" : "warn",
       icon: "alert",
@@ -3099,6 +3122,7 @@
         ),
         err ? h("div", { className: "dshw-err", role: "alert", style: { marginTop: "12px" } }, h(Icon, { name: "alert" }), h("span", null, err)) : null
       ),
+      notStartedNode,
       pendingNode,
       healthNode,
       errorNode,
@@ -3888,9 +3912,26 @@
     const createTaskSession = async (v) => {
       if (!remotes || !remotes.session) throw new Error(t.failed);
       const owner = projectViews.find((pv) => pv.project.id === v.task.projectId) || projectViews.find((pv) => pv.project.repoPath === v.task.repoPath);
-      const sessionId = await bindSession(remotes, v.task, owner && owner.project.name);
+      const sessionId = await bindSession(remotes, v.task, owner && owner.project.name, true);
       if (!openTaskSession(sessionId)) selectTask(v.task.id, owner && owner.project.id);
       return sessionId;
+    };
+    const startBoundSession = async (v) => {
+      if (!remotes || !remotes.session || !v.task.sessionId) throw new Error(t.failed);
+      const text = String(v.task.firstPrompt || v.task.description || "").trim();
+      if (!text) throw new Error(t.failed);
+      const sent = await remotes.session.prompt({
+        requestId: uuid(),
+        sessionId: v.task.sessionId,
+        mode: "queue",
+        content: [{ type: "text", text }]
+      });
+      if (sent && sent.ok === false) {
+        const msg = sent.error && (sent.error.message || sent.error.code) ? sent.error.message || sent.error.code : t.failed;
+        throw new Error(String(msg));
+      }
+      if (!openTaskSession(v.task.sessionId)) selectTask(v.task.id, v.task.projectId);
+      await refresh();
     };
     const afterChange = async () => {
       await refresh();
@@ -4133,7 +4174,8 @@
         notify,
         onChanged: afterChange,
         onOpenSession: selectedTask.task.sessionId ? () => openTaskSession(selectedTask.task.sessionId) : void 0,
-        onCreateSession: selectedTask.task.sessionId ? void 0 : () => createTaskSession(selectedTask)
+        onCreateSession: selectedTask.task.sessionId ? void 0 : () => createTaskSession(selectedTask),
+        onStartTask: selectedTask.task.sessionId ? () => startBoundSession(selectedTask) : void 0
       });
     } else if (selectedProject) {
       detailBody = h(ProjectDetail, {

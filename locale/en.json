@@ -252,5 +252,10 @@
   "contentSize": "Content: {n} chars",
   "durationSec": "{n}s",
   "durationMin": "{n}m",
-  "durationMinSec": "{m}m {s}s"
+  "durationMinSec": "{m}m {s}s",
+  "taskNotStarted": "Session not started",
+  "taskNotStartedHint": "The task was published, but its first instruction never ran. Start it to continue.",
+  "startTask": "Start task",
+  "startingTask": "Starting…",
+  "taskStarted": "Task started"
 }

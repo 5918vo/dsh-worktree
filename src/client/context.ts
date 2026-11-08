@@ -94,7 +94,7 @@ export const post = (path: string, body: any) => sendJson(path, body, 'POST')
  * ungrouped; the first prompt tells the agent to cd into the worktree.
  * Falls back to a cwd-bound session when the workspace call fails.
  */
-export async function bindSession(remotes: any, task: any, projectTitle?: string): Promise<string> {
+export async function bindSession(remotes: any, task: any, projectTitle?: string, start = task.startOnBind !== false): Promise<string> {
   let workspaceId: string | undefined
   try {
     const w = await remotes.workspace.create({ path: task.repoPath })
@@ -125,7 +125,7 @@ export async function bindSession(remotes: any, task: any, projectTitle?: string
   } catch {
     /* best effort */
   }
-  if (task.startOnBind !== false && task.firstPrompt) {
+  if (start && task.firstPrompt) {
     const tz = (() => {
       try {
         return Intl.DateTimeFormat().resolvedOptions().timeZone || ''
@@ -142,7 +142,9 @@ export async function bindSession(remotes: any, task: any, projectTitle?: string
     })
     if (sent && sent.ok === false) {
       const msg = sent.error && (sent.error.message || sent.error.code) ? sent.error.message || sent.error.code : 'prompt failed'
-      await post('bind', { id: task.id, sessionId }).catch(() => {})
+      // Do not bind a session whose first prompt never ran: a blank session is
+      // hidden by the host sidebar and would leave the task "developing" with no
+      // visible conversation. Keep the task unbound so it can be started again.
       throw new Error(String(msg))
     }
   }
