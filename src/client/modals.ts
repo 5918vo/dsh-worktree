@@ -272,15 +272,20 @@ export function PublishModal(props: { t: any; project: any; cfg: any; onClose: (
           start,
         }), 30000, t.publishTimeout)
         const task = r.task
+        let publishedTask = task
         if (start && remotes && remotes.session) {
           try {
-            await withTimeout(bindSession(remotes, task, project.name, start), 60000, t.bindTimeout)
+            const sessionId = await withTimeout(bindSession(remotes, task, project.name, start), 60000, t.bindTimeout)
+            // Carry the freshly bound session id so the board's optimistic row
+            // shows the correct status and an active "open session" entry before
+            // the follow-up refresh lands.
+            if (sessionId) publishedTask = Object.assign({}, task, { sessionId })
           } catch (e: any) {
             props.onPublished(task, project, (e && e.message) || t.failed)
             return
           }
         }
-        props.onPublished(task, project)
+        props.onPublished(publishedTask, project)
       } catch (e: any) {
         if (e && (e as any).timeout) {
           // The request may have reached the server; reconcile the board instead of trapping the user.
