@@ -2,7 +2,7 @@ import { React, h } from './ui'
 import { Banner, Btn, Card, CardHead, Chip, CopyBtn, Dot, Icon, IconBtn, KV, Modal, Spinner } from './primitives'
 import { appCtx, getJson, post } from './context'
 import { clipText, cx, firstLine, fmtDuration, fmtK, jp, pad2, relTime, uuid } from './format'
-import { isReviewable, pendingLabel, postMergeLabel, resolveStatus, statusMeta } from './status'
+import { pendingLabel, resolveStatus, statusMeta } from './status'
 import { fallbackEntries } from './timeline'
 import type { TimelineEntry } from './timeline'
 
@@ -43,12 +43,16 @@ export function LiveCard(props: { t: any; task: any; running: boolean | null; pe
     const stateLabel = props.pendingKind ? pendingLabel(t, props.pendingKind) : props.running ? t.sessionRunning : t.sessionIdle
     const stateTone = props.pendingKind ? 'warn' : props.running ? 'success' : 'neutral'
 
+    // Live activity is the card's headline; only show it when a session exists,
+    // so an unbound task is not misleadingly labelled "空闲".
     const head = h(CardHead, {
       icon: 'terminal',
       title: t.liveSession,
-      right: h('span', { className: cx('dshw-live-state', !props.pendingKind && !props.running && 'dshw-live-state--idle', props.pendingKind && 'dshw-live-state--pending') },
-        h(Dot, { tone: stateTone, pulse: !!props.pendingKind }),
-        stateLabel),
+      right: props.task.sessionId
+        ? h('span', { className: cx('dshw-live-state', !props.pendingKind && !props.running && 'dshw-live-state--idle', props.pendingKind && 'dshw-live-state--pending') },
+          h(Dot, { tone: stateTone, pulse: !!props.pendingKind }),
+          stateLabel)
+        : null,
     })
 
     if (!props.task.sessionId) {
@@ -102,7 +106,6 @@ export function LiveCard(props: { t: any; task: any; running: boolean | null; pe
     return h(Card, null, head,
       h('div', { className: 'dshw-console' },
         h('div', { className: 'dshw-console-bar' },
-          h(Dot, { tone: stateTone, pulse: !!props.pendingKind }),
           h('span', null, modelText),
           h('span', { className: 'dshw-sep' }, '/'),
           h('span', null, statsText),
@@ -343,7 +346,6 @@ export function TaskDetail(props: any) {
     const effStatus = resolveStatus(snap.status, props.running)
     const meta = statusMeta(t, effStatus, props.pendingKind)
     const liveData = readLive(props.live)
-    const modelText = modelLabel(liveData && liveData.model) || '—'
     const liveCwd = liveData && liveData.cwd ? String(liveData.cwd) : ''
     const cwdOff = !!liveCwd && !!task.worktreePath && liveCwd.toLowerCase() !== String(task.worktreePath).toLowerCase()
     const cleaned = snap.status === 'cleaned'
@@ -610,7 +612,7 @@ export function TaskDetail(props: any) {
     const showCheckout = !onTaskBranch && snap.status !== 'cleaned'
     const showMerge = snap.status !== 'merged' && snap.status !== 'cleaned'
 
-    type AcceptReason = { text: string; action?: any }
+    type AcceptReason = { text: string; action?: any; key?: string }
     const openSessionAction = task.sessionId && props.onOpenSession
       ? h(Btn, {
         size: 'sm',
@@ -630,7 +632,7 @@ export function TaskDetail(props: any) {
       else if (snap.status !== 'review') checkoutReasons.push({ text: t.acceptNoCommits })
       else if (ahead === 0) checkoutReasons.push({ text: dirty > 0 ? String(t.acceptWorktreeDirtyCommit).replace('{n}', String(dirty)) : t.acceptNoCommits })
       else {
-        if (dirty > 0) checkoutReasons.push({ text: String(t.acceptWorktreeDirtyCommit).replace('{n}', String(dirty)), action: openSessionAction })
+        if (dirty > 0) checkoutReasons.push({ text: String(t.acceptWorktreeDirtyCommit).replace('{n}', String(dirty)), action: openSessionAction, key: 'wt-dirty' })
         if (repoDirty > 0) checkoutReasons.push({ text: String(t.acceptanceHintRepoDirty).replace('{n}', String(repoDirty)) })
         if (inProgress) checkoutReasons.push({ text: t.acceptInProgress })
         if (otherReviewing) checkoutReasons.push({ text: String(t.acceptOtherReviewing).replace('{task}', otherReviewing.task.title), action: goOtherAction })
@@ -654,7 +656,7 @@ export function TaskDetail(props: any) {
       else if (onTaskBranch) mergeReasons.push({ text: t.acceptMergeReviewing })
       else if (snap.status !== 'review' || ahead === 0) mergeReasons.push({ text: t.acceptNoCommits })
       else {
-        if (dirty > 0) mergeReasons.push({ text: String(t.acceptanceHintDirty).replace('{n}', String(dirty)), action: openSessionAction })
+        if (dirty > 0) mergeReasons.push({ text: String(t.acceptanceHintDirty).replace('{n}', String(dirty)), action: openSessionAction, key: 'wt-dirty' })
         if (!curOnBase) mergeReasons.push({ text: String(t.acceptNotOnBase).replace('{branch}', snap.repo.currentBranch || '—') })
         if (repoDirty > 0) mergeReasons.push({ text: String(t.acceptanceHintRepoDirty).replace('{n}', String(repoDirty)) })
         if (inProgress) mergeReasons.push({ text: t.acceptInProgress })
@@ -667,11 +669,14 @@ export function TaskDetail(props: any) {
     const reasonsNode = (() => {
       const list: AcceptReason[] = []
       const seen = new Set<string>()
-      const push = (r: AcceptReason) => { if (r && r.text && !seen.has(r.text)) { seen.add(r.text); list.push(r) } }
+      // Collapse reasons that repeat the same fact (e.g. dirty worktree blocks
+      // both checkout and merge) into one line.
+      const push = (r: AcceptReason) => { const k = r && (r.key || r.text); if (r && r.text && k && !seen.has(k)) { seen.add(k); list.push(r) } }
       if (showCheckout) checkoutReasons.forEach(push)
       if (showBack) backReasons.forEach(push)
       if (showMerge) mergeReasons.forEach(push)
-      if (!list.length) return h('div', { className: 'dshw-hint' }, h(Icon, { name: 'info' }), t.acceptanceHintDefault)
+      // All good: the buttons speak for themselves, no need to explain the rules.
+      if (!list.length) return null
       return h('div', { className: 'dshw-accept-reasons' }, list.map((r, i) => h('div', {
         key: i,
         className: 'dshw-hint',
@@ -679,6 +684,9 @@ export function TaskDetail(props: any) {
         style: { margin: '0 0 6px', alignItems: 'center', flexWrap: 'wrap' },
       }, h(Icon, { name: 'info' }), h('span', null, r.text), r.action ? r.action : null)))
     })()
+    // Nothing to accept (e.g. cleaned): drop the whole section instead of
+    // leaving an empty card behind.
+    const hasAcceptActions = showCheckout || showBack || showMerge
 
     const worktreeState = cleaned
       ? { label: t.cleaned, tone: 'neutral' }
@@ -740,7 +748,7 @@ export function TaskDetail(props: any) {
         agentRunning ? h(Banner, { tone: 'warn', icon: 'clock', title: t.acceptAgentRunning }) : null,
         dirty > 0
           ? h(Banner, { tone: 'warn', icon: 'alert', title: t.mergeDirtyTitle }, t.mergeDirtyHint)
-          : h(Banner, { tone: 'info', icon: 'info' }, t.mergeCleanHint),
+          : null,
         err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null)
       : null
 
@@ -866,18 +874,15 @@ export function TaskDetail(props: any) {
               h('span', null, '/'),
               h('span', { className: 'dshw-mono' }, branch)),
             h('h1', null, task.title),
-            h('p', { className: 'dshw-hero-desc' }, task.description || '—'),
+            task.description ? h('p', { className: 'dshw-hero-desc' }, task.description) : null,
             h('div', { className: 'dshw-hero-meta' },
               h(Chip, { tone: meta.tone }, meta.label),
               meta.note ? h(Chip, { tone: 'warn' }, meta.note) : null,
               archived ? h(Chip, { tone: 'neutral' }, t.archived) : null,
-              healthActive
-                ? h(Chip, { tone: health.kind === 'error' ? 'error' : 'warn' }, health.kind === 'error' ? t.sessionError : t.sessionInterrupted)
-                : null,
-              previewChip ? h(Chip, { tone: previewChip.tone }, previewChip.label) : null,
-              postMerge > 0 ? h(Chip, { tone: 'warn' }, postMergeLabel(t, postMerge)) : null,
-              h('span', { className: 'dshw-meta-pill' }, h(Icon, { name: 'branch' }), h('span', { className: 'dshw-mono' }, branch)),
-              h('span', { className: 'dshw-meta-pill' }, h(Icon, { name: 'arrowUp' }), ahead + ' ' + t.commitsAhead),
+              // Health, merge-preview and post-merge each get their own banner
+              // below; surface the base-advanced hint only when no banner covers it.
+              previewChip && !previewNode ? h(Chip, { tone: previewChip.tone }, previewChip.label) : null,
+              ahead > 0 ? h('span', { className: 'dshw-meta-pill' }, h(Icon, { name: 'arrowUp' }), ahead + ' ' + t.commitsAhead) : null,
               dirty > 0
                 ? h('span', { className: 'dshw-meta-pill dshw-meta-pill--warn' }, h(Icon, { name: 'alert' }), dirty + ' ' + t.dirty)
                 : null)),
@@ -894,30 +899,20 @@ export function TaskDetail(props: any) {
       relationsNode,
       h(LiveCard, { t, task, running: props.running, pendingKind: props.pendingKind, live: props.live, history: props.history }),
       showDiff ? h(DiffCard, { t, task, version: diffVersion, notify: props.notify }) : null,
-      h(Card, null,
-        h(CardHead, {
-          icon: 'message',
-          title: t.sessionInfo,
-          right: task.sessionId ? h(Chip, { tone: meta.tone, small: true }, meta.label) : h(Chip, { tone: 'neutral', small: true }, t.noSession),
-        }),
-        task.sessionId
-          ? h('div', { className: 'dshw-kv' }, [
-            h(KV, { key: 'sid', label: t.sessionId },
-              h('span', { className: 'dshw-mono' }, task.sessionId),
-              h(CopyBtn, { text: task.sessionId, label: t.copySessionId, t, notify: props.notify })),
-            h(KV, { key: 'st', label: t.status },
-              h('span', { className: 'dshw-inline' },
-                h(Dot, { tone: props.pendingKind ? 'warn' : props.running ? 'brand' : 'neutral', pulse: !!props.pendingKind }),
-                h('span', null, props.pendingKind ? pendingLabel(t, props.pendingKind) : props.running ? t.sessionRunning : t.sessionIdle))),
-            h(KV, { key: 'model', label: t.liveModel }, h('span', null, modelText)),
-            h(KV, { key: 'cwd', label: t.liveCwd },
-              h('span', { className: 'dshw-mono' }, liveCwd || task.worktreePath),
-              cwdOff ? h(Chip, { tone: 'warn', small: true }, t.liveCwdOff) : null,
-              h(CopyBtn, { text: liveCwd || task.worktreePath, label: t.copyWorktree, t, notify: props.notify })),
-            h(KV, { key: 'act', label: t.lastActivity }, h('span', null, relTime(task.updatedAt, t))),
-          ])
-          : h('div', { className: 'dshw-hint', style: { margin: 0 } }, t.noSessionHint)),
-      h(Card, null,
+      // Session identity is the only thing this card adds over the live console;
+      // status, model and last activity already appear on the hero / live card.
+      task.sessionId ? h(Card, null,
+        h(CardHead, { icon: 'message', title: t.sessionInfo }),
+        h('div', { className: 'dshw-kv' }, [
+          h(KV, { key: 'sid', label: t.sessionId },
+            h('span', { className: 'dshw-mono' }, task.sessionId),
+            h(CopyBtn, { text: task.sessionId, label: t.copySessionId, t, notify: props.notify })),
+          h(KV, { key: 'cwd', label: t.liveCwd },
+            h('span', { className: 'dshw-mono' }, liveCwd || task.worktreePath),
+            cwdOff ? h(Chip, { tone: 'warn', small: true }, t.liveCwdOff) : null,
+            h(CopyBtn, { text: liveCwd || task.worktreePath, label: t.copyWorktree, t, notify: props.notify })),
+        ])) : null,
+      hasAcceptActions ? h(Card, null,
         h(CardHead, {
           icon: 'checkCircle',
           title: t.acceptance,
@@ -945,12 +940,12 @@ export function TaskDetail(props: any) {
             disabled: !mergeEnabled || busy !== '',
             onClick: () => { setPreview(null); setMergeOpen(true); void loadPreview() },
           }, t.merge) : null),
-        reasonsNode),
+        reasonsNode) : null,
       h(Card, null,
         h(CardHead, {
           icon: 'branch',
           title: t.worktree + ' / ' + t.mainRepo,
-          right: h(Chip, { tone: worktreeState.tone, small: true }, worktreeState.label),
+          right: worktreeState.tone === 'error' ? h(Chip, { tone: 'error', small: true }, worktreeState.label) : null,
         }),
         h('div', { className: 'dshw-git-section' },
           h('div', { className: 'dshw-section-label' }, h(Icon, { name: 'folder' }), t.worktree),
@@ -964,8 +959,6 @@ export function TaskDetail(props: any) {
                 h(KV, { key: 'wt-branch', label: t.currentBranch },
                   h('span', { className: 'dshw-mono' }, snap.worktree.branch || '—'),
                   h(CopyBtn, { text: snap.worktree.branch || '', label: t.copyBranch, t, notify: props.notify })),
-                h(KV, { key: 'wt-ahead', label: t.commits }, ahead + ' ' + t.commitsAhead),
-                h(KV, { key: 'wt-dirty', label: t.uncommitted }, dirty > 0 ? h(Chip, { tone: 'warn', small: true }, dirty + ' ' + t.changesUnit) : h('span', { className: 'dshw-hint', style: { margin: 0 } }, t.clean)),
               ])),
         h('div', { className: 'dshw-git-section' },
           h('div', { className: 'dshw-section-label' }, h(Icon, { name: 'database' }), t.mainRepo),
