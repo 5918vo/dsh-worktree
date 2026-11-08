@@ -156,7 +156,7 @@ var Store = class {
 // src/runtime.ts
 import { randomUUID } from "node:crypto";
 import { promises as fs3 } from "node:fs";
-import { basename, isAbsolute, join as join3, resolve } from "node:path";
+import { basename, dirname as dirname3, isAbsolute, join as join3, resolve } from "node:path";
 
 // src/gitx.ts
 import { execFile } from "node:child_process";
@@ -257,6 +257,9 @@ async function worktreeRemove(gitPath, repoDir, worktreePath, force) {
   if (force) args.push("--force");
   args.push(worktreePath);
   await run(gitPath, repoDir, args);
+}
+async function worktreePrune(gitPath, repoDir) {
+  await tryRun(gitPath, repoDir, ["worktree", "prune"]);
 }
 async function switchBranch(gitPath, repoDir, branch) {
   try {
@@ -439,16 +442,46 @@ var Runtime = class {
     this.store.putProject(project);
     return project;
   }
-  deleteProject(id, opts) {
+  /**
+   * Remove one task's worktree directory from disk. Returns true when something
+   * was actually removed. Missing paths are skipped; when git refuses (stale
+   * registration, missing main repo) fall back to a plain directory removal and
+   * prune the leftover administrative metadata.
+   */
+  async removeWorktreeDir(task) {
+    const exists = await fs3.stat(task.worktreePath).then((s) => s.isDirectory()).catch(() => false);
+    if (!exists) return false;
+    try {
+      await worktreeRemove(this.gitPath, task.repoPath, task.worktreePath, true);
+      return true;
+    } catch {
+    }
+    await fs3.rm(task.worktreePath, { recursive: true, force: true });
+    await worktreePrune(this.gitPath, task.repoPath);
+    return true;
+  }
+  async deleteProject(id, opts) {
     const project = this.store.getProject(id);
     if (!project) throw new TaskError(`\u9879\u76EE\u4E0D\u5B58\u5728\uFF1A${id}`, 404);
     const tasks = this.store.listTasksOfProject(id);
     if (tasks.length > 0 && !opts.withTasks) {
       throw new TaskError(`\u9879\u76EE\u4E0B\u8FD8\u6709 ${tasks.length} \u4E2A\u4EFB\u52A1\uFF1B\u52FE\u9009\u300C\u8FDE\u540C\u4EFB\u52A1\u5220\u9664\u300D\u540E\u91CD\u8BD5`);
     }
+    let deletedWorktrees = 0;
+    if (opts.withWorktrees) {
+      for (const t of tasks) {
+        if (await this.removeWorktreeDir(t)) deletedWorktrees += 1;
+      }
+      for (const parent of new Set(tasks.map((t) => dirname3(t.worktreePath)))) {
+        try {
+          if ((await fs3.readdir(parent)).length === 0) await fs3.rmdir(parent);
+        } catch {
+        }
+      }
+    }
     for (const t of tasks) this.store.deleteTask(t.id);
     this.store.deleteProject(id);
-    return { deletedTasks: tasks.length };
+    return { deletedTasks: tasks.length, deletedWorktrees };
   }
   /** Resolve the owning project for a publish: explicit id, repo match, or create. */
   async ensureProject(input) {
@@ -1026,7 +1059,10 @@ function registerHttp(app) {
     requireToken(req);
     const body = await readJson2(req);
     try {
-      send(res, 200, app.runtime.deleteProject(String(body.id || ""), { withTasks: !!body.withTasks }));
+      send(res, 200, await app.runtime.deleteProject(String(body.id || ""), {
+        withTasks: !!body.withTasks,
+        withWorktrees: body.withWorktrees === void 0 ? true : !!body.withWorktrees
+      }));
     } catch (error) {
       if (error instanceof TaskError) return send(res, error.status, { error: error.message });
       send(res, 500, { error: error instanceof Error ? error.message : String(error) });

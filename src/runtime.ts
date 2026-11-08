@@ -6,7 +6,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
-import { basename, isAbsolute, join, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import * as gitx from './gitx.js'
 import { Project, ProjectStats, ProjectView, TaskSnapshot, TaskStatus, TaskView, WorktreeConfig, WorktreeTask } from './models.js'
 import { Store } from './store.js'
@@ -147,16 +147,51 @@ export class Runtime {
     return project
   }
 
-  deleteProject(id: string, opts: { withTasks?: boolean }): { deletedTasks: number } {
+  /**
+   * Remove one task's worktree directory from disk. Returns true when something
+   * was actually removed. Missing paths are skipped; when git refuses (stale
+   * registration, missing main repo) fall back to a plain directory removal and
+   * prune the leftover administrative metadata.
+   */
+  private async removeWorktreeDir(task: WorktreeTask): Promise<boolean> {
+    const exists = await fs.stat(task.worktreePath).then((s) => s.isDirectory()).catch(() => false)
+    if (!exists) return false
+    try {
+      await gitx.worktreeRemove(this.gitPath, task.repoPath, task.worktreePath, true)
+      return true
+    } catch {
+      /* fall through to a direct filesystem removal */
+    }
+    await fs.rm(task.worktreePath, { recursive: true, force: true })
+    await gitx.worktreePrune(this.gitPath, task.repoPath)
+    return true
+  }
+
+  async deleteProject(id: string, opts: { withTasks?: boolean; withWorktrees?: boolean }): Promise<{ deletedTasks: number; deletedWorktrees: number }> {
     const project = this.store.getProject(id)
     if (!project) throw new TaskError(`项目不存在：${id}`, 404)
     const tasks = this.store.listTasksOfProject(id)
     if (tasks.length > 0 && !opts.withTasks) {
       throw new TaskError(`项目下还有 ${tasks.length} 个任务；勾选「连同任务删除」后重试`)
     }
+    let deletedWorktrees = 0
+    if (opts.withWorktrees) {
+      for (const t of tasks) {
+        if (await this.removeWorktreeDir(t)) deletedWorktrees += 1
+      }
+      // Best-effort: drop the (now empty) shared worktree container so the
+      // project's folder does not linger on disk.
+      for (const parent of new Set(tasks.map((t) => dirname(t.worktreePath)))) {
+        try {
+          if ((await fs.readdir(parent)).length === 0) await fs.rmdir(parent)
+        } catch {
+          /* missing or non-empty: leave it alone */
+        }
+      }
+    }
     for (const t of tasks) this.store.deleteTask(t.id)
     this.store.deleteProject(id)
-    return { deletedTasks: tasks.length }
+    return { deletedTasks: tasks.length, deletedWorktrees }
   }
 
   /** Resolve the owning project for a publish: explicit id, repo match, or create. */

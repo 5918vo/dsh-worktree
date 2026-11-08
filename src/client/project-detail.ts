@@ -16,6 +16,7 @@ export function ProjectDetail(props: any) {
     const branches = useBranchInfo(project.repoPath)
     const [deleteOpen, setDeleteOpen] = React.useState(false)
     const [withTasks, setWithTasks] = React.useState(false)
+    const [withWorktrees, setWithWorktrees] = React.useState(true)
     const [busy, setBusy] = React.useState('')
     const [msg, setMsg] = React.useState('')
     const [err, setErr] = React.useState('')
@@ -77,7 +78,7 @@ export function ProjectDetail(props: any) {
 
     const remove = () => {
       void act('del', async () => {
-        await post('projects/delete', { id: project.id, withTasks })
+        await post('projects/delete', { id: project.id, withTasks, withWorktrees: withTasks && withWorktrees })
         setDeleteOpen(false)
         props.onDeleted()
         props.notify(String(t.projectDeleted).replace('{name}', project.name))
@@ -125,6 +126,18 @@ export function ProjectDetail(props: any) {
           ? h('label', { className: 'dshw-check' },
             h('input', { type: 'checkbox', checked: withTasks, onChange: (e: any) => setWithTasks(e.target.checked) }),
             h('span', { className: 'dshw-check-copy' }, t.withTasks))
+          : null,
+        counts.total > 0
+          ? h('label', { className: 'dshw-check' },
+            h('input', {
+              type: 'checkbox',
+              checked: withWorktrees,
+              disabled: !withTasks,
+              'aria-label': t.withWorktrees,
+              'aria-describedby': 'dshw-delete-worktrees-hint',
+              onChange: (e: any) => setWithWorktrees(e.target.checked),
+            }),
+            h('span', { className: 'dshw-check-copy' }, t.withWorktrees, h('small', { id: 'dshw-delete-worktrees-hint' }, t.withWorktreesHint)))
           : null,
         err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null)
       : null

@@ -146,6 +146,11 @@ export async function worktreeRemove(gitPath: string, repoDir: string, worktreeP
   await run(gitPath, repoDir, args)
 }
 
+/** Drop stale administrative data for worktrees whose directory is gone. */
+export async function worktreePrune(gitPath: string, repoDir: string): Promise<void> {
+  await tryRun(gitPath, repoDir, ['worktree', 'prune'])
+}
+
 export interface WorktreeEntry {
   path: string
   head: string | null

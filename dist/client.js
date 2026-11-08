@@ -1101,6 +1101,7 @@
     saved: "Saved",
     deleteProject: "Delete project",
     withTasks: "Also delete task records",
+    withWorktrees: "Also delete worktree folders",
     tasksUnit: "Tasks",
     noProjects: "No projects",
     developing: "In progress",
@@ -1224,8 +1225,9 @@
     deleteTaskHint: "Merge first if you still need the code.",
     deleteProjectTitle: "Delete project",
     deleteProjectWarning: "The project still has {n} task records",
-    deleteProjectWarningHint: "Delete them together to remove the project. The repository, worktrees and commits stay on disk.",
-    deleteProjectCardHint: "Removing a project hides its configuration and task records from the board. The repository, worktrees and commits stay on disk.",
+    deleteProjectWarningHint: "Delete them together to remove the project. The repository and commits stay on disk.",
+    deleteProjectCardHint: "Removing a project hides its configuration and task records from the board. The repository and commits stay on disk.",
+    withWorktreesHint: "Force-remove the worktree folders on disk; uncommitted changes are lost.",
     deleteProjectRecords: "Task records",
     deleteProjectBase: "Default base",
     clearRecentsTitle: "Clear recent directories",
@@ -1365,6 +1367,7 @@
     saved: "\u5DF2\u4FDD\u5B58",
     deleteProject: "\u5220\u9664\u9879\u76EE",
     withTasks: "\u8FDE\u540C\u4EFB\u52A1\u4E00\u8D77\u5220\u9664",
+    withWorktrees: "\u540C\u65F6\u5220\u9664 worktree \u6587\u4EF6\u5939",
     tasksUnit: "\u4EFB\u52A1",
     noProjects: "\u6682\u65E0\u9879\u76EE",
     developing: "\u8FDB\u884C\u4E2D",
@@ -1488,8 +1491,9 @@
     deleteTaskHint: "\u5982\u679C\u8FD8\u9700\u8981\u4FDD\u7559\u4EE3\u7801\uFF0C\u8BF7\u5148\u5408\u5E76\uFF0C\u518D\u5220\u9664\u8BB0\u5F55\u3002",
     deleteProjectTitle: "\u5220\u9664\u9879\u76EE",
     deleteProjectWarning: "\u9879\u76EE\u4E0B\u8FD8\u6709 {n} \u6761\u4EFB\u52A1\u8BB0\u5F55",
-    deleteProjectWarningHint: "\u9700\u8981\u540C\u65F6\u5220\u9664\u8FD9\u4E9B\u4EFB\u52A1\u8BB0\u5F55\u624D\u80FD\u79FB\u9664\u9879\u76EE\u3002\u78C1\u76D8\u4E0A\u7684\u4ED3\u5E93\u3001worktree \u548C\u63D0\u4EA4\u4E0D\u4F1A\u88AB\u5220\u9664\u3002",
-    deleteProjectCardHint: "\u5220\u9664\u540E\uFF0C\u9879\u76EE\u914D\u7F6E\u4E0E\u4EFB\u52A1\u8BB0\u5F55\u4F1A\u4ECE\u5DE5\u4F5C\u53F0\u79FB\u9664\uFF1B\u78C1\u76D8\u4E0A\u7684\u4ED3\u5E93\u3001worktree \u548C\u63D0\u4EA4\u4E0D\u4F1A\u88AB\u5220\u9664\u3002",
+    deleteProjectWarningHint: "\u9700\u8981\u540C\u65F6\u5220\u9664\u8FD9\u4E9B\u4EFB\u52A1\u8BB0\u5F55\u624D\u80FD\u79FB\u9664\u9879\u76EE\u3002\u4ED3\u5E93\u548C\u63D0\u4EA4\u4E0D\u4F1A\u88AB\u5220\u9664\u3002",
+    deleteProjectCardHint: "\u5220\u9664\u540E\uFF0C\u9879\u76EE\u914D\u7F6E\u4E0E\u4EFB\u52A1\u8BB0\u5F55\u4F1A\u4ECE\u5DE5\u4F5C\u53F0\u79FB\u9664\uFF1B\u4ED3\u5E93\u548C\u63D0\u4EA4\u4E0D\u4F1A\u88AB\u5220\u9664\u3002",
+    withWorktreesHint: "\u5F3A\u5236\u5220\u9664\u78C1\u76D8\u4E0A\u7684 worktree \u76EE\u5F55\uFF0C\u672A\u63D0\u4EA4\u7684\u6539\u52A8\u4F1A\u4E00\u5E76\u4E22\u5931\u3002",
     deleteProjectRecords: "\u4EFB\u52A1\u8BB0\u5F55",
     deleteProjectBase: "\u9ED8\u8BA4\u57FA\u7EBF",
     clearRecentsTitle: "\u6E05\u7A7A\u6700\u8FD1\u76EE\u5F55",
@@ -3301,6 +3305,7 @@
     const branches = useBranchInfo(project.repoPath);
     const [deleteOpen, setDeleteOpen] = React.useState(false);
     const [withTasks, setWithTasks] = React.useState(false);
+    const [withWorktrees, setWithWorktrees] = React.useState(true);
     const [busy, setBusy] = React.useState("");
     const [msg, setMsg] = React.useState("");
     const [err, setErr] = React.useState("");
@@ -3357,7 +3362,7 @@
     }, []);
     const remove = () => {
       void act("del", async () => {
-        await post("projects/delete", { id: project.id, withTasks });
+        await post("projects/delete", { id: project.id, withTasks, withWorktrees: withTasks && withWorktrees });
         setDeleteOpen(false);
         props.onDeleted();
         props.notify(String(t.projectDeleted).replace("{name}", project.name));
@@ -3407,6 +3412,19 @@
         { className: "dshw-check" },
         h("input", { type: "checkbox", checked: withTasks, onChange: (e) => setWithTasks(e.target.checked) }),
         h("span", { className: "dshw-check-copy" }, t.withTasks)
+      ) : null,
+      counts.total > 0 ? h(
+        "label",
+        { className: "dshw-check" },
+        h("input", {
+          type: "checkbox",
+          checked: withWorktrees,
+          disabled: !withTasks,
+          "aria-label": t.withWorktrees,
+          "aria-describedby": "dshw-delete-worktrees-hint",
+          onChange: (e) => setWithWorktrees(e.target.checked)
+        }),
+        h("span", { className: "dshw-check-copy" }, t.withWorktrees, h("small", { id: "dshw-delete-worktrees-hint" }, t.withWorktreesHint))
       ) : null,
       err ? h("div", { className: "dshw-err", role: "alert" }, h(Icon, { name: "alert" }), h("span", null, err)) : null
     ) : null;

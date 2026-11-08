@@ -120,6 +120,43 @@ test('publish validation errors surface as 400, not 500', async () => {
   assert.match(res.body.error, /任务标题不能为空/)
 })
 
+test('projects/delete removes worktree folders when withWorktrees is set', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
+  const projectId = added.body.project.id
+  const published = await call('publish', {
+    body: { projectId, title: '待删除项目任务', description: 'tmp', branchName: 'feat/http-del-wt' },
+    headers: auth,
+  })
+  assert.equal(published.status, 200, JSON.stringify(published.body))
+  const task = published.body.task
+  assert.ok(await exists(task.worktreePath), 'worktree should exist before delete')
+
+  const res = await call('projects/delete', { body: { id: projectId, withTasks: true, withWorktrees: true }, headers: auth })
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  assert.ok(res.body.deletedTasks >= 1)
+  assert.equal(res.body.deletedWorktrees, 1)
+  assert.equal(await exists(task.worktreePath), false)
+
+  const after = await call('tasks', { method: 'GET', headers: auth })
+  assert.equal(after.body.tasks.some((v: any) => v.task.id === task.id), false)
+})
+
+test('projects/delete keeps worktree folders when withWorktrees is false', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
+  const projectId = added.body.project.id
+  const published = await call('publish', {
+    body: { projectId, title: '保留 worktree 任务', description: 'tmp', branchName: 'feat/http-keep-wt' },
+    headers: auth,
+  })
+  const task = published.body.task
+  const res = await call('projects/delete', { body: { id: projectId, withTasks: true, withWorktrees: false }, headers: auth })
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  assert.equal(res.body.deletedWorktrees, 0)
+  assert.ok(await exists(task.worktreePath), 'worktree should stay on disk')
+})
+
 test('acting on an unknown task returns 404', async () => {
   const auth = { 'x-dsh-worktree-token': token }
   const res = await call('task/merge', { body: { id: 'nope' }, headers: auth })

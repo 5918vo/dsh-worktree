@@ -178,7 +178,10 @@ export function registerHttp(app: App): () => void {
     requireToken(req)
     const body = await readJson(req)
     try {
-      send(res, 200, app.runtime.deleteProject(String(body.id || ''), { withTasks: !!body.withTasks }))
+      send(res, 200, await app.runtime.deleteProject(String(body.id || ''), {
+        withTasks: !!body.withTasks,
+        withWorktrees: body.withWorktrees === undefined ? true : !!body.withWorktrees,
+      }))
     } catch (error) {
       if (error instanceof TaskError) return send(res, error.status, { error: error.message })
       send(res, 500, { error: error instanceof Error ? error.message : String(error) })
