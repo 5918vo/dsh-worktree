@@ -37,7 +37,10 @@ function run(gitPath: string, cwd: string, args: string[], timeoutMs = 120_000):
       (error, stdout, stderr) => {
         if (error) {
           const code = typeof (error as any).code === 'number' ? (error as any).code : null
-          reject(new GitError(args, String(stderr || error.message || ''), code))
+          // git writes merge/checkout diagnostics to stdout as well; without it
+          // the UI only ever saw "Command failed".
+          const detail = [String(stderr || ''), String(stdout || '')].filter((text) => text.trim()).join('\n')
+          reject(new GitError(args, detail || error.message || '', code))
           return
         }
         resolve({ stdout: String(stdout ?? ''), stderr: String(stderr ?? '') })
