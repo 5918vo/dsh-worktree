@@ -344,6 +344,12 @@ export function TaskDetail(props: any) {
     const remotes = appCtx && appCtx.remote
     const [syncBusy, setSyncBusy] = React.useState(false)
     const [syncConfirm, setSyncConfirm] = React.useState(false)
+    // Merge preflight + dirty-repo (stash) flow.
+    const [mergePre, setMergePre] = React.useState(null as any)
+    const [mergeDirtyOpen, setMergeDirtyOpen] = React.useState(false)
+    const [mergeDirtyStrategy, setMergeDirtyStrategy] = React.useState('refuse' as 'refuse' | 'stash')
+    const [partialRestore, setPartialRestore] = React.useState(null as any)
+    const [stashDropSha, setStashDropSha] = React.useState('')
     // One preview controller per task instance. It serialises requests so at most
     // one is in flight, letting an older background poll never overwrite a fresh
     // check requested by the merge dialog.
@@ -470,7 +476,10 @@ export function TaskDetail(props: any) {
           void previewController.load({})
         }
         const warning = result && (result as any).warning
-        if (warning === 'restore-failed') props.notify(t.mergeRestoreFailed, 'error')
+        if (result && (result as any).partial && (result as any).partial.restoreFailed) {
+          setPartialRestore((result as any).partial)
+          props.notify(t.mergePartialRestoreFailed, 'error')
+        } else if (warning === 'restore-failed') props.notify(t.mergeRestoreFailed, 'error')
         else if (warning) props.notify(String(warning), 'error')
         else props.notify(success)
         return true
@@ -620,7 +629,7 @@ export function TaskDetail(props: any) {
             size: 'sm',
             icon: 'merge',
             disabled: busy !== '',
-            onClick: () => { setMergeSwitch(!curOnBase); setMergeRestore(true); setMergeOpen(true); void loadPreview({ force: true }) },
+            onClick: () => { void runMerge() },
           }, t.mergeAgain),
           // "继续任务" is already the hero primary action on a continued task,
           // so only surface it here for the rare task whose hero cannot.
@@ -713,10 +722,10 @@ export function TaskDetail(props: any) {
     const showBack = onTaskBranch
     const showCheckout = !onTaskBranch && snap.status !== 'cleaned'
     const showMerge = snap.status !== 'merged' && snap.status !== 'cleaned'
-    const mergeBaseReady = showMerge && !onTaskBranch && snap.status === 'review' && ahead > 0 && dirty === 0 && repoDirty === 0 && !inProgress && !agentRunning && !repoLockLabel && previewReadyForMerge && !otherReviewing
+    const mergeBaseReady = showMerge && !onTaskBranch && snap.status === 'review' && ahead > 0 && dirty === 0 && !inProgress && !agentRunning && !repoLockLabel && previewReadyForMerge && !otherReviewing
     const mergeEnabled = mergeBaseReady && curOnBase
     const canSwitchToBase = mergeBaseReady && !curOnBase && !!snap.repo.currentBranch
-    const mergeAgainReady = postMerge > 0 && !onTaskBranch && dirty === 0 && repoDirty === 0 && !inProgress && !agentRunning && !repoLockLabel && previewReadyForMerge
+    const mergeAgainReady = postMerge > 0 && !onTaskBranch && dirty === 0 && !inProgress && !agentRunning && !repoLockLabel && previewReadyForMerge
 
     type AcceptReason = { text: string; action?: any; key?: string }
     // "打开会话" lives in the hero action area; blockers below only explain why
@@ -790,7 +799,7 @@ export function TaskDetail(props: any) {
       else {
         if (dirty > 0) mergeReasons.push({ text: String(t.acceptWorktreeDirtyCommit).replace('{n}', String(dirty)), key: 'wt-dirty' })
         if (!curOnBase && !canSwitchToBase) mergeReasons.push({ text: String(t.acceptNotOnBase).replace('{branch}', snap.repo.currentBranch || '—') })
-        if (repoDirty > 0) mergeReasons.push({ text: String(t.acceptanceHintRepoDirtyMerge).replace('{n}', String(repoDirty)) })
+        if (repoDirty > 0 && mergeDirtyStrategy !== 'stash') mergeReasons.push({ text: String(t.acceptanceHintRepoDirtyMerge).replace('{n}', String(repoDirty)), key: 'repo-dirty' })
         if (inProgress) mergeReasons.push({ text: t.acceptInProgress })
         if (agentRunning) mergeReasons.push({ text: t.acceptAgentRunning })
         if (previewError) mergeReasons.push({ text: previewError, action: h(Btn, { size: 'sm', onClick: recheckPreview }, t.previewRecheck) })
@@ -800,6 +809,46 @@ export function TaskDetail(props: any) {
       }
     }
     const mergeModalReady = postMerge > 0 ? mergeAgainReady : (curOnBase ? mergeEnabled : canSwitchToBase)
+
+    // Ask the backend whether/how this merge can run before opening the dialog.
+    const runMerge = async () => {
+      if (actionRef.current || switchBusy || busy) return
+      setSwitchBusy('merge-pre')
+      setErr('')
+      try {
+        const r = await post('task/merge-preflight', { id: task.id, switchToBase: !curOnBase, restoreAfter: mergeRestore })
+        const pf = r && r.preflight
+        if (!pf) throw new Error(t.failed)
+        const dirtyBlocker = (pf.blockers || []).find((b: any) => b.code === 'dirty-blocks-switch')
+        if (pf.canMerge) {
+          setMergePre(pf)
+          setMergeDirtyStrategy('refuse')
+          setMergeSwitch(!curOnBase)
+          setMergeRestore(true)
+          setMergeOpen(true)
+          void loadPreview({ force: true })
+        } else if (dirtyBlocker && (pf.blockingFiles || []).length) {
+          setMergePre(pf)
+          setMergeDirtyOpen(true)
+        } else {
+          const first = (pf.blockers || [])[0]
+          setErr((first && first.message) || t.failed)
+        }
+      } catch (e: any) {
+        setErr((e && e.message) || t.failed)
+      } finally {
+        setSwitchBusy('')
+      }
+    }
+    const stashAndContinueMerge = () => {
+      if (!mergePre) return
+      setMergeDirtyOpen(false)
+      setMergeDirtyStrategy('stash')
+      setMergeSwitch(!curOnBase)
+      setMergeRestore(true)
+      setMergeOpen(true)
+      void loadPreview({ force: true })
+    }
 
     const reasonsNode = (() => {
       const list: AcceptReason[] = []
@@ -855,6 +904,7 @@ export function TaskDetail(props: any) {
                 id: task.id,
                 switchToBase: mergeSwitch && !curOnBase,
                 restoreTo: mergeRestore,
+                dirtyStrategy: mergeDirtyStrategy,
                 expectedTip: previewTipSha || undefined,
                 expectedBase: previewBaseSha || undefined,
               }))
@@ -918,6 +968,44 @@ export function TaskDetail(props: any) {
           : null,
         err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err),
           h(Btn, { size: 'sm', icon: 'refresh', disabled: previewBusy, onClick: () => { setErr(''); recheckPreview() } }, t.mergeRepreview)) : null)
+      : null
+
+    const mergeDirtyModal = mergeDirtyOpen && mergePre
+      ? h(Modal, {
+        t,
+        title: t.mergeBlockedFilesTitle,
+        subtitle: t.mergeSub,
+        icon: 'alert',
+        tone: 'warn',
+        size: 'sm',
+        busy: false,
+        onClose: () => setMergeDirtyOpen(false),
+        footer: [
+          h(Btn, { key: 'c', onClick: () => setMergeDirtyOpen(false), 'data-autofocus': true }, t.cancel),
+          h(Btn, { key: 'ok', variant: 'primary', onClick: () => stashAndContinueMerge() }, t.mergeStashAndContinue),
+        ],
+      },
+        h('div', { className: 'dshw-hint' }, t.mergeNeedsCleanRepo),
+        h('ul', { className: 'dshw-switch-files' }, (mergePre.blockingFiles || []).map((f: any, i: number) =>
+          h('li', { key: i }, h('span', { className: 'dshw-mono' }, f.path),
+            f.untracked ? h(Chip, { tone: 'warn', small: true }, t.switchUntracked) : null))))
+      : null
+
+    const partialNode = partialRestore
+      ? h(Banner, {
+        tone: 'error',
+        icon: 'alert',
+        title: t.mergePartialRestoreFailed,
+        actions: h(Btn, {
+          size: 'sm',
+          icon: 'arrowLeft',
+          disabled: busy !== '',
+          onClick: () => {
+            void act('merge-restore', t.restoreOriginalBranch, () => postLong('task/merge-restore', { id: task.id }))
+              .then((ok) => { if (ok) setPartialRestore(null) })
+          },
+        }, t.restoreOriginalBranch),
+      }, partialRestore.reason || '')
       : null
 
     const switchModal = switchOpen && switchPre
@@ -1091,12 +1179,13 @@ export function TaskDetail(props: any) {
           h('li', { key: i }, h(Icon, { name: 'check' }), h('span', null, item)))))
       : null
 
-    const openStashView = async () => {
+    const openStashView = async (sha?: string) => {
       setStashOpen(true)
       setStashLoading(true)
       setStashErr('')
       try {
-        const d: any = await getJson('task/stash-diff?id=' + encodeURIComponent(task.id))
+        const url = 'task/stash-diff?id=' + encodeURIComponent(task.id) + (sha ? '&sha=' + encodeURIComponent(sha) : '')
+        const d: any = await getJson(url)
         setStashPatch(String((d && d.patch) || ''))
       } catch (e: any) {
         setStashErr((e && e.message) || t.failed)
@@ -1104,35 +1193,46 @@ export function TaskDetail(props: any) {
         setStashLoading(false)
       }
     }
-    const applyStash = async () => {
+    const applyStashEntry = async (sha: string) => {
       if (busy || actionRef.current) return
       actionRef.current = true
       setBusy('stash-apply')
       setStashErr('')
       try {
-        await post('task/stash', { id: task.id, action: 'apply' })
+        await post('task/stash', { id: task.id, action: 'apply', sha })
         await props.onChanged()
         props.notify(t.reviewStashApplied)
       } catch (e: any) {
-        // Conflict (or other failure): keep the stash and show the reason inline.
+        // Conflict (or other failure): the stash record is kept; show the reason.
         setStashErr((e && e.message) || t.failed)
       } finally {
         actionRef.current = false
         setBusy('')
       }
     }
+    const dropStashEntry = async (sha: string) => {
+      if (busy || actionRef.current) return
+      await act('stash-drop', t.reviewStashDropped, () => post('task/stash', { id: task.id, action: 'drop', sha }))
+    }
+    const stashes: any[] = Array.isArray(task.pendingStashes) && task.pendingStashes.length
+      ? task.pendingStashes
+      : (task.reviewStash ? [{ sha: '', source: 'review', ref: task.reviewStash, files: [], unverified: true }] : [])
 
-    const stashNode = task.reviewStash
+    const stashNode = stashes.length
       ? h(Card, { className: 'dshw-stash-card' },
         h(CardHead, { icon: 'archive', title: t.reviewStashTitle }),
-        h('div', { className: 'dshw-hint', style: { marginBottom: '8px' } }, String(t.reviewStashNotice).replace('{ref}', task.reviewStash)),
-        h('div', { className: 'dshw-action-grid' },
-          h(Btn, { icon: 'archiveRestore', disabled: busy !== '', onClick: () => void applyStash() }, t.reviewStashApply),
-          h(Btn, { icon: 'file', disabled: busy !== '' || stashLoading, onClick: () => void openStashView() }, t.reviewStashView),
-          h(Btn, { variant: 'danger', icon: 'trash', disabled: busy !== '' || !stashDropConfirm, title: stashDropConfirm ? undefined : t.reviewStashDropConfirm, onClick: () => void act('stash-drop', t.reviewStashDropped, () => post('task/stash', { id: task.id, action: 'drop' })) }, t.reviewStashDrop)),
-        h('label', { className: 'dshw-check', style: { marginTop: '8px' } },
-          h('input', { type: 'checkbox', checked: stashDropConfirm, onChange: (e: any) => setStashDropConfirm(e.target.checked) }),
-          h('span', { className: 'dshw-check-copy' }, t.reviewStashDropConfirm)),
+        stashes.map((s: any, i: number) => h('div', { key: s.sha || s.ref || i, className: 'dshw-stash-entry', style: i ? { marginTop: '12px' } : null },
+          h('div', { className: 'dshw-hint', style: { marginBottom: '8px' } },
+            String(t.reviewStashNotice).replace('{ref}', s.ref || s.sha || '—'),
+            s.unverified ? h(Chip, { tone: 'warn', small: true }, t.stashUnverified) : null,
+            h('span', null, ' · ' + (Array.isArray(s.files) ? s.files.length : 0) + ' ' + t.mergePreviewFiles)),
+          h('div', { className: 'dshw-action-grid' },
+            h(Btn, { icon: 'archiveRestore', disabled: busy !== '' || !s.sha, title: !s.sha ? t.stashUnverified : undefined, onClick: () => void applyStashEntry(s.sha) }, t.reviewStashApply),
+            h(Btn, { icon: 'file', disabled: busy !== '' || stashLoading, onClick: () => void openStashView(s.sha || undefined) }, t.stashViewFiles),
+            h(Btn, { variant: 'danger', icon: 'trash', disabled: busy !== '' || stashDropSha !== (s.sha || s.ref), title: stashDropSha === (s.sha || s.ref) ? undefined : t.stashDropConfirm, onClick: () => void dropStashEntry(s.sha || '') }, t.reviewStashDrop)),
+          h('label', { className: 'dshw-check', style: { marginTop: '6px' } },
+            h('input', { type: 'checkbox', checked: stashDropSha === (s.sha || s.ref), onChange: (e: any) => setStashDropSha(e.target.checked ? (s.sha || s.ref) : '') }),
+            h('span', { className: 'dshw-check-copy' }, t.stashDropConfirm)))),
         stashErr ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, stashErr)) : null)
       : null
 
@@ -1196,7 +1296,7 @@ export function TaskDetail(props: any) {
           showMerge ? h(Btn, {
             icon: 'merge',
             disabled: !(curOnBase ? mergeEnabled : canSwitchToBase) || busy !== '',
-            onClick: () => { setMergeSwitch(!curOnBase); setMergeRestore(true); setMergeOpen(true); void loadPreview({ force: true }) },
+            onClick: () => { void runMerge() },
           }, busy === 'merge' ? h(Spinner) : null, curOnBase ? t.merge : t.mergeSwitchToBase) : null),
         reasonsNode) : null
 
@@ -1269,6 +1369,7 @@ export function TaskDetail(props: any) {
         err ? h('div', { className: 'dshw-err', role: 'alert', style: { marginTop: '12px' } }, h(Icon, { name: 'alert' }), h('span', null, err)) : null),
       acceptanceNode,
       stashNode,
+      partialNode,
       notStartedNode,
       pendingNode,
       healthNode,
@@ -1325,6 +1426,7 @@ export function TaskDetail(props: any) {
       switchModal,
       stashModal,
       syncConfirmModal,
+      mergeDirtyModal,
       mergeModal,
       cleanupModal,
       deleteModal)

@@ -81,7 +81,7 @@ export async function sendJson(path: string, body: any, method: string, timeoutM
   return withToken((token) =>
     request(path, { method, headers: { 'content-type': 'application/json', 'x-dsh-worktree-token': token }, body: JSON.stringify(body || {}) }, timeoutMs).then(async (res) => {
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw Object.assign(new Error(data.error || data.message || 'HTTP ' + res.status), { status: res.status })
+      if (!res.ok) throw Object.assign(new Error(data.error || data.message || 'HTTP ' + res.status), { status: res.status, code: data.code })
       return data
     }),
   )
