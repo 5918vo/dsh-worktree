@@ -80,6 +80,7 @@ export function apply(ctx: Ctx, rawConfig: unknown, options?: ApplyOptions): App
   ctx.effect(() => {
     void store
       .load()
+      .then(() => runtime.migrateLegacyStashes())
       .then(() => runtime.reconcilePendingOps())
       .then((results) => {
         for (const result of results) {

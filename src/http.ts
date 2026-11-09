@@ -249,9 +249,9 @@ export function registerHttp(app: App): () => void {
     const id = q(req, 'id')
     if (!id) return send(res, 400, { error: 'id required' })
     try {
-      send(res, 200, await app.runtime.reviewStashDiff(id))
+      send(res, 200, await app.runtime.stashDiff(id, q(req, 'sha') || undefined))
     } catch (error) {
-      if (error instanceof TaskError) return send(res, error.status, { error: error.message })
+      if (error instanceof TaskError) return send(res, error.status, { error: error.message, ...(error.code ? { code: error.code } : {}) })
       send(res, 500, { error: error instanceof Error ? error.message : String(error) })
     }
   })
@@ -341,7 +341,9 @@ export function registerHttp(app: App): () => void {
 
   act('checkout', async (id, body) => app.runtime.checkout(id, { strategy: body.strategy, expectedSha: body.expectedSha ? String(body.expectedSha) : undefined }))
   act('back', async (id, body) => app.runtime.back(id, { strategy: body.strategy, expectedSha: body.expectedSha ? String(body.expectedSha) : undefined }))
-  act('stash', async (id, body) => (String(body.action || '') === 'drop' ? app.runtime.dropReviewStash(id) : app.runtime.applyReviewStash(id)))
+  act('stash', async (id, body) => (String(body.action || '') === 'drop'
+    ? app.runtime.dropStash(id, body.sha ? String(body.sha) : undefined)
+    : app.runtime.applyStash(id, body.sha ? String(body.sha) : undefined)))
   act('merge', async (id, body) => app.runtime.merge(id, {
     switchToBase: body.switchToBase === true,
     restoreAfter: body.restoreAfter !== undefined ? body.restoreAfter === true : body.restoreTo !== false,

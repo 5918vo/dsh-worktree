@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import * as gitx from './gitx.js'
-import { DiffFile, MergeBlocker, MergeBlockingFile, MergeConflictInfo, MergePreflight, MergePreview, ModelSelection, Project, ProjectStats, ProjectView, TaskDiff, TaskSnapshot, TaskStatus, TaskView, WorktreeConfig, WorktreeTask } from './models.js'
+import { DiffFile, MergeBlocker, MergeBlockingFile, MergeConflictInfo, MergePreflight, MergePreview, ModelSelection, PendingStash, Project, ProjectStats, ProjectView, TaskDiff, TaskSnapshot, TaskStatus, TaskView, WorktreeConfig, WorktreeTask } from './models.js'
 import { Store } from './store.js'
 import { normalizeCriteria } from './criteria.js'
 
@@ -427,6 +427,9 @@ export class Runtime {
     for (const t of tasks) {
       if ((await this.snapshot(t)).status === 'reviewing') {
         throw new TaskError(`任务「${t.title}」正在验收中，请先切回原分支再删除项目`, 409)
+      }
+      if ((t.pendingStashes || []).length) {
+        throw new TaskError(`任务「${t.title}」还有未处理的暂存，请先恢复或丢弃再删除项目`, 409, 'pending-stash')
       }
     }
     if (opts.withWorktrees) {
@@ -948,16 +951,16 @@ export class Runtime {
   }
 
   /** Apply the user's choice when switching with dirty files; returns a stash message when stashed. */
-  private async applySwitchStrategy(task: WorktreeTask, repoPath: string, pre: SwitchPreflight, strategy?: SwitchStrategy): Promise<string | undefined> {
+  private async applySwitchStrategy(task: WorktreeTask, repoPath: string, pre: SwitchPreflight, strategy?: SwitchStrategy): Promise<{ sha: string; ref: string } | undefined> {
     if (pre.safe) return undefined
     const list = pre.obstacles.map((o) => o.path).slice(0, 12).join('、')
     if (!strategy || strategy === 'abort') {
       throw new TaskError(`主仓库有 ${pre.obstacles.length} 个改动会阻止切换：${list}。请选择「暂存后切换」或「放弃改动后切换」`, 409)
     }
     if (strategy === 'stash') {
-      const message = `dsh-wt:${id8(task.id)}:review`
-      await gitx.stashPush(this.gitPath, repoPath, message)
-      return message
+      const ref = `dsh-wt:${id8(task.id)}:review:${Date.now()}`
+      const sha = await gitx.stashPushSha(this.gitPath, repoPath, ref)
+      return { sha, ref }
     }
     // discard
     const tracked = pre.obstacles.filter((o) => o.kind === 'tracked').map((o) => o.path)
@@ -1049,7 +1052,16 @@ export class Runtime {
     task.reviewOriginalRef = originalRef || undefined
     task.reviewOriginalSha = headSha || undefined
     if (originalRef) task.originalBranch = originalRef
-    if (stash) task.reviewStash = stash
+    if (stash) {
+      task.reviewStash = stash.ref
+      this.addPendingStash(task, {
+        sha: stash.sha,
+        source: 'review',
+        ref: stash.ref,
+        createdAt: Date.now(),
+        files: await gitx.stashFiles(this.gitPath, repoPath, stash.sha),
+      })
+    }
     this.store.putTask(task)
     return task
   }
@@ -1096,46 +1108,96 @@ export class Runtime {
     task.reviewSha = undefined
     task.reviewOriginalRef = undefined
     task.reviewOriginalSha = undefined
-    if (stash) task.reviewStash = stash
+    if (stash) {
+      task.reviewStash = stash.ref
+      this.addPendingStash(task, {
+        sha: stash.sha,
+        source: 'review',
+        ref: stash.ref,
+        createdAt: Date.now(),
+        files: await gitx.stashFiles(this.gitPath, repoPath, stash.sha),
+      })
+    }
     if (!task.originalBranch && target.ref) task.originalBranch = target.ref
     this.store.putTask(task)
     return task
   }
 
-  async applyReviewStash(id: string): Promise<WorktreeTask> {
+  /** Choose a recorded stash (by sha when given, else the oldest). */
+  private pickStash(task: WorktreeTask, sha?: string): PendingStash | undefined {
+    const list = Array.isArray(task.pendingStashes) ? task.pendingStashes : []
+    if (!list.length) return undefined
+    if (sha) return list.find((s) => s.sha === sha)
+    return list[0]
+  }
+
+  /**
+   * Migrate a legacy `reviewStash` (message only) into `pendingStashes`. When the
+   * message does not map to exactly one stash entry the record is kept but marked
+   * `unverified` (never guessed or dropped).
+   */
+  async migrateLegacyStashes(): Promise<number> {
+    let migrated = 0
+    for (const task of this.store.listTasks()) {
+      if (!task.reviewStash) continue
+      const list = Array.isArray(task.pendingStashes) ? task.pendingStashes : []
+      if (!list.some((s) => s.source === 'review' && s.ref === task.reviewStash)) {
+        const match = await gitx
+          .stashEntryForMessage(this.gitPath, task.repoPath, task.reviewStash)
+          .catch(() => ({ entry: null, unique: false }))
+        const sha = match.unique && match.entry ? match.entry.sha : ''
+        this.addPendingStash(task, {
+          sha,
+          source: 'review',
+          ref: task.reviewStash,
+          createdAt: task.updatedAt || Date.now(),
+          files: sha ? await gitx.stashFiles(this.gitPath, task.repoPath, sha).catch(() => []) : [],
+          unverified: !sha,
+        })
+      }
+      task.reviewStash = undefined
+      this.store.putTask(task)
+      migrated += 1
+    }
+    return migrated
+  }
+
+  /** Apply a recorded stash (never drops it; the user must drop explicitly). */
+  async applyStash(id: string, sha?: string): Promise<WorktreeTask> {
     const task = this.needTask(id)
-    if (!task.reviewStash) throw new TaskError('没有可恢复的验收暂存')
+    const entry = this.pickStash(task, sha)
+    if (!entry) throw new TaskError('没有可恢复的暂存', 404, 'stash-missing')
+    if (!entry.sha) throw new TaskError('暂存记录无法唯一匹配到 stash，无法自动恢复；请手动处理', 409, 'stash-unverified')
     try {
-      // apply (not pop): keep the stash until we know the restore succeeded.
-      await gitx.stashApplyByMessage(this.gitPath, task.repoPath, task.reviewStash)
+      await gitx.stashApplyBySha(this.gitPath, task.repoPath, entry.sha)
     } catch (error) {
       const text = (error as any)?.stderr || (error instanceof Error ? error.message : String(error))
       const files = conflictFiles(String(text))
       const detail = files.length ? files.join('、') : '未知文件'
-      throw new TaskError(`恢复暂存产生冲突：${detail}。暂存记录已保留，请解决冲突后再恢复或丢弃。`, 409)
+      throw new TaskError(`恢复暂存产生冲突：${detail}。暂存记录已保留，请解决冲突后再恢复或丢弃。`, 409, 'stash-apply-conflict')
     }
-    // Safe now: drop the applied stash so it cannot be applied twice.
-    await gitx.stashDropByMessage(this.gitPath, task.repoPath, task.reviewStash)
-    task.reviewStash = undefined
-    this.store.putTask(task)
+    // Apply succeeded; keep the record (only an explicit drop removes it).
     return task
   }
 
-  /** Read-only unified patch of the recorded review stash, for the "view" dialog. */
-  async reviewStashDiff(id: string): Promise<{ patch: string }> {
+  /** Read-only unified patch of a recorded stash. */
+  async stashDiff(id: string, sha?: string): Promise<{ patch: string }> {
     const task = this.needTask(id)
-    if (!task.reviewStash) return { patch: '' }
-    const patch = await gitx.stashShowByMessage(this.gitPath, task.repoPath, task.reviewStash)
+    const entry = this.pickStash(task, sha)
+    if (!entry || !entry.sha) return { patch: '' }
+    const patch = await gitx.stashShowBySha(this.gitPath, task.repoPath, entry.sha)
     return { patch }
   }
 
-  async dropReviewStash(id: string): Promise<WorktreeTask> {
+  /** Drop a recorded stash (explicit user action; removes the record). */
+  async dropStash(id: string, sha?: string): Promise<WorktreeTask> {
     const task = this.needTask(id)
-    if (task.reviewStash) {
-      await gitx.stashDropByMessage(this.gitPath, task.repoPath, task.reviewStash)
-      task.reviewStash = undefined
-      this.store.putTask(task)
-    }
+    const entry = this.pickStash(task, sha)
+    if (!entry) return task
+    if (entry.sha) await gitx.stashDropBySha(this.gitPath, task.repoPath, entry.sha)
+    task.pendingStashes = (task.pendingStashes || []).filter((s) => s !== entry)
+    if (task.reviewStash === entry.ref) task.reviewStash = undefined
+    this.store.putTask(task)
     return task
   }
 
@@ -1692,6 +1754,7 @@ export class Runtime {
 
   private async cleanupLocked(task: WorktreeTask, opts: { force?: boolean; deleteBranch?: boolean; forceDeleteBranch?: boolean }): Promise<WorktreeTask> {
     this.assertAgentIdle(task)
+    if ((task.pendingStashes || []).length) throw new TaskError('任务还有未处理的暂存，请先恢复或丢弃后再清理 worktree', 409, 'pending-stash')
     // Never clean the working copy the main repo is currently reviewing: the
     // user would be left on a detached/branch state with no way back.
     if ((await this.snapshot(task)).status === 'reviewing') {
@@ -1768,6 +1831,7 @@ export class Runtime {
     if ((await this.snapshot(task)).status === 'reviewing') {
       throw new TaskError('任务正在验收中，请先切回原分支再删除记录', 409)
     }
+    if ((task.pendingStashes || []).length) throw new TaskError('任务还有未处理的暂存，请先恢复或丢弃后再删除记录', 409, 'pending-stash')
     this.store.deleteTask(id)
   }
 
