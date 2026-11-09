@@ -101,6 +101,27 @@ export function registerHttp(app: App): () => void {
     send(res, 200, { ok: true })
   })
 
+  route('acceptance-criteria', 'GET', async (_req, res) => send(res, 200, { items: app.runtime.listAcceptanceCriteria() }))
+  route('acceptance-criteria/add', 'POST', async (req, res) => {
+    requireToken(req)
+    const body = await readJson(req)
+    try {
+      const items = app.runtime.addAcceptanceCriteria(Array.isArray(body.items) ? body.items.map(String) : [String(body.text || '')])
+      send(res, 200, { items })
+    } catch (error) {
+      send(res, 400, { error: error instanceof Error ? error.message : String(error) })
+    }
+  })
+  route('acceptance-criteria/delete', 'POST', async (req, res) => {
+    requireToken(req)
+    const body = await readJson(req)
+    try {
+      send(res, 200, { items: app.runtime.removeAcceptanceCriterion(String(body.text || '')) })
+    } catch (error) {
+      send(res, 400, { error: error instanceof Error ? error.message : String(error) })
+    }
+  })
+
   route('branches', 'GET', async (req, res) => {
     const dir = q(req, 'path')
     if (!dir) return send(res, 400, { error: 'path required' })
@@ -128,6 +149,7 @@ export function registerHttp(app: App): () => void {
         start: body.start !== false,
         autoBind: false,
         model: body.model && typeof body.model === 'object' ? body.model : undefined,
+        acceptanceCriteria: Array.isArray(body.acceptanceCriteria) ? body.acceptanceCriteria.map(String) : undefined,
       })
       send(res, 200, { task })
     } catch (error) {

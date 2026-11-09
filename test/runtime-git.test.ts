@@ -82,6 +82,31 @@ test('publish records the chosen model on the task', async () => {
   }
 })
 
+test('publish records acceptance criteria and lists them in the prompt', async () => {
+  const f = await fixture()
+  try {
+    assert.deepEqual(f.runtime.addAcceptanceCriteria(['  a ', 'a', '', 'b']), ['a', 'b'])
+    assert.deepEqual(f.runtime.listAcceptanceCriteria(), ['a', 'b'])
+    assert.deepEqual(f.runtime.removeAcceptanceCriterion('a'), ['b'])
+
+    const task = await f.runtime.publish({
+      repoPath: f.repo,
+      title: 't',
+      description: 'd',
+      acceptanceCriteria: ['  keep  ', '', 'dup', 'keep'],
+    })
+    assert.deepEqual(task.acceptanceCriteria, ['keep', 'dup'])
+    assert.ok(task.firstPrompt.includes('验收标准'))
+    assert.ok(task.firstPrompt.includes('- keep'))
+    assert.ok(task.firstPrompt.includes('结束前逐条说明是否满足'))
+
+    const empty = await f.runtime.publish({ repoPath: f.repo, title: 'e', description: 'd', acceptanceCriteria: ['  ', ''] })
+    assert.equal(empty.acceptanceCriteria, undefined)
+  } finally {
+    await teardown(f)
+  }
+})
+
 test('publish rejects invalid input', async () => {
   const f = await fixture()
   try {

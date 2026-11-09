@@ -77,6 +77,7 @@ export class Store {
   private projects = new Map<string, Project>()
   private tasks = new Map<string, WorktreeTask>()
   private recents: string[] = []
+  private criteria: string[] = []
 
   constructor(dir = stateDir()) {
     this.dir = dir
@@ -98,6 +99,11 @@ export class Store {
   private readRecents(): string[] {
     const value = readJsonSync<any>(this.file('recents.json'), [])
     return Array.isArray(value) ? value.filter((item) => typeof item === 'string') : []
+  }
+
+  private readCriteria(): string[] {
+    const value = readJsonSync<any>(this.file('acceptance-criteria.json'), [])
+    return Array.isArray(value) ? value.filter((item) => typeof item === 'string' && item.trim()).map((item) => item.trim()) : []
   }
 
   private refreshProjects(): void {
@@ -134,6 +140,10 @@ export class Store {
     this.recents = this.readRecents()
   }
 
+  private refreshCriteria(): void {
+    this.criteria = this.readCriteria()
+  }
+
   private saveProjects(): void {
     writeJsonSync(this.file('projects.json'), Object.fromEntries(this.projects))
   }
@@ -146,10 +156,15 @@ export class Store {
     writeJsonSync(this.file('recents.json'), this.recents)
   }
 
+  private saveCriteria(): void {
+    writeJsonSync(this.file('acceptance-criteria.json'), this.criteria)
+  }
+
   private saveAll(): void {
     this.saveProjects()
     this.saveTasks()
     this.saveRecents()
+    this.saveCriteria()
   }
 
   private withLock<T>(fn: () => T): T {
@@ -194,6 +209,7 @@ export class Store {
     this.refreshProjects()
     this.refreshTasks()
     this.refreshRecents()
+    this.refreshCriteria()
     if (!this.migrateLegacy) return
     const marker = this.file('.migrated-v2')
     this.withLock(() => {
@@ -402,6 +418,37 @@ export class Store {
       this.refreshRecents()
       this.recents = []
       this.saveRecents()
+    })
+  }
+
+  // ---- global acceptance-criteria library ----
+
+  listCriteria(): string[] {
+    this.refreshCriteria()
+    return [...this.criteria]
+  }
+
+  /** Append one or more criteria; blanks and duplicates are ignored. */
+  addCriteria(values: string[]): string[] {
+    const incoming = values.map((v) => String(v || '').trim()).filter(Boolean)
+    if (!incoming.length) return this.listCriteria()
+    return this.withLock(() => {
+      this.refreshCriteria()
+      for (const text of incoming) if (!this.criteria.includes(text)) this.criteria.push(text)
+      this.saveCriteria()
+      return [...this.criteria]
+    })
+  }
+
+  removeCriterion(text: string): string[] {
+    return this.withLock(() => {
+      this.refreshCriteria()
+      const next = this.criteria.filter((item) => item !== text)
+      if (next.length !== this.criteria.length) {
+        this.criteria = next
+        this.saveCriteria()
+      }
+      return [...this.criteria]
     })
   }
 

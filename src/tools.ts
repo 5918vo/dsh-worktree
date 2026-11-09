@@ -26,7 +26,7 @@ function clean(value: unknown): Json {
   }
 }
 
-function brief(v: { task: { id: string; title: string; repoPath: string; baseBranch: string; branch: string; worktreePath: string; sessionId: string | null; parentId?: string }; snapshot: { status: string; worktree: { ahead: number; dirtyCount: number }; repo: { currentBranch: string | null }; postMergeAhead?: number } }) {
+function brief(v: { task: { id: string; title: string; repoPath: string; baseBranch: string; branch: string; worktreePath: string; sessionId: string | null; parentId?: string; acceptanceCriteria?: string[] }; snapshot: { status: string; worktree: { ahead: number; dirtyCount: number }; repo: { currentBranch: string | null }; postMergeAhead?: number } }) {
   return {
     id: v.task.id,
     title: v.task.title,
@@ -36,6 +36,7 @@ function brief(v: { task: { id: string; title: string; repoPath: string; baseBra
     worktreePath: v.task.worktreePath,
     sessionId: v.task.sessionId,
     parentId: v.task.parentId || null,
+    acceptanceCriteria: Array.isArray(v.task.acceptanceCriteria) ? v.task.acceptanceCriteria : [],
     status: v.snapshot.status,
     ahead: v.snapshot.worktree.ahead,
     dirtyWorktree: v.snapshot.worktree.dirtyCount,
@@ -67,6 +68,7 @@ export function registerTools(app: App): () => void {
           parent_id: { type: 'string', description: 'Optional id of an already-merged task to continue from; creates a follow-up task on a new branch of the base.' },
           carry_leftover: { type: 'boolean', description: 'When continuing: also migrate commits added to the old branch after its merge (default false).' },
           start: { type: 'boolean', description: 'Auto-start the bound session with the task prompt (default true).' },
+          acceptance_criteria: { type: 'array', items: { type: 'string' }, description: 'Optional acceptance criteria, one checkable result per item.' },
         },
         required: ['title', 'task'],
       },
@@ -83,6 +85,7 @@ export function registerTools(app: App): () => void {
             parentId: args.parent_id ? String(args.parent_id) : undefined,
             carryLeftover: args.carry_leftover === true,
             start: args.start === false ? false : true,
+            acceptanceCriteria: Array.isArray(args.acceptance_criteria) ? args.acceptance_criteria.map(String) : undefined,
           })
           return clean({
             ok: true,

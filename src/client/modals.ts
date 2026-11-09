@@ -2,8 +2,9 @@ import { React, h } from './ui'
 import { Btn, Field, Icon, Modal, Spinner, BranchCombobox } from './primitives'
 import { ModelCombobox } from './model-picker'
 import { useBranchInfo } from './hooks'
-import { appCtx, bindSession, post, withTimeout } from './context'
+import { appCtx, bindSession, getJson, post, withTimeout } from './context'
 import { baseName, cx } from './format'
+import { normalizeCriteria, parseCriteriaText } from '../criteria'
 
 export function AddProjectModal(props: { t: any; onClose: () => void; onAdded: (project: any) => void }) {
     const t = props.t
@@ -229,6 +230,9 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
     const [carryLeftover, setCarryLeftover] = React.useState(false)
     const [asPlain, setAsPlain] = React.useState(false)
     const [start, setStart] = React.useState(true)
+    const [criteriaLibrary, setCriteriaLibrary] = React.useState([] as string[])
+    const [pickedCriteria, setPickedCriteria] = React.useState([] as string[])
+    const [manualCriteria, setManualCriteria] = React.useState('')
     const [busy, setBusy] = React.useState(false)
     const [err, setErr] = React.useState('')
     const [fieldErrors, setFieldErrors] = React.useState({} as any)
@@ -258,6 +262,15 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
         .finally(() => setModelLoading(false))
     }
     React.useEffect(() => { loadModels() }, [])
+
+    React.useEffect(() => {
+      getJson('acceptance-criteria')
+        .then((d: any) => setCriteriaLibrary(Array.isArray(d.items) ? d.items : []))
+        .catch(() => {})
+    }, [])
+    const toggleCriterion = (item: string) => {
+      setPickedCriteria((prev: string[]) => (prev.includes(item) ? prev.filter((x) => x !== item) : [...prev, item]))
+    }
 
     React.useEffect(() => {
       const d = branches.data
@@ -303,6 +316,7 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
           description,
           branchName: branchName.trim() || undefined,
           model: modelChoice || undefined,
+          acceptanceCriteria: normalizeCriteria([...pickedCriteria, ...parseCriteriaText(manualCriteria)]),
           ...(parentTask && !asPlain ? { parentId: parentTask.id, carryLeftover } : {}),
           start,
         }), 30000, t.publishTimeout)
@@ -436,6 +450,25 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
             fieldErrors.description
               ? h('div', { className: 'dshw-err', id: 'dshw-publish-description-error', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, fieldErrors.description))
               : null)),
+        h('div', { className: 'dshw-form-row' },
+          h('label', { htmlFor: 'dshw-publish-criteria' }, t.acceptanceCriteria),
+          h('div', null,
+            criteriaLibrary.length
+              ? h('div', { className: 'dshw-criteria-pick' },
+                h('div', { className: 'dshw-criteria-pick-title' }, t.criteriaPickHint),
+                criteriaLibrary.map((item: string) => h('label', { key: item, className: 'dshw-check dshw-criteria-check' },
+                  h('input', { type: 'checkbox', checked: pickedCriteria.includes(item), onChange: () => toggleCriterion(item) }),
+                  h('span', { className: 'dshw-check-copy' }, item))))
+              : null,
+            h('textarea', {
+              id: 'dshw-publish-criteria',
+              className: 'dshw-input',
+              value: manualCriteria,
+              rows: 3,
+              placeholder: t.acceptanceCriteriaPlaceholder,
+              onChange: (e: any) => setManualCriteria(e.target.value),
+            }),
+            h('div', { className: 'dshw-hint' }, t.acceptanceCriteriaHint))),
         h('div', { className: 'dshw-form-row' },
           h('label', { htmlFor: 'dshw-publish-base' }, t.baseBranch),
           h('div', null,

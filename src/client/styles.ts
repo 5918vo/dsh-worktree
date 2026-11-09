@@ -370,6 +370,26 @@ export const CSS = `
 .dshw-model-default--selected{color:var(--dshw-brand);font-weight:600}
 .dshw-model-default .dshw-combo-check{margin-left:auto}
 .dshw-model-group{padding:8px 9px 3px;font-size:10.5px;font-weight:700;letter-spacing:.02em;color:var(--dshw-text-3)}
+/* acceptance criteria ------------------------------------------------------ */
+.dshw-criteria-pick{border:1px solid var(--dshw-border-strong);border-radius:8px;background:var(--dshw-surface-2);padding:8px 10px;margin-bottom:8px;max-height:150px;overflow:auto}
+.dshw-criteria-pick-title{font-size:11px;color:var(--dshw-text-3);margin-bottom:5px}
+.dshw-criteria-check{margin:0}
+.dshw-criteria-check+.dshw-criteria-check{margin-top:6px}
+.dshw-acceptance-list{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.dshw-acceptance-list li{display:flex;align-items:flex-start;gap:7px;font-size:12.5px;color:var(--dshw-text);line-height:1.55}
+.dshw-acceptance-list .dshw-ico{width:14px;height:14px;margin-top:2px;color:var(--dshw-success);flex:none}
+.dshw-acceptance-card .dshw-card-head{margin-bottom:10px}
+.dshw-merge-criteria{border:1px solid var(--dshw-border);background:var(--dshw-surface-2);border-radius:8px;padding:9px 11px;margin:10px 0}
+.dshw-merge-criteria-title{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--dshw-text-2);margin-bottom:5px}
+.dshw-merge-criteria-title .dshw-ico{width:13px;height:13px;color:var(--dshw-success)}
+.dshw-merge-criteria ul{margin:0;padding-left:18px;list-style:disc;font-size:12px;color:var(--dshw-text);line-height:1.55}
+.dshw-criteria-add{display:flex;gap:8px;align-items:stretch;margin:2px 0 10px}
+.dshw-criteria-add .dshw-input{flex:1;min-width:0}
+.dshw-criteria-add .dshw-btn{flex:none;height:36px}
+.dshw-criteria-lib{display:flex;flex-direction:column;gap:6px}
+.dshw-criteria-lib-row{display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--dshw-border);border-radius:8px;background:var(--dshw-surface-2);font-size:12.5px}
+.dshw-criteria-lib-row .dshw-ico{width:14px;height:14px;color:var(--dshw-success);flex:none}
+.dshw-criteria-lib-text{flex:1;min-width:0;overflow-wrap:anywhere}
 .dshw-check{display:flex;align-items:flex-start;gap:9px;font-size:12.5px;cursor:pointer;color:var(--dshw-text)}
 .dshw-check input{width:15px;height:15px;margin:1px 0 0;accent-color:var(--dshw-brand);flex:none;cursor:pointer}
 .dshw-check-copy{min-width:0}

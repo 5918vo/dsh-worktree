@@ -9,6 +9,9 @@ export function SettingsPage(props: any) {
     useStyles()
     const [cfg, setCfg] = React.useState(null)
     const [recents, setRecents] = React.useState([])
+    const [criteria, setCriteria] = React.useState([] as string[])
+    const [newCriterion, setNewCriterion] = React.useState('')
+    const [criteriaBusy, setCriteriaBusy] = React.useState(false)
     const [clearing, setClearing] = React.useState(false)
     const [clearOpen, setClearOpen] = React.useState(false)
     const [err, setErr] = React.useState('')
@@ -18,7 +21,40 @@ export function SettingsPage(props: any) {
     React.useEffect(() => {
       getJson('config').then((d: any) => setCfg(d.config)).catch((e: any) => setErr((e && e.message) || t.loadFailed))
       getJson('recents').then((d: any) => setRecents(d.dirs || [])).catch(() => {})
+      getJson('acceptance-criteria').then((d: any) => setCriteria(Array.isArray(d.items) ? d.items : [])).catch(() => {})
     }, [])
+
+    const addCriterion = async () => {
+      const text = newCriterion.trim()
+      if (!text || criteriaBusy) return
+      setCriteriaBusy(true)
+      setErr('')
+      try {
+        const d: any = await post('acceptance-criteria/add', { text })
+        setCriteria(Array.isArray(d.items) ? d.items : [])
+        setNewCriterion('')
+        notify(t.criterionAdded)
+      } catch (e: any) {
+        setErr((e && e.message) || t.failed)
+      } finally {
+        setCriteriaBusy(false)
+      }
+    }
+
+    const removeCriterion = async (text: string) => {
+      if (criteriaBusy) return
+      setCriteriaBusy(true)
+      setErr('')
+      try {
+        const d: any = await post('acceptance-criteria/delete', { text })
+        setCriteria(Array.isArray(d.items) ? d.items : [])
+        notify(t.criterionRemoved)
+      } catch (e: any) {
+        setErr((e && e.message) || t.failed)
+      } finally {
+        setCriteriaBusy(false)
+      }
+    }
 
     const clearRecents = async () => {
       if (clearRef.current || clearing) return
@@ -69,6 +105,26 @@ export function SettingsPage(props: any) {
             h('h1', null, t.title),
             h('div', { className: 'dshw-page-sub' }, t.settingsSub))),
         err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null,
+        h(Card, null,
+          h(CardHead, { icon: 'checkCircle', title: t.acceptanceLibrary }),
+          h('p', { className: 'dshw-card-sub' }, t.acceptanceLibraryHint),
+          h('div', { className: 'dshw-criteria-add' },
+            h('input', {
+              className: 'dshw-input',
+              value: newCriterion,
+              placeholder: t.criterionInputPlaceholder,
+              onChange: (e: any) => setNewCriterion(e.target.value),
+              onKeyDown: (e: any) => { if (e.key === 'Enter') { e.preventDefault(); void addCriterion() } },
+            }),
+            h(Btn, { variant: 'primary', disabled: !newCriterion.trim() || criteriaBusy, onClick: () => void addCriterion() },
+              criteriaBusy ? h(Spinner) : null, t.addCriterion)),
+          criteria.length
+            ? h('div', { className: 'dshw-criteria-lib' }, criteria.map((item: string) =>
+              h('div', { key: item, className: 'dshw-criteria-lib-row' },
+                h(Icon, { name: 'check' }),
+                h('span', { className: 'dshw-criteria-lib-text' }, item),
+                h(IconBtn, { size: 'sm', icon: 'x', label: t.removeCriterion, onClick: () => void removeCriterion(item) }))))
+            : h('div', { className: 'dshw-hint' }, t.acceptanceLibraryEmpty)),
         h(Card, null,
           h(CardHead, {
             icon: 'clock',

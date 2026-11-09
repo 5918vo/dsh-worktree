@@ -10,6 +10,7 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import * as gitx from './gitx.js'
 import { DiffFile, MergePreview, ModelSelection, Project, ProjectStats, ProjectView, TaskDiff, TaskSnapshot, TaskStatus, TaskView, WorktreeConfig, WorktreeTask } from './models.js'
 import { Store } from './store.js'
+import { normalizeCriteria } from './criteria.js'
 
 export interface PublishInput {
   projectId?: string
@@ -27,6 +28,8 @@ export interface PublishInput {
   autoBind?: boolean
   /** Preferred model for the task session (applied when the session is created). */
   model?: ModelSelection
+  /** Optional acceptance criteria, one trimmed line per item. */
+  acceptanceCriteria?: string[]
 }
 
 export interface AddProjectInput {
@@ -174,6 +177,12 @@ export function buildFirstPrompt(task: WorktreeTask, parent?: ParentPromptInfo):
     lines.push(...parentPromptLines(parent, task.baseBranch))
     lines.push('')
   }
+  if (task.acceptanceCriteria && task.acceptanceCriteria.length) {
+    lines.push('验收标准：')
+    for (const item of task.acceptanceCriteria) lines.push(`- ${item}`)
+    lines.push('结束前逐条说明是否满足，未满足的说明原因。')
+    lines.push('')
+  }
   lines.push(
     '环境：',
     `- worktree：${task.worktreePath}`,
@@ -287,6 +296,19 @@ export class Runtime {
     if (typeof patch.branchPrefix === 'string') project.branchPrefix = patch.branchPrefix.trim() || undefined
     this.store.putProject(project)
     return project
+  }
+
+  /** Global, reusable acceptance-criteria library. */
+  listAcceptanceCriteria(): string[] {
+    return this.store.listCriteria()
+  }
+
+  addAcceptanceCriteria(values: string[]): string[] {
+    return this.store.addCriteria(normalizeCriteria(values))
+  }
+
+  removeAcceptanceCriterion(text: string): string[] {
+    return this.store.removeCriterion(String(text || '').trim())
   }
 
   /**
@@ -449,6 +471,7 @@ export class Runtime {
     if (!input.description?.trim()) throw new TaskError('任务描述不能为空')
     const model = input.model === undefined ? undefined : normalizeModelSelection(input.model)
     if (input.model !== undefined && model === undefined) throw new TaskError('模型选择无效')
+    const acceptanceCriteria = normalizeCriteria(input.acceptanceCriteria || [])
 
     const project = await this.ensureProject(input)
     const repoPath = project.repoPath
@@ -504,6 +527,7 @@ export class Runtime {
       firstPrompt: '',
       startOnBind: input.start !== false && input.autoBind !== false,
       ...(model ? { model } : {}),
+      ...(acceptanceCriteria.length ? { acceptanceCriteria } : {}),
       ...(parentId ? { parentId } : {}),
       createdAt: now,
       updatedAt: now,

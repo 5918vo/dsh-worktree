@@ -56,6 +56,8 @@ export interface WorktreeTask {
   sessionId: string | null
   /** First message sent into the session when it is created. */
   firstPrompt: string
+  /** Optional per-task acceptance criteria (one trimmed line per item). */
+  acceptanceCriteria?: string[]
   /** Auto-create the session on the next workbench mount (tool-publish path). */
   startOnBind: boolean
   /** Preferred model for the task session; applied right after the session is created. */

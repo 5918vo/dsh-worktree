@@ -307,6 +307,7 @@ export function TaskDetail(props: any) {
     const project = props.project
     const [busy, setBusy] = React.useState('')
     const [err, setErr] = React.useState('')
+    const acceptanceItems: string[] = Array.isArray(task.acceptanceCriteria) ? task.acceptanceCriteria : []
     const [mergeOpen, setMergeOpen] = React.useState(false)
     const [cleanupOpen, setCleanupOpen] = React.useState(false)
     const [deleteOpen, setDeleteOpen] = React.useState(false)
@@ -725,6 +726,11 @@ export function TaskDetail(props: any) {
           h(KV, { label: t.baseBranch }, h('span', { className: 'dshw-mono' }, task.baseBranch)),
           h(KV, { label: t.commits }, String(ahead)),
           h(KV, { label: t.uncommitted }, dirty > 0 ? h(Chip, { tone: 'warn', small: true }, dirty + ' ' + t.changesUnit) : h('span', { className: 'dshw-hint', style: { margin: 0 } }, t.clean))),
+        acceptanceItems.length
+          ? h('div', { className: 'dshw-merge-criteria' },
+            h('div', { className: 'dshw-merge-criteria-title' }, h(Icon, { name: 'checkCircle' }), t.acceptanceCriteria),
+            h('ul', null, acceptanceItems.map((item: string, i: number) => h('li', { key: i }, item))))
+          : null,
         previewBusy ? h('div', { className: 'dshw-hint' }, h(Spinner), t.mergePreviewChecking) : null,
         previewRisk
           ? h(Banner, {
@@ -861,6 +867,13 @@ export function TaskDetail(props: any) {
             : null))
       : null
 
+    const acceptanceNode = acceptanceItems.length
+      ? h(Card, { className: 'dshw-acceptance-card' },
+        h(CardHead, { icon: 'checkCircle', title: t.acceptanceCriteria }),
+        h('ul', { className: 'dshw-acceptance-list' }, acceptanceItems.map((item: string, i: number) =>
+          h('li', { key: i }, h(Icon, { name: 'check' }), h('span', null, item)))))
+      : null
+
     return h('div', { className: 'dshw-detail-inner' },
       h('article', { className: 'dshw-card dshw-hero' },
         h('div', { className: 'dshw-hero-top' },
@@ -887,6 +900,7 @@ export function TaskDetail(props: any) {
             h('div', { className: 'dshw-inline', style: { gap: '8px', flexWrap: 'wrap' } }, primary, secondaryOpen),
             h('span', { className: 'dshw-hint' }, lastActivity))),
         err ? h('div', { className: 'dshw-err', role: 'alert', style: { marginTop: '12px' } }, h(Icon, { name: 'alert' }), h('span', null, err)) : null),
+      acceptanceNode,
       notStartedNode,
       pendingNode,
       healthNode,
