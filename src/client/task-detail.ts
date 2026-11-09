@@ -5,6 +5,7 @@ import { clipText, cx, firstLine, fmtDuration, fmtK, jp, pad2, relTime, uuid } f
 import { pendingLabel, resolveStatus, statusMeta } from './status'
 import { fallbackEntries } from './timeline'
 import type { TimelineEntry } from './timeline'
+import { createPreviewController, shouldPollPreview } from './merge-preview'
 
 export function readLive(live: any) {
     if (!live) return null
@@ -341,35 +342,44 @@ export function TaskDetail(props: any) {
     const [stashErr, setStashErr] = React.useState('')
     const actionRef = React.useRef(false)
     const remotes = appCtx && appCtx.remote
-    const [preview, setPreview] = React.useState(null)
-    const [previewBusy, setPreviewBusy] = React.useState(false)
     const [syncBusy, setSyncBusy] = React.useState(false)
     const [syncConfirm, setSyncConfirm] = React.useState(false)
-    const previewRef = React.useRef(false)
-
-    const loadPreview = React.useCallback(async () => {
-      if (previewRef.current) return
-      previewRef.current = true
-      setPreviewBusy(true)
-      try {
-        const result = await post('task/merge-preview', { id: task.id })
-        setPreview(result.preview || null)
-      } catch {
-        /* the dry run is best-effort */
-      } finally {
-        previewRef.current = false
-        setPreviewBusy(false)
-      }
-    }, [task.id])
+    // One preview controller per task instance. It serialises requests so at most
+    // one is in flight, letting an older background poll never overwrite a fresh
+    // check requested by the merge dialog.
+    const previewController = React.useMemo(
+      () => createPreviewController({
+        taskId: task.id,
+        request: (force: boolean) => post('task/merge-preview', { id: task.id, force }).then((r: any) => (r && r.preview) || null),
+      }),
+      [task.id],
+    )
+    const [previewState, setPreviewState] = React.useState(previewController.getState())
+    React.useEffect(() => {
+      setPreviewState(previewController.getState())
+      const off = previewController.subscribe(setPreviewState)
+      return () => { off(); previewController.dispose() }
+    }, [previewController])
+    const loadPreview = React.useCallback((opts?: { force?: boolean }) => previewController.load(opts), [previewController])
+    // Four explicit phases; the last known result stays visible while re-checking
+    // or after an error, so the dialog never blanks out.
+    const previewSnap: any = previewState
+    const previewChecked = previewSnap.phase === 'ready' ? previewSnap : null
+    const preview = previewChecked ? previewChecked.preview : (previewSnap.previous ? previewSnap.previous.preview : null)
+    const previewBusy = previewSnap.phase === 'checking'
+    const previewError = previewSnap.phase === 'error' ? previewSnap.message : ''
+    const previewCheckedAt = previewChecked ? previewChecked.checkedAt : null
+    const previewTipSha = previewChecked ? previewChecked.tipSha : null
+    const previewBaseSha = previewChecked ? previewChecked.baseSha : null
+    const recheckPreview = () => { void previewController.load({ force: true }) }
 
     React.useEffect(() => {
-      setPreview(null)
-      void loadPreview()
-      const timer = setInterval(() => {
-        if (!document.hidden) void loadPreview()
+      void previewController.load({})
+      const timer = window.setInterval(() => {
+        if (!document.hidden) void previewController.load({})
       }, 15000)
-      return () => clearInterval(timer)
-    }, [loadPreview])
+      return () => window.clearInterval(timer)
+    }, [previewController])
 
     React.useEffect(() => {
       setMergeOpen(false)
@@ -566,7 +576,7 @@ export function TaskDetail(props: any) {
             size: 'sm',
             icon: 'merge',
             disabled: busy !== '',
-            onClick: () => { setPreview(null); setMergeSwitch(!curOnBase); setMergeRestore(true); setMergeOpen(true); void loadPreview() },
+            onClick: () => { setMergeSwitch(!curOnBase); setMergeRestore(true); setMergeOpen(true); void loadPreview({ force: true }) },
           }, t.mergeAgain),
           // "继续任务" is already the hero primary action on a continued task,
           // so only surface it here for the rare task whose hero cannot.
@@ -654,7 +664,7 @@ export function TaskDetail(props: any) {
     // Block only when a *real* check ran and failed. An unsupported Git (too old
     // for merge-tree) does not block merging; the UI shows a risk warning instead.
     const previewBlocksMerge = !!preview && preview.applicable !== false && preview.supported !== false && preview.checked === false
-    const previewReadyForMerge = !!preview && preview.applicable !== false && !conflictNow && !previewBusy && !previewBlocksMerge
+    const previewReadyForMerge = previewChecked !== null && !!preview && preview.applicable !== false && !conflictNow && !previewBusy && !previewBlocksMerge
 
     const showBack = onTaskBranch
     const showCheckout = !onTaskBranch && snap.status !== 'cleaned'
@@ -739,8 +749,9 @@ export function TaskDetail(props: any) {
         if (repoDirty > 0) mergeReasons.push({ text: String(t.acceptanceHintRepoDirtyMerge).replace('{n}', String(repoDirty)) })
         if (inProgress) mergeReasons.push({ text: t.acceptInProgress })
         if (agentRunning) mergeReasons.push({ text: t.acceptAgentRunning })
-        if (conflictNow) mergeReasons.push({ text: t.mergePreviewConflictHint, action: syncAction })
-        else if (previewBusy || !preview) mergeReasons.push({ text: t.mergePreviewChecking })
+        if (previewError) mergeReasons.push({ text: previewError, action: h(Btn, { size: 'sm', onClick: recheckPreview }, t.previewRecheck) })
+        else if (conflictNow) mergeReasons.push({ text: t.mergePreviewConflictHint, action: syncAction })
+        else if (previewBusy || !preview) mergeReasons.push({ text: previewBusy && preview ? t.previewRechecking : t.mergePreviewChecking })
         else if (previewBlocksMerge) mergeReasons.push({ text: t.mergePrecheckBlocked })
       }
     }
@@ -800,8 +811,8 @@ export function TaskDetail(props: any) {
                 id: task.id,
                 switchToBase: mergeSwitch && !curOnBase,
                 restoreTo: mergeRestore,
-                expectedTip: preview && preview.expectedTip ? preview.expectedTip : undefined,
-                expectedBase: preview && preview.expectedBase ? preview.expectedBase : undefined,
+                expectedTip: previewTipSha || undefined,
+                expectedBase: previewBaseSha || undefined,
               }))
                 .then((ok) => { if (ok) setMergeOpen(false) })
                 .finally(() => { props.onRepoBusy && props.onRepoBusy(false, '') })
@@ -831,7 +842,13 @@ export function TaskDetail(props: any) {
             h('div', { className: 'dshw-merge-criteria-title' }, h(Icon, { name: 'checkCircle' }), t.acceptanceCriteria),
             h('ul', null, acceptanceItems.map((item: string, i: number) => h('li', { key: i }, item))))
           : null,
-        previewBusy ? h('div', { className: 'dshw-hint' }, h(Spinner), t.mergePreviewChecking) : null,
+        previewBusy ? h('div', { className: 'dshw-hint' }, h(Spinner), preview ? t.previewRechecking : t.mergePreviewChecking) : null,
+        previewError
+          ? h(Banner, { tone: 'error', icon: 'alert', title: previewError, actions: h(Btn, { size: 'sm', icon: 'refresh', disabled: previewBusy, onClick: recheckPreview }, t.previewRecheck) })
+          : null,
+        previewCheckedAt && !previewError
+          ? h('div', { className: 'dshw-hint' }, String(t.previewCheckedAt).replace('{time}', new Date(previewCheckedAt).toLocaleTimeString()))
+          : null,
         previewRisk
           ? h(Banner, {
             tone: preview.conflict ? 'error' : previewFiles.length ? 'warn' : 'info',
@@ -856,7 +873,7 @@ export function TaskDetail(props: any) {
           ? h(Banner, { tone: 'warn', icon: 'alert', title: t.mergeDirtyTitle }, t.mergeDirtyHint)
           : null,
         err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err),
-          h(Btn, { size: 'sm', icon: 'refresh', disabled: previewBusy, onClick: () => { setErr(''); void loadPreview() } }, t.mergeRepreview)) : null)
+          h(Btn, { size: 'sm', icon: 'refresh', disabled: previewBusy, onClick: () => { setErr(''); recheckPreview() } }, t.mergeRepreview)) : null)
       : null
 
     const switchModal = switchOpen && switchPre
@@ -1135,7 +1152,7 @@ export function TaskDetail(props: any) {
           showMerge ? h(Btn, {
             icon: 'merge',
             disabled: !(curOnBase ? mergeEnabled : canSwitchToBase) || busy !== '',
-            onClick: () => { setPreview(null); setMergeSwitch(!curOnBase); setMergeRestore(true); setMergeOpen(true); void loadPreview() },
+            onClick: () => { setMergeSwitch(!curOnBase); setMergeRestore(true); setMergeOpen(true); void loadPreview({ force: true }) },
           }, busy === 'merge' ? h(Spinner) : null, curOnBase ? t.merge : t.mergeSwitchToBase) : null),
         reasonsNode) : null
 
