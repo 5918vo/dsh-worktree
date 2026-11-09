@@ -72,6 +72,10 @@ export interface WorktreeTask {
   reviewOriginalSha?: string
   /** Stash message created when returning to the original branch with uncommitted work. */
   reviewStash?: string
+  /** Recorded stashes (review or merge) waiting for a manual restore. Replaces reviewStash. */
+  pendingStashes?: PendingStash[]
+  /** In-flight merge journal; written before and after each mutating step. */
+  pendingOp?: PendingOp
   /** Set when this task branch was merged through the workbench. */
   mergedAt?: number
   /** Merge commit (base HEAD after the merge); used to derive merged commits/files. */
@@ -193,6 +197,80 @@ export interface MergePreview {
 export interface TaskView {
   task: WorktreeTask
   snapshot: TaskSnapshot
+}
+
+/** One reason a merge cannot proceed. */
+export interface MergeBlocker {
+  code: string
+  message: string
+}
+
+/** A working-tree file that would block switching the main repo to the base. */
+export interface MergeBlockingFile {
+  path: string
+  untracked: boolean
+}
+
+/** Conflict portion of a merge preflight (mirrors MergePreview). */
+export interface MergeConflictInfo {
+  applicable: boolean
+  conflict: boolean
+  conflictFiles: string[]
+  checked: boolean
+  supported: boolean
+  checkedAt?: number
+}
+
+/** Everything the merge dialog needs to decide whether/how it can merge. */
+export interface MergePreflight {
+  canMerge: boolean
+  blockers: MergeBlocker[]
+  blockingFiles: MergeBlockingFile[]
+  originalRef: { branch: string | null; sha: string | null }
+  tipSha: string | null
+  baseSha: string | null
+  conflict: MergeConflictInfo
+}
+
+/** A stash recorded for later manual restore. */
+export interface PendingStash {
+  /** Stash commit SHA (not stash@{n}). Empty when an old record could not be matched. */
+  sha: string
+  source: 'review' | 'merge'
+  ref: string
+  createdAt: number
+  files: string[]
+  /** True when an old record could not be uniquely matched to a stash entry. */
+  unverified?: boolean
+}
+
+export type PendingOpStep =
+  | 'preflight'
+  | 'stash'
+  | 'switch'
+  | 'verify'
+  | 'merge'
+  | 'merge-committed'
+  | 'restore'
+  | 'done'
+
+/** Durable journal for an in-flight merge, so a crash can be reconciled. */
+export interface PendingOp {
+  operationId: string
+  kind: 'merge'
+  taskId: string
+  /** Identifies the repo this journal belongs to (lets startup prove ownership). */
+  repoIdentity: string
+  step: PendingOpStep
+  originalRef: { branch: string | null; sha: string | null }
+  expectedTip: string | null
+  expectedBase: string | null
+  /** Set once the merge commit exists (merge-committed); a repeat must not re-merge. */
+  mergeCommit?: string | null
+  stashRef?: string
+  recoveryStatus?: 'pending' | 'recovered' | 'needs-manual'
+  startedAt: number
+  updatedAt?: number
 }
 
 /** Per-project aggregate for the board's left column. */

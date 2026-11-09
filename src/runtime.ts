@@ -42,10 +42,13 @@ export interface AddProjectInput {
 
 export class TaskError extends Error {
   readonly status: number
-  constructor(message: string, status = 400) {
+  /** Machine-readable reason (e.g. stale/conflict/repoBusy/timeout) for 409 handling. */
+  readonly code?: string
+  constructor(message: string, status = 400, code?: string) {
     super(message)
     this.name = 'TaskError'
     this.status = status
+    if (code) this.code = code
   }
 }
 
