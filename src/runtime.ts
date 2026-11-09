@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import * as gitx from './gitx.js'
-import { DiffFile, MergePreview, ModelSelection, Project, ProjectStats, ProjectView, TaskDiff, TaskSnapshot, TaskStatus, TaskView, WorktreeConfig, WorktreeTask } from './models.js'
+import { DiffFile, MergeBlocker, MergeBlockingFile, MergeConflictInfo, MergePreflight, MergePreview, ModelSelection, Project, ProjectStats, ProjectView, TaskDiff, TaskSnapshot, TaskStatus, TaskView, WorktreeConfig, WorktreeTask } from './models.js'
 import { Store } from './store.js'
 import { normalizeCriteria } from './criteria.js'
 
@@ -1097,6 +1097,124 @@ export class Runtime {
     }
     return task
   }
+
+  async mergePreflight(id: string, opts: { switchToBase?: boolean; restoreAfter?: boolean } = {}): Promise<MergePreflight> {
+    const task = this.needTask(id)
+    return this.buildMergePreflight(task, opts)
+  }
+
+  /**
+   * Collect everything that decides whether (and how) a merge can run. Read-only
+   * except for an index refresh; never mutates branches or the worktree. This is
+   * the single source of truth used by the dialog, the merge endpoint and tools.
+   */
+  private async buildMergePreflight(task: WorktreeTask, opts: { switchToBase?: boolean; restoreAfter?: boolean }): Promise<MergePreflight> {
+    const repoPath = task.repoPath
+    const blockers: MergeBlocker[] = []
+    const blockingFiles: MergeBlockingFile[] = []
+    const seen = new Set<string>()
+    const push = (code: string, message: string): void => {
+      if (seen.has(code)) return
+      seen.add(code)
+      blockers.push({ code, message })
+    }
+    const curBranch = await gitx.currentBranch(this.gitPath, repoPath)
+    const headSha = await gitx.revParse(this.gitPath, repoPath, 'HEAD')
+    const tipSha = await gitx.revParse(this.gitPath, repoPath, task.branch)
+    const baseSha = task.baseBranch ? await gitx.revParse(this.gitPath, repoPath, task.baseBranch) : null
+    const originalRef = { branch: curBranch, sha: headSha }
+    const conflict: MergeConflictInfo = { applicable: false, conflict: false, conflictFiles: [], checked: false, supported: true }
+    const done = (): MergePreflight => ({
+      canMerge: blockers.length === 0,
+      blockers,
+      blockingFiles,
+      originalRef,
+      tipSha,
+      baseSha,
+      conflict,
+    })
+
+    if (task.cleanedAt) {
+      push('cleaned', 'worktree 已清理，无法通过工作台合并')
+      return done()
+    }
+    try {
+      this.assertAgentIdle(task)
+    } catch (e: any) {
+      push(e && e.code ? String(e.code) : 'agent', (e && e.message) || 'Agent 正在运行')
+    }
+    if (!tipSha) {
+      push('branch-missing', `任务分支不存在：${task.branch}`)
+      return done()
+    }
+    if (!baseSha) {
+      push('base-missing', `基线分支不存在：${task.baseBranch}`)
+      return done()
+    }
+
+    let ahead = 0
+    try {
+      ahead = await gitx.countCommits(this.gitPath, repoPath, `${task.baseBranch}..${task.branch}`)
+    } catch {
+      ahead = 0
+    }
+    if (ahead === 0) push('nothing-ahead', '没有领先基线的提交，无需合并')
+
+    const wtDirty = await this.dirtySummary(task.worktreePath)
+    if (wtDirty.count > 0) push('worktree-dirty', `worktree 有 ${wtDirty.count} 处未提交改动（${wtDirty.shown}），请先让 Agent 提交`)
+
+    const prog = await gitx.inProgress(this.gitPath, repoPath)
+    if (prog) push('in-progress', `主仓库有未完成的 ${prog} 操作，请先处理`)
+
+    if (this.gitOps.get(this.repoKey(repoPath))) push('repo-busy', '主仓库正在执行其他 Git 操作，请等待完成')
+
+    // Files that would block switching the main repo to the base branch.
+    if (headSha && baseSha) {
+      const sw = await this.buildSwitchPreflight(repoPath, baseSha)
+      for (const obstacle of sw.obstacles) blockingFiles.push({ path: obstacle.path, untracked: obstacle.kind === 'untracked' })
+    }
+    const repoDirtyCount = (await gitx.statusEntries(this.gitPath, repoPath, true)).length
+    if (repoDirtyCount > 0) {
+      if (blockingFiles.length > 0) {
+        push('dirty-blocks-switch', `主仓库有 ${blockingFiles.length} 个改动会阻止切换，可先保存到 stash 后继续`)
+      } else {
+        push('repo-dirty', `主仓库有 ${repoDirtyCount} 处未提交改动，请先处理`)
+      }
+    }
+
+    if (curBranch !== task.baseBranch) {
+      if (!opts.switchToBase) {
+        push('not-on-base', `主仓库当前在 ${curBranch || '(未知)'}，请先切到基线分支 ${task.baseBranch} 再合并`)
+      } else {
+        const baseHeld = (await gitx.worktreeList(this.gitPath, repoPath)).find(
+          (entry) => entry.branch === task.baseBranch && this.repoKey(entry.path) !== this.repoKey(repoPath),
+        )
+        if (baseHeld) push('base-checked-out-elsewhere', `基线分支 ${task.baseBranch} 正被 worktree「${baseHeld.path}」检出，无法切换后合并`)
+        const other = this.otherReviewingTask(task, curBranch, headSha)
+        if (other) push('other-reviewing', `任务「${other.title}」正在验收，请先切回原分支再操作`)
+      }
+    }
+
+    // Conflict dry-run (only when there is something to merge and the repo is idle).
+    if (ahead > 0 && !this.gitOps.get(this.repoKey(repoPath))) {
+      const pre = await this.runMergePreview(task, tipSha, baseSha)
+      conflict.applicable = pre.applicable !== false
+      conflict.conflict = !!pre.conflict
+      conflict.conflictFiles = pre.conflictFiles || []
+      conflict.checked = !!pre.checked
+      conflict.supported = pre.supported !== false
+      if (pre.checkedAt) conflict.checkedAt = pre.checkedAt
+      if (pre.applicable !== false && pre.conflict) {
+        const detail = (pre.conflictFiles || []).length ? `冲突文件：${(pre.conflictFiles || []).join('、')}。` : ''
+        push('conflict', `无法自动合并：与 ${task.baseBranch} 存在冲突。${detail}`)
+      } else if (pre.applicable !== false && pre.supported !== false && pre.checked === false) {
+        push('precheck-unavailable', '无法完成合并前冲突预检，请重试或升级 Git')
+      }
+    }
+
+    return done()
+  }
+
 
   async merge(id: string, opts: { switchToBase?: boolean; restoreTo?: boolean; expectedTip?: string; expectedBase?: string } = {}): Promise<WorktreeTask> {
     const task = this.needTask(id)

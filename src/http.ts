@@ -270,6 +270,21 @@ export function registerHttp(app: App): () => void {
     }
   })
 
+  route('task/merge-preflight', 'POST', async (req, res) => {
+    requireToken(req)
+    const body = await readJson(req)
+    try {
+      const preflight = await app.runtime.mergePreflight(String(body.id || ''), {
+        switchToBase: body.switchToBase !== false,
+        restoreAfter: body.restoreAfter !== false,
+      })
+      send(res, 200, { preflight })
+    } catch (error) {
+      if (error instanceof TaskError) return send(res, error.status, { error: error.message, code: error.code })
+      send(res, 500, { error: error instanceof Error ? error.message : String(error) })
+    }
+  })
+
   route('task/merge-preview', 'POST', async (req, res) => {
     requireToken(req)
     const body = await readJson(req)
@@ -316,7 +331,7 @@ export function registerHttp(app: App): () => void {
         if (!task) return send(res, 200, { ok: true, deleted: true, ...(warning ? { warning } : {}) })
         send(res, 200, { ok: true, view: await app.runtime.view(task), ...(warning ? { warning } : {}) })
       } catch (error) {
-        if (error instanceof TaskError) return send(res, error.status, { error: error.message })
+        if (error instanceof TaskError) return send(res, error.status, { error: error.message, ...(error.code ? { code: error.code } : {}) })
         send(res, 500, { error: error instanceof Error ? error.message : String(error) })
       }
     })
