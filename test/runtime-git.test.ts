@@ -625,6 +625,23 @@ test('merge refuses when the main repo is not on the base branch (no silent swit
   }
 })
 
+test('merge can switch to the base branch on request and restore the original branch', async () => {
+  const f = await fixture()
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'switch-base', description: 'd' })
+    await commitFile(task.worktreePath, 'src/a.txt', 'a\n', 'feat: a')
+    await git(f.repo, ['checkout', '-b', 'cc'])
+    assert.equal((await git(f.repo, ['branch', '--show-current'])).trim(), 'cc')
+
+    const merged = await f.runtime.merge(task.id, { switchToBase: true, restoreTo: true })
+    assert.ok(merged.mergedAt, 'merge should record mergedAt')
+    assert.equal((await git(f.repo, ['branch', '--show-current'])).trim(), 'cc', 'restores the original branch')
+    assert.equal((await f.runtime.view(merged)).snapshot.status, 'merged')
+  } finally {
+    await teardown(f)
+  }
+})
+
 test('merge refuses when the worktree has uncommitted changes', async () => {
   const f = await fixture()
   try {

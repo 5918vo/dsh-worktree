@@ -832,12 +832,12 @@ export class Runtime {
     return task
   }
 
-  async merge(id: string): Promise<WorktreeTask> {
+  async merge(id: string, opts: { switchToBase?: boolean; restoreTo?: boolean } = {}): Promise<WorktreeTask> {
     const task = this.needTask(id)
-    return this.withRepoLock(task.repoPath, '合并', () => this.mergeLocked(task))
+    return this.withRepoLock(task.repoPath, '合并', () => this.mergeLocked(task, opts))
   }
 
-  private async mergeLocked(task: WorktreeTask): Promise<WorktreeTask> {
+  private async mergeLocked(task: WorktreeTask, opts: { switchToBase?: boolean; restoreTo?: boolean } = {}): Promise<WorktreeTask> {
     if (task.cleanedAt) throw new TaskError('worktree 已清理，分支若仍在可手动合并')
     const repoPath = task.repoPath
     if (!(await gitx.branchExists(this.gitPath, repoPath, task.branch))) {
@@ -845,11 +845,29 @@ export class Runtime {
     }
     await this.assertNoInProgress(repoPath)
     await this.assertRepoClean(repoPath)
-    // Never silently move the user's branch: merging must happen on the base branch.
+    // Never silently move the user's branch: merging happens on the base branch,
+    // and only when the caller explicitly asked (switchToBase) do we check it out.
     const cur = await gitx.currentBranch(this.gitPath, repoPath)
+    let restoreFrom: string | null = null
     if (cur !== task.baseBranch) {
-      throw new TaskError(`主仓库当前在 ${cur || '(未知)'} 分支，请先切到基线分支 ${task.baseBranch} 再合并`)
+      if (!opts.switchToBase) {
+        throw new TaskError(`主仓库当前在 ${cur || '(未知)'} 分支，请先切到基线分支 ${task.baseBranch} 再合并`)
+      }
+      if (!(await gitx.branchExists(this.gitPath, repoPath, task.baseBranch))) {
+        throw new TaskError(`基线分支不存在：${task.baseBranch}`)
+      }
+      const baseHeld = (await gitx.worktreeList(this.gitPath, repoPath)).find(
+        (entry) => entry.branch === task.baseBranch && this.repoKey(entry.path) !== this.repoKey(repoPath),
+      )
+      if (baseHeld) {
+        throw new TaskError(`基线分支 ${task.baseBranch} 正被 worktree「${baseHeld.path}」检出，无法切换后合并`, 409)
+      }
+      const other = this.otherReviewingTask(task, cur)
+      if (other) throw new TaskError(`任务「${other.title}」正在验收，请先切回原分支再操作`, 409)
+      restoreFrom = cur
+      await gitx.switchBranch(this.gitPath, repoPath, task.baseBranch)
     }
+    try {
     const ahead = await gitx.countCommits(this.gitPath, repoPath, `${task.baseBranch}..${task.branch}`)
     if (ahead === 0) throw new TaskError('没有领先基线的提交，无需合并')
     const wtDirty = await this.dirtySummary(task.worktreePath)
@@ -890,6 +908,11 @@ export class Runtime {
     if (mergeCommit) task.mergedCommit = mergeCommit
     this.store.putTask(task)
     return task
+    } finally {
+      if (restoreFrom && opts.restoreTo !== false) {
+        try { await gitx.switchBranch(this.gitPath, repoPath, restoreFrom) } catch { /* keep base */ }
+      }
+    }
   }
 
   /**

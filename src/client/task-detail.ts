@@ -309,6 +309,8 @@ export function TaskDetail(props: any) {
     const [err, setErr] = React.useState('')
     const acceptanceItems: string[] = Array.isArray(task.acceptanceCriteria) ? task.acceptanceCriteria : []
     const [mergeOpen, setMergeOpen] = React.useState(false)
+    const [mergeSwitch, setMergeSwitch] = React.useState(false)
+    const [mergeRestore, setMergeRestore] = React.useState(true)
     const [cleanupOpen, setCleanupOpen] = React.useState(false)
     const [deleteOpen, setDeleteOpen] = React.useState(false)
     const [force, setForce] = React.useState(false)
@@ -343,6 +345,12 @@ export function TaskDetail(props: any) {
       }, 15000)
       return () => clearInterval(timer)
     }, [loadPreview])
+
+    React.useEffect(() => {
+      setMergeOpen(false)
+      setMergeSwitch(false)
+      setMergeRestore(true)
+    }, [task.id])
 
     const effStatus = resolveStatus(snap.status, props.running)
     const meta = statusMeta(t, effStatus, props.pendingKind)
@@ -487,7 +495,7 @@ export function TaskDetail(props: any) {
             size: 'sm',
             icon: 'merge',
             disabled: busy !== '',
-            onClick: () => { setPreview(null); setMergeOpen(true); void loadPreview() },
+            onClick: () => { setPreview(null); setMergeSwitch(!curOnBase); setMergeRestore(true); setMergeOpen(true); void loadPreview() },
           }, t.mergeAgain),
           // "继续任务" is already the hero primary action on a continued task,
           // so only surface it here for the rare task whose hero cannot.
@@ -621,6 +629,10 @@ export function TaskDetail(props: any) {
     const showBack = onTaskBranch
     const showCheckout = !onTaskBranch && snap.status !== 'cleaned'
     const showMerge = snap.status !== 'merged' && snap.status !== 'cleaned'
+    const mergeBaseReady = showMerge && !onTaskBranch && snap.status === 'review' && ahead > 0 && dirty === 0 && repoDirty === 0 && !inProgress && !agentRunning && !repoLockLabel && previewReadyForMerge && !otherReviewing
+    const mergeEnabled = mergeBaseReady && curOnBase
+    const canSwitchToBase = mergeBaseReady && !curOnBase && !!snap.repo.currentBranch
+    const mergeAgainReady = postMerge > 0 && !onTaskBranch && dirty === 0 && repoDirty === 0 && !inProgress && !agentRunning && !repoLockLabel && previewReadyForMerge
 
     type AcceptReason = { text: string; action?: any; key?: string }
     // "打开会话" lives in the hero action area; blockers below only explain why
@@ -662,7 +674,7 @@ export function TaskDetail(props: any) {
       else if (snap.status !== 'review' || ahead === 0) mergeReasons.push({ text: t.acceptNoCommits })
       else {
         if (dirty > 0) mergeReasons.push({ text: String(t.acceptanceHintDirty).replace('{n}', String(dirty)), key: 'wt-dirty' })
-        if (!curOnBase) mergeReasons.push({ text: String(t.acceptNotOnBase).replace('{branch}', snap.repo.currentBranch || '—') })
+        if (!curOnBase && !canSwitchToBase) mergeReasons.push({ text: String(t.acceptNotOnBase).replace('{branch}', snap.repo.currentBranch || '—') })
         if (repoDirty > 0) mergeReasons.push({ text: String(t.acceptanceHintRepoDirty).replace('{n}', String(repoDirty)) })
         if (inProgress) mergeReasons.push({ text: t.acceptInProgress })
         if (agentRunning) mergeReasons.push({ text: t.acceptAgentRunning })
@@ -671,7 +683,7 @@ export function TaskDetail(props: any) {
         else if (preview.supported === false || preview.checked === false) mergeReasons.push({ text: t.mergePrecheckBlocked })
       }
     }
-    const mergeEnabled = showMerge && !onTaskBranch && snap.status === 'review' && ahead > 0 && dirty === 0 && repoDirty === 0 && !inProgress && curOnBase && !agentRunning && !repoLockLabel && previewReadyForMerge
+    const mergeModalReady = postMerge > 0 ? mergeAgainReady : (curOnBase ? mergeEnabled : canSwitchToBase)
 
     const reasonsNode = (() => {
       const list: AcceptReason[] = []
@@ -719,11 +731,15 @@ export function TaskDetail(props: any) {
           h(Btn, {
             key: 'ok',
             variant: 'primary',
-            disabled: busy === 'merge' || dirty > 0 || !curOnBase || agentRunning || !previewReadyForMerge,
+            disabled: busy === 'merge' || dirty > 0 || agentRunning || !mergeModalReady,
             title: preview && preview.conflict ? t.mergePreviewConflictHint : undefined,
             onClick: () => {
               props.onRepoBusy && props.onRepoBusy(true, t.merging)
-              void act('merge', String(t.mergeDone).replace('{base}', task.baseBranch), () => postLong('task/merge', { id: task.id }))
+              void act('merge', String(t.mergeDone).replace('{base}', task.baseBranch), () => postLong('task/merge', {
+                id: task.id,
+                switchToBase: mergeSwitch && !curOnBase,
+                restoreTo: mergeRestore,
+              }))
                 .then((ok) => { if (ok) setMergeOpen(false) })
                 .finally(() => { props.onRepoBusy && props.onRepoBusy(false, '') })
             },
@@ -735,6 +751,18 @@ export function TaskDetail(props: any) {
           h(KV, { label: t.baseBranch }, h('span', { className: 'dshw-mono' }, task.baseBranch)),
           h(KV, { label: t.commits }, String(ahead)),
           h(KV, { label: t.uncommitted }, dirty > 0 ? h(Chip, { tone: 'warn', small: true }, dirty + ' ' + t.changesUnit) : h('span', { className: 'dshw-hint', style: { margin: 0 } }, t.clean))),
+        mergeSwitch && !curOnBase
+          ? h(Banner, {
+            tone: 'info',
+            icon: 'branch',
+            title: String(t.mergeSwitchNotice).replace('{branch}', snap.repo.currentBranch || '—').replace('{base}', task.baseBranch),
+          })
+          : null,
+        mergeSwitch && !curOnBase
+          ? h('label', { className: 'dshw-check', style: { marginTop: '10px' } },
+            h('input', { type: 'checkbox', checked: mergeRestore, onChange: (e: any) => setMergeRestore(e.target.checked) }),
+            h('span', { className: 'dshw-check-copy' }, String(t.mergeRestoreAfter).replace('{branch}', snap.repo.currentBranch || '—')))
+          : null,
         acceptanceItems.length
           ? h('div', { className: 'dshw-merge-criteria' },
             h('div', { className: 'dshw-merge-criteria-title' }, h(Icon, { name: 'checkCircle' }), t.acceptanceCriteria),
@@ -957,9 +985,15 @@ export function TaskDetail(props: any) {
           }, busy === 'back' ? h(Spinner) : null, originalBranchExists ? t.back : t.switchToBase) : null,
           showMerge ? h(Btn, {
             icon: 'merge',
-            disabled: !mergeEnabled || busy !== '',
-            onClick: () => { setPreview(null); setMergeOpen(true); void loadPreview() },
-          }, t.merge) : null),
+            disabled: !(curOnBase ? mergeEnabled : canSwitchToBase) || busy !== '',
+            onClick: () => {
+              setPreview(null)
+              setMergeSwitch(!curOnBase)
+              setMergeRestore(true)
+              setMergeOpen(true)
+              void loadPreview()
+            },
+          }, busy === 'merge' ? h(Spinner) : null, curOnBase ? t.merge : t.mergeSwitchToBase) : null),
         reasonsNode) : null,
       h(Card, null,
         h(CardHead, {

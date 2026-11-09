@@ -280,7 +280,7 @@ export function registerHttp(app: App): () => void {
 
   act('checkout', async (id) => app.runtime.checkout(id))
   act('back', async (id) => app.runtime.back(id))
-  act('merge', async (id) => app.runtime.merge(id))
+  act('merge', async (id, body) => app.runtime.merge(id, { switchToBase: body.switchToBase === true, restoreTo: body.restoreTo !== false }))
   act('cleanup', async (id, body) => app.runtime.cleanup(id, { force: !!body.force, deleteBranch: !!body.deleteBranch }))
   act('archive', async (id) => app.runtime.archive(id))
   act('unarchive', async (id) => app.runtime.unarchive(id))
