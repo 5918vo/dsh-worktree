@@ -143,12 +143,16 @@ export function registerTools(app: App): () => void {
         type: 'object',
         properties: {
           id: { type: 'string', description: 'Task id from worktree_tasks.' },
-          action: { type: 'string', enum: ['checkout', 'back', 'merge', 'cleanup', 'archive', 'unarchive', 'delete'], description: 'Operation.' },
+          action: { type: 'string', enum: ['checkout', 'back', 'merge', 'merge-preflight', 'cleanup', 'archive', 'unarchive', 'delete'], description: 'Operation.' },
           force: { type: 'boolean', description: 'For cleanup: remove even with uncommitted changes.' },
           delete_branch: { type: 'boolean', description: 'For cleanup: also delete the task branch.' },
           force_delete_branch: { type: 'boolean', description: 'For cleanup: delete an unmerged branch (data loss).' },
           switch_to_base: { type: 'boolean', description: 'For merge: check out the base branch first when the main repo is on another branch.' },
           restore_to: { type: 'boolean', description: 'For merge: switch back to the previous branch after merging (default true).' },
+          restore_after: { type: 'boolean', description: 'For merge: alias of restore_to.' },
+          expected_tip: { type: 'string', description: 'For merge: task branch tip SHA captured by a preflight (required for safety).' },
+          expected_base: { type: 'string', description: 'For merge: base branch SHA captured by a preflight (required for safety).' },
+          dirty_strategy: { type: 'string', enum: ['refuse', 'stash'], description: 'For merge: refuse (default) or stash when repo changes block switching.' },
         },
         required: ['id', 'action'],
       },
@@ -158,7 +162,30 @@ export function registerTools(app: App): () => void {
         try {
           if (action === 'checkout') return clean({ ok: true, task: brief(await app.runtime.view(await app.runtime.checkout(id))) })
           if (action === 'back') return clean({ ok: true, task: brief(await app.runtime.view(await app.runtime.back(id))) })
-          if (action === 'merge') return clean({ ok: true, task: brief(await app.runtime.view(await app.runtime.merge(id, { switchToBase: args.switch_to_base === true, restoreTo: args.restore_to !== false }))) })
+          if (action === 'merge-preflight') {
+            return clean({ ok: true, preflight: await app.runtime.mergePreflight(id, { switchToBase: args.switch_to_base === true }) })
+          }
+          if (action === 'merge') {
+            const opts: any = {
+              switchToBase: args.switch_to_base === true,
+              restoreAfter: args.restore_after !== undefined ? args.restore_after === true : args.restore_to !== false,
+              dirtyStrategy: args.dirty_strategy === 'stash' ? 'stash' : 'refuse',
+              expectedTip: args.expected_tip ? String(args.expected_tip) : undefined,
+              expectedBase: args.expected_base ? String(args.expected_base) : undefined,
+            }
+            // Tools may omit the SHAs; derive them from a preflight (same checks).
+            if (!opts.expectedTip || !opts.expectedBase) {
+              const pf = await app.runtime.mergePreflight(id, { switchToBase: opts.switchToBase })
+              const hard = pf.blockers.filter((b) => b.code !== 'dirty-blocks-switch')
+              if (hard.length) throw new TaskError(hard.map((b) => b.message).join('；'), 409, hard[0]!.code)
+              if (pf.blockers.some((b) => b.code === 'dirty-blocks-switch') && opts.dirtyStrategy !== 'stash') {
+                throw new TaskError(pf.blockers.find((b) => b.code === 'dirty-blocks-switch')!.message, 409, 'dirty-blocks-switch')
+              }
+              opts.expectedTip = opts.expectedTip || pf.tipSha
+              opts.expectedBase = opts.expectedBase || pf.baseSha
+            }
+            return clean({ ok: true, task: brief(await app.runtime.view(await app.runtime.merge(id, opts))) })
+          }
           if (action === 'cleanup') {
             const t = await app.runtime.cleanup(id, { force: !!args.force, deleteBranch: !!args.delete_branch, forceDeleteBranch: !!args.force_delete_branch })
             return clean({ ok: true, task: brief(await app.runtime.view(t)) })

@@ -328,8 +328,10 @@ export function registerHttp(app: App): () => void {
         const id = String(body.id || '')
         const task = app.store.getTask(id)
         const warning = app.runtime.takeWarning(id)
-        if (!task) return send(res, 200, { ok: true, deleted: true, ...(warning ? { warning } : {}) })
-        send(res, 200, { ok: true, view: await app.runtime.view(task), ...(warning ? { warning } : {}) })
+        const partial = app.runtime.takePartial(id)
+        const extra = { ...(warning ? { warning } : {}), ...(partial ? { partial } : {}) }
+        if (!task) return send(res, 200, { ok: true, deleted: true, ...extra })
+        send(res, 200, { ok: true, view: await app.runtime.view(task), ...extra })
       } catch (error) {
         if (error instanceof TaskError) return send(res, error.status, { error: error.message, ...(error.code ? { code: error.code } : {}) })
         send(res, 500, { error: error instanceof Error ? error.message : String(error) })
@@ -342,10 +344,12 @@ export function registerHttp(app: App): () => void {
   act('stash', async (id, body) => (String(body.action || '') === 'drop' ? app.runtime.dropReviewStash(id) : app.runtime.applyReviewStash(id)))
   act('merge', async (id, body) => app.runtime.merge(id, {
     switchToBase: body.switchToBase === true,
-    restoreTo: body.restoreTo !== false,
+    restoreAfter: body.restoreAfter !== undefined ? body.restoreAfter === true : body.restoreTo !== false,
     expectedTip: body.expectedTip ? String(body.expectedTip) : undefined,
     expectedBase: body.expectedBase ? String(body.expectedBase) : undefined,
+    dirtyStrategy: body.dirtyStrategy === 'stash' ? 'stash' : 'refuse',
   }))
+  act('merge-restore', async (id) => app.runtime.restoreAfterMerge(id))
   act('cleanup', async (id, body) => app.runtime.cleanup(id, { force: !!body.force, deleteBranch: !!body.deleteBranch, forceDeleteBranch: !!body.forceDeleteBranch }))
   act('archive', async (id) => app.runtime.archive(id))
   act('unarchive', async (id) => app.runtime.unarchive(id))

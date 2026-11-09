@@ -40,6 +40,20 @@ export interface AddProjectInput {
   branchPrefix?: string
 }
 
+/** Options for a workbench merge. */
+export interface MergeOptions {
+  switchToBase?: boolean
+  /** Compatibility alias for restoreAfter. */
+  restoreTo?: boolean
+  restoreAfter?: boolean
+  expectedTip?: string
+  expectedBase?: string
+  /** How to handle repo changes that block switching: refuse (default) or stash. */
+  dirtyStrategy?: 'refuse' | 'stash'
+  /** Override the git merge timeout (tests inject a short one). */
+  timeoutMs?: number
+}
+
 export class TaskError extends Error {
   readonly status: number
   /** Machine-readable reason (e.g. stale/conflict/repoBusy/timeout) for 409 handling. */
@@ -247,6 +261,8 @@ export class Runtime {
   private readonly gitOps = new Map<string, string>()
   /** Transient (non-persisted) warnings for the next action response, e.g. restore-failed. */
   private readonly opWarnings = new Map<string, string>()
+  /** Transient partial-success markers (200 but not fully done), e.g. restore-failed. */
+  private readonly partials = new Map<string, { restoreFailed: boolean; reason: string }>()
   /** Reuse a merge preview while both tips are unchanged (and skip while the repo is locked). */
   private readonly previewCache = new Map<string, { tip: string | null; base: string | null; at: number; result: MergePreview }>()
   private envInfo: { gitVersion: string | null; mergeTreeSupported: boolean; longPaths: boolean | null } | null = null
@@ -285,6 +301,13 @@ export class Runtime {
     const warning = this.opWarnings.get(id)
     if (warning) this.opWarnings.delete(id)
     return warning
+  }
+
+  /** Read and clear the one-shot partial-success marker for the last merge. */
+  takePartial(id: string): { restoreFailed: boolean; reason: string } | undefined {
+    const partial = this.partials.get(id)
+    if (partial) this.partials.delete(id)
+    return partial
   }
 
   private abs(p: string): string {
@@ -856,6 +879,24 @@ export class Runtime {
     return repoPath.replace(/[\\/]+$/, '').toLowerCase()
   }
 
+  /** Stable identity of a repo (git common dir realpath) used to prove journal ownership. */
+  private async repoIdentity(repoPath: string): Promise<string> {
+    const common = await gitx.gitCommonDir(this.gitPath, repoPath).catch(() => null)
+    const base = common || repoPath
+    try {
+      return (await fs.realpath(base)).replace(/[\\/]+$/, '').toLowerCase()
+    } catch {
+      return base.replace(/[\\/]+$/, '').toLowerCase()
+    }
+  }
+
+  /** Append a recorded stash to the task (caller persists). */
+  private addPendingStash(task: WorktreeTask, entry: { sha: string; source: 'review' | 'merge'; ref: string; createdAt: number; files: string[]; unverified?: boolean }): void {
+    const list = Array.isArray(task.pendingStashes) ? task.pendingStashes : []
+    list.push(entry)
+    task.pendingStashes = list
+  }
+
   /**
    * Serialize git-mutating actions per main repo. A slow hook (e.g. eslint in a
    * pre-merge-commit hook) can keep `merge` running for minutes; without this a
@@ -865,7 +906,7 @@ export class Runtime {
   private async withRepoLock<T>(repoPath: string, label: string, fn: () => Promise<T>): Promise<T> {
     const key = this.repoKey(repoPath)
     const active = this.gitOps.get(key)
-    if (active) throw new TaskError(`主仓库正在执行「${active}」，请等待完成后再操作`, 409)
+    if (active) throw new TaskError(`主仓库正在执行「${active}」，请等待完成后再操作`, 409, 'repo-busy')
     this.gitOps.set(key, label)
     try {
       return await fn()
@@ -1108,7 +1149,7 @@ export class Runtime {
    * except for an index refresh; never mutates branches or the worktree. This is
    * the single source of truth used by the dialog, the merge endpoint and tools.
    */
-  private async buildMergePreflight(task: WorktreeTask, opts: { switchToBase?: boolean; restoreAfter?: boolean }): Promise<MergePreflight> {
+  private async buildMergePreflight(task: WorktreeTask, opts: { switchToBase?: boolean; restoreAfter?: boolean; internal?: boolean }): Promise<MergePreflight> {
     const repoPath = task.repoPath
     const blockers: MergeBlocker[] = []
     const blockingFiles: MergeBlockingFile[] = []
@@ -1161,12 +1202,12 @@ export class Runtime {
     if (ahead === 0) push('nothing-ahead', '没有领先基线的提交，无需合并')
 
     const wtDirty = await this.dirtySummary(task.worktreePath)
-    if (wtDirty.count > 0) push('worktree-dirty', `worktree 有 ${wtDirty.count} 处未提交改动（${wtDirty.shown}），请先让 Agent 提交`)
+    if (wtDirty.count > 0) push('worktree-dirty', `worktree 有 ${wtDirty.count} 处未提交改动（${wtDirty.shown}），这些改动不会被合并；请先让 Agent 提交`)
 
     const prog = await gitx.inProgress(this.gitPath, repoPath)
     if (prog) push('in-progress', `主仓库有未完成的 ${prog} 操作，请先处理`)
 
-    if (this.gitOps.get(this.repoKey(repoPath))) push('repo-busy', '主仓库正在执行其他 Git 操作，请等待完成')
+    if (!opts.internal && this.gitOps.get(this.repoKey(repoPath))) push('repo-busy', '主仓库正在执行其他 Git 操作，请等待完成')
 
     // Files that would block switching the main repo to the base branch.
     if (headSha && baseSha) {
@@ -1196,7 +1237,7 @@ export class Runtime {
     }
 
     // Conflict dry-run (only when there is something to merge and the repo is idle).
-    if (ahead > 0 && !this.gitOps.get(this.repoKey(repoPath))) {
+    if (ahead > 0 && (opts.internal || !this.gitOps.get(this.repoKey(repoPath)))) {
       const pre = await this.runMergePreview(task, tipSha, baseSha)
       conflict.applicable = pre.applicable !== false
       conflict.conflict = !!pre.conflict
@@ -1216,107 +1257,216 @@ export class Runtime {
   }
 
 
-  async merge(id: string, opts: { switchToBase?: boolean; restoreTo?: boolean; expectedTip?: string; expectedBase?: string } = {}): Promise<WorktreeTask> {
+  async merge(id: string, opts: MergeOptions = {}): Promise<WorktreeTask> {
     const task = this.needTask(id)
     return this.withRepoLock(task.repoPath, '合并', () => this.mergeLocked(task, opts))
   }
 
-  private async mergeLocked(task: WorktreeTask, opts: { switchToBase?: boolean; restoreTo?: boolean; expectedTip?: string; expectedBase?: string } = {}): Promise<WorktreeTask> {
+  private async mergeLocked(task: WorktreeTask, opts: MergeOptions = {}): Promise<WorktreeTask> {
     if (task.cleanedAt) throw new TaskError('worktree 已清理，分支若仍在可手动合并')
     this.assertAgentIdle(task)
     const repoPath = task.repoPath
+    const switchToBase = opts.switchToBase === true
+    const restoreAfter = opts.restoreAfter !== undefined ? opts.restoreAfter : opts.restoreTo !== false
+    const dirtyStrategy = opts.dirtyStrategy || 'refuse'
+
+    // Once the merge commit exists we may only restore; never merge again.
+    if (task.pendingOp && task.pendingOp.mergeCommit) {
+      throw new TaskError('合并已提交，只能恢复原分支，不能再次合并', 409, 'merge-committed')
+    }
+    if (task.pendingOp) {
+      throw new TaskError('存在未完成的合并操作，请先通过启动对账或手动恢复处理', 409, 'pending-op')
+    }
     if (!(await gitx.branchExists(this.gitPath, repoPath, task.branch))) {
       throw new TaskError(`任务分支不存在：${task.branch}`)
     }
-    if (opts.expectedTip) {
-      const tip = await gitx.revParse(this.gitPath, repoPath, task.branch)
-      if (tip !== opts.expectedTip) throw new TaskError('任务分支已变化，请重新预检后再合并', 409)
-    }
-    if (opts.expectedBase) {
-      const expectedBase = await gitx.revParse(this.gitPath, repoPath, task.baseBranch)
-      if (expectedBase !== opts.expectedBase) throw new TaskError('基线分支已变化，请重新预检后再合并', 409)
-    }
     await this.assertNoInProgress(repoPath)
-    await this.assertRepoClean(repoPath)
-    // Never silently move the user's branch: merging happens on the base branch,
-    // and only when the caller explicitly asked (switchToBase) do we check it out.
+
     const cur = await gitx.currentBranch(this.gitPath, repoPath)
     const headSha = await gitx.revParse(this.gitPath, repoPath, 'HEAD')
-    let restoreFrom: string | null = null
-    if (cur !== task.baseBranch) {
-      if (!opts.switchToBase) {
-        throw new TaskError(`主仓库当前在 ${cur || '(未知)'} 分支，请先切到基线分支 ${task.baseBranch} 再合并`)
-      }
-      if (!(await gitx.branchExists(this.gitPath, repoPath, task.baseBranch))) {
-        throw new TaskError(`基线分支不存在：${task.baseBranch}`)
-      }
-      const baseHeld = (await gitx.worktreeList(this.gitPath, repoPath)).find(
-        (entry) => entry.branch === task.baseBranch && this.repoKey(entry.path) !== this.repoKey(repoPath),
-      )
-      if (baseHeld) {
-        throw new TaskError(`基线分支 ${task.baseBranch} 正被 worktree「${baseHeld.path}」检出，无法切换后合并`, 409)
-      }
-      const other = this.otherReviewingTask(task, cur, headSha)
-      if (other) throw new TaskError(`任务「${other.title}」正在验收，请先切回原分支再操作`, 409)
-      restoreFrom = cur
-      await gitx.switchBranch(this.gitPath, repoPath, task.baseBranch)
+    const originalRef = { branch: cur, sha: headSha }
+    // Step 1: write the intent (journal) before touching anything.
+    task.pendingOp = {
+      operationId: randomUUID(),
+      kind: 'merge',
+      taskId: task.id,
+      repoIdentity: await this.repoIdentity(repoPath),
+      step: 'preflight',
+      originalRef,
+      expectedTip: opts.expectedTip || null,
+      expectedBase: opts.expectedBase || null,
+      recoveryStatus: 'pending',
+      startedAt: Date.now(),
     }
+    this.store.putTask(task)
+
+    let stashRef: string | undefined
+    let switched = false
+    let mergeCommitted = false
     try {
-    const ahead = await gitx.countCommits(this.gitPath, repoPath, `${task.baseBranch}..${task.branch}`)
-    if (ahead === 0) throw new TaskError('没有领先基线的提交，无需合并')
-    const wtDirty = await this.dirtySummary(task.worktreePath)
-    if (wtDirty.count > 0) throw new TaskError(`worktree 有 ${wtDirty.count} 处未提交改动（${wtDirty.shown}），这些改动不会被合并；请先让 Agent 提交`)
-    // Refuse before touching the main repo when the dry-run cannot prove a
-    // conflict-free merge. Recompute now: we already hold the repo lock, which
-    // would make the public cache check report "busy" instead of checking.
-    const preTip = await gitx.revParse(this.gitPath, repoPath, task.branch)
-    const preBase = await gitx.revParse(this.gitPath, repoPath, task.baseBranch)
-    const pre = await this.runMergePreview(task, preTip, preBase)
-    if (pre.applicable !== false && pre.conflict) {
-      const detail = pre.conflictFiles.length ? `冲突文件：${pre.conflictFiles.join('、')}。` : ''
-      throw new TaskError(
-        `无法自动合并：与 ${task.baseBranch} 存在冲突。${detail}请在任务 worktree 中执行 git merge ${task.baseBranch}，解决冲突并提交后再重试。`,
-        409,
-      )
-    }
-    // Only a failed *real* check blocks the merge. When the local Git is too old
-    // to run merge-tree (supported === false) merging is still allowed, with a
-    // risk warning from the UI — a single consistent policy.
-    if (pre.applicable !== false && pre.supported !== false && pre.checked === false) {
-      throw new TaskError('无法完成合并前冲突预检，已阻止合并；请重试，或升级 Git 后再合并', 409)
-    }
-    // Capture the tip that is about to be merged.
-    const mergedTip = await gitx.revParse(this.gitPath, repoPath, task.branch)
-    try {
-      await gitx.mergeNoFF(this.gitPath, repoPath, task.branch)
+      // Step 2: re-run the preflight under the lock; refuse on any hard blocker.
+      const pf = await this.buildMergePreflight(task, { switchToBase, restoreAfter, internal: true })
+      if (pf.blockers.some((b) => b.code === 'conflict')) {
+        const b = pf.blockers.find((x) => x.code === 'conflict')!
+        throw new TaskError(b.message, 409, 'conflict')
+      }
+      const hard = pf.blockers.filter((b) => b.code !== 'dirty-blocks-switch')
+      if (hard.length) {
+        const b = hard[0]!
+        throw new TaskError(b.message, b.code === 'repo-busy' ? 409 : 412, b.code)
+      }
+      if (pf.blockers.some((b) => b.code === 'dirty-blocks-switch')) {
+        if (dirtyStrategy !== 'stash') {
+          const b = pf.blockers.find((x) => x.code === 'dirty-blocks-switch')!
+          throw new TaskError(b.message, 409, 'dirty-blocks-switch')
+        }
+        // Step 3: stash the blocking changes, recording the stash by SHA.
+        task.pendingOp.step = 'stash'
+        task.pendingOp.updatedAt = Date.now()
+        this.store.putTask(task)
+        const message = `dsh-wt:${id8(task.id)}:merge:${Date.now()}`
+        try {
+          stashRef = await gitx.stashPushSha(this.gitPath, repoPath, message)
+        } catch (error) {
+          throw new TaskError(`保存到 stash 失败：${error instanceof Error ? error.message : String(error)}`, 409, 'stash-failed')
+        }
+        task.pendingOp.stashRef = stashRef
+        task.pendingOp.updatedAt = Date.now()
+        this.store.putTask(task)
+        this.addPendingStash(task, {
+          sha: stashRef,
+          source: 'merge',
+          ref: message,
+          createdAt: Date.now(),
+          files: await gitx.stashFiles(this.gitPath, repoPath, stashRef),
+        })
+        this.store.putTask(task)
+      }
+
+      // Step 4: switch to the base branch when needed.
+      const before = await gitx.currentBranch(this.gitPath, repoPath)
+      if (before !== task.baseBranch) {
+        task.pendingOp.step = 'switch'
+        task.pendingOp.updatedAt = Date.now()
+        this.store.putTask(task)
+        try {
+          await gitx.switchBranch(this.gitPath, repoPath, task.baseBranch)
+          switched = true
+        } catch (error) {
+          const nowRef = await gitx.currentBranch(this.gitPath, repoPath)
+          if (nowRef === task.baseBranch) switched = true
+          else throw new TaskError(`切换到基线分支失败：${error instanceof Error ? error.message : String(error)}`, 409, 'switch-failed')
+        }
+      }
+
+      // Step 5: verify SHAs + conflict check on the current state.
+      task.pendingOp.step = 'verify'
+      task.pendingOp.updatedAt = Date.now()
+      this.store.putTask(task)
+      const curTip = await gitx.revParse(this.gitPath, repoPath, task.branch)
+      const curBase = await gitx.revParse(this.gitPath, repoPath, task.baseBranch)
+      const pre = await this.runMergePreview(task, curTip, curBase)
+      if (pre.applicable !== false && pre.conflict) {
+        const detail = (pre.conflictFiles || []).length ? `冲突文件：${(pre.conflictFiles || []).join('、')}。` : ''
+        throw new TaskError(`无法自动合并：与 ${task.baseBranch} 存在冲突。${detail}`, 409, 'conflict')
+      }
+      if (opts.expectedTip && curTip !== opts.expectedTip) throw new TaskError('任务分支已变化，请重新预检后再合并', 409, 'stale')
+      if (opts.expectedBase && curBase !== opts.expectedBase) throw new TaskError('基线分支已变化，请重新预检后再合并', 409, 'stale')
+      if (pre.applicable !== false && pre.supported !== false && pre.checked === false) {
+        throw new TaskError('无法完成合并前冲突预检，已阻止合并；请重试，或升级 Git 后再合并', 409, 'precheck-unavailable')
+      }
+      const mergeSha = opts.expectedTip || curTip
+      if (!mergeSha) throw new TaskError('无法解析任务分支提交', 409, 'stale')
+
+      // Step 6: merge by SHA.
+      task.pendingOp.step = 'merge'
+      task.pendingOp.updatedAt = Date.now()
+      this.store.putTask(task)
+      try {
+        await gitx.mergeNoFF(this.gitPath, repoPath, mergeSha, opts.timeoutMs)
+      } catch (error) {
+        const err = error as any
+        const text = error instanceof Error ? error.message : String(error)
+        await gitx.mergeAbort(this.gitPath, repoPath)
+        if (err && err.timedOut) throw new TaskError('合并超时，已清理现场；请人工检查后重试', 409, 'timeout')
+        if (/CONFLICT|Automatic merge failed/i.test(text)) {
+          const files = conflictFiles(text)
+          const detail = files.length ? `冲突文件：${files.join('、')}。` : ''
+          throw new TaskError(`无法自动合并：与 ${task.baseBranch} 存在冲突。${detail}`, 409, 'conflict')
+        }
+        const summary = text.split(/\r?\n/).slice(-3).join(' ').slice(0, 400)
+        throw new TaskError(`合并失败（钩子或 Git 错误）：${summary}`, 409, 'hook-failed')
+      }
+      mergeCommitted = true
+      const mergeCommit = await gitx.revParse(this.gitPath, repoPath, 'HEAD')
+      task.mergedAt = Date.now()
+      task.mergedBranchTip = mergeSha
+      if (mergeCommit) task.mergedCommit = mergeCommit
+      if (cur && cur !== task.branch && !task.originalBranch) task.originalBranch = cur
+      // Record the merge result BEFORE restoring: a repeat request must restore,
+      // never merge again.
+      task.pendingOp.step = 'merge-committed'
+      task.pendingOp.mergeCommit = mergeCommit || null
+      task.pendingOp.updatedAt = Date.now()
+      this.store.putTask(task)
+
+      // Step 7: restore the original branch/commit (optional).
+      if (switched && restoreAfter) {
+        task.pendingOp.step = 'restore'
+        task.pendingOp.updatedAt = Date.now()
+        this.store.putTask(task)
+        try {
+          if (originalRef.branch) await gitx.switchBranch(this.gitPath, repoPath, originalRef.branch)
+          else if (originalRef.sha) await gitx.checkoutDetach(this.gitPath, repoPath, originalRef.sha)
+          else throw new Error('原分支与原提交都不可用')
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error)
+          this.partials.set(task.id, { restoreFailed: true, reason })
+          // Keep pendingOp so startup reconcile (or a manual restore) can retry.
+          return task
+        }
+      }
+      // Whole operation complete.
+      task.pendingOp = undefined
+      this.store.putTask(task)
+      return task
     } catch (error) {
-      const text = error instanceof Error ? error.message : String(error)
-      if (/CONFLICT|Automatic merge failed/i.test(text)) {
-        const files = conflictFiles(text)
-        const detail = files.length ? `冲突文件：${files.join('、')}。` : ''
-        throw new TaskError(
-          `无法自动合并：与 ${task.baseBranch} 存在冲突。${detail}请在任务 worktree 中执行 git merge ${task.baseBranch}，解决冲突并提交后再重试。`,
-          409,
-        )
+      // A failure before the merge commit: restore the original branch if we had
+      // switched, then clear the journal (the stash record stays available).
+      if (!mergeCommitted && switched) {
+        try {
+          if (originalRef.branch) await gitx.switchBranch(this.gitPath, repoPath, originalRef.branch)
+          else if (originalRef.sha) await gitx.checkoutDetach(this.gitPath, repoPath, originalRef.sha)
+        } catch {
+          /* stay on base, reconcile will retry */
+        }
+      }
+      if (!mergeCommitted && task.pendingOp) {
+        task.pendingOp = undefined
+        this.store.putTask(task)
       }
       throw error
     }
-    if (cur && cur !== task.branch && !task.originalBranch) task.originalBranch = cur
-    task.mergedAt = Date.now()
-    if (mergedTip) task.mergedBranchTip = mergedTip
-    const mergeCommit = await gitx.revParse(this.gitPath, repoPath, 'HEAD')
-    if (mergeCommit) task.mergedCommit = mergeCommit
+  }
+
+  /** Retry restoring the original branch after a committed merge (never re-merges). */
+  async restoreAfterMerge(id: string): Promise<WorktreeTask> {
+    const task = this.needTask(id)
+    return this.withRepoLock(task.repoPath, '恢复原分支', () => this.restoreAfterMergeLocked(task))
+  }
+
+  private async restoreAfterMergeLocked(task: WorktreeTask): Promise<WorktreeTask> {
+    const op = task.pendingOp
+    if (!op || !op.mergeCommit) throw new TaskError('没有待恢复的合并操作', 409, 'not-committed')
+    const repoPath = task.repoPath
+    const target = op.originalRef.branch || op.originalRef.sha
+    if (!target) throw new TaskError('原分支与原提交都不可用，无法恢复', 409, 'no-target')
+    if (op.originalRef.branch) await gitx.switchBranch(this.gitPath, repoPath, op.originalRef.branch)
+    else await gitx.checkoutDetach(this.gitPath, repoPath, op.originalRef.sha as string)
+    task.pendingOp = undefined
+    this.partials.delete(task.id)
     this.store.putTask(task)
     return task
-    } finally {
-      if (restoreFrom && opts.restoreTo !== false) {
-        try { await gitx.switchBranch(this.gitPath, repoPath, restoreFrom) } catch {
-          // Merged successfully but the checkout-back failed (e.g. Windows file
-          // lock). Keep the merge, and report a partial-success warning.
-          this.opWarnings.set(task.id, 'restore-failed')
-        }
-      }
-    }
   }
 
   /**
