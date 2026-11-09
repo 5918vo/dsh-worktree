@@ -883,7 +883,7 @@ export class Runtime {
   }
 
   /** Stable identity of a repo (git common dir realpath) used to prove journal ownership. */
-  private async repoIdentity(repoPath: string): Promise<string> {
+  async repoIdentity(repoPath: string): Promise<string> {
     const common = await gitx.gitCommonDir(this.gitPath, repoPath).catch(() => null)
     const base = common || repoPath
     try {
@@ -1375,7 +1375,8 @@ export class Runtime {
       const hard = pf.blockers.filter((b) => b.code !== 'dirty-blocks-switch')
       if (hard.length) {
         const b = hard[0]!
-        throw new TaskError(b.message, b.code === 'repo-busy' ? 409 : 412, b.code)
+        const status = b.code === 'repo-busy' || b.code === 'base-checked-out-elsewhere' || b.code === 'other-reviewing' ? 409 : 412
+        throw new TaskError(b.message, status, b.code)
       }
       if (pf.blockers.some((b) => b.code === 'dirty-blocks-switch')) {
         if (dirtyStrategy !== 'stash') {

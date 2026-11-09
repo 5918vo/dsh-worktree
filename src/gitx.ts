@@ -431,7 +431,9 @@ export async function stashListEntries(gitPath: string, dir: string): Promise<St
 
 /** Find a stash entry by its message; unverified when no unique match exists. */
 export async function stashEntryForMessage(gitPath: string, dir: string, message: string): Promise<{ entry: StashEntry | null; unique: boolean }> {
-  const matches = (await stashListEntries(gitPath, dir)).filter((entry) => entry.message === message)
+  const matches = (await stashListEntries(gitPath, dir)).filter(
+    (entry) => entry.message === message || entry.message.endsWith(': ' + message),
+  )
   if (matches.length === 1) return { entry: matches[0], unique: true }
   return { entry: matches.length ? matches[0] : null, unique: false }
 }
