@@ -1,5 +1,5 @@
 import { React, h } from './ui'
-import { Banner, Btn, Card, CardHead, CopyBtn, Icon, KV, MenuItem, Modal, Spinner, Stat, branchSelect } from './primitives'
+import { Banner, Btn, Card, CardHead, CopyBtn, Icon, KV, MenuItem, Modal, Spinner, Stat, BranchCombobox } from './primitives'
 import { useBranchInfo } from './hooks'
 import { post } from './context'
 import { copyText, cx } from './format'
@@ -98,7 +98,7 @@ export function ProjectDetail(props: any) {
           h('button', { type: 'button', className: 'dshw-link-btn', onClick: branches.retry }, t.retry))
         : null
     const branchControl = branches.data
-      ? branchSelect(t, baseBranch, setBaseBranch, branches.data, { id: 'dshw-project-base' })
+      ? h(BranchCombobox, { t, value: baseBranch, onChange: setBaseBranch, branchInfo: branches.data, id: 'dshw-project-base' })
       : h('input', { id: 'dshw-project-base', className: 'dshw-input', value: baseBranch, onChange: (e: any) => setBaseBranch(e.target.value), placeholder: t.baseBranch })
 
     const deleteModal = deleteOpen

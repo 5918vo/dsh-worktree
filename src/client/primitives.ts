@@ -259,24 +259,13 @@ export function Field(props: any) {
       props.error ? h('div', { className: 'dshw-err', id: errorId, role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, props.error)) : null)
   }
 
-  /** Native <select> for a branch list: the OS renders the popup, so it can never be misplaced. */
-export function branchSelect(t: any, value: string, onChange: (v: string) => void, branchInfo: any, extraProps?: any) {
-    const list: any[] = (branchInfo && branchInfo.branches) || []
-    const known = list.some((b: any) => b.name === value)
-    return h('select', Object.assign({ className: 'dshw-input', value: value, onChange: (e: any) => onChange(e.target.value) }, extraProps || {}),
-      !value ? h('option', { value: '', disabled: true }, t.baseBranch) : null,
-      value && !known ? h('option', { value }, value) : null,
-      list.map((b: any) => h('option', { key: b.name, value: b.name }, b.name + (b.current ? '  ●' : ''))))
-  }
-
   /**
-   * Searchable base-branch picker used by the publish-task dialog.
-   *
-   * A native <select> cannot filter its options reliably across browsers, so this
-   * is a small ARIA combobox: the trigger shows the current selection and opens a
-   * panel with a filter input plus a keyboard-navigable list. The panel is rendered
-   * in-flow (below the field) instead of floating, so a long branch list can never
-   * be clipped by the modal body's scroll container.
+   * Searchable base-branch picker used by the publish-task dialog and every other
+   * base-branch field. A native <select> cannot filter its options reliably across
+   * browsers, so this is a small ARIA combobox: the trigger shows the current
+   * selection and opens a panel with a filter input plus a keyboard-navigable list.
+   * The panel is rendered in-flow (below the field) instead of floating, so a long
+   * branch list can never be clipped by the modal body's scroll container.
    */
 export function BranchCombobox(props: any) {
     const { t, value, onChange, branchInfo, ...rest } = props
@@ -292,7 +281,7 @@ export function BranchCombobox(props: any) {
     const searchId = baseId + '-search'
 
     // Include a synthetic option when the chosen branch is not in the loaded list
-    // (e.g. a continue-task base that has since been removed), mirroring branchSelect.
+    // (e.g. a continue-task base that has since been removed), mirroring the old select.
     const known = list.some((b: any) => b && b.name === selected)
     const options: any[] = selected && !known ? [{ name: selected, current: false } as any].concat(list) : list
     const filtered = filterBranches(options, query)

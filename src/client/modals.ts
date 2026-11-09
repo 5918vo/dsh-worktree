@@ -1,5 +1,5 @@
 import { React, h } from './ui'
-import { Btn, Field, Icon, Modal, Spinner, branchSelect, BranchCombobox } from './primitives'
+import { Btn, Field, Icon, Modal, Spinner, BranchCombobox } from './primitives'
 import { useBranchInfo } from './hooks'
 import { appCtx, bindSession, post, withTimeout } from './context'
 import { baseName, cx } from './format'
@@ -119,7 +119,11 @@ export function AddProjectModal(props: { t: any; onClose: () => void; onAdded: (
       branchHint = h('span', null, t.loadBranchesFailed, ' ',
         h('button', { type: 'button', className: 'dshw-link-btn', onClick: branches.retry }, t.retry))
     } else {
-      branchControl = branchSelect(t, baseBranch, chooseBase, branches.data, {
+      branchControl = h(BranchCombobox, {
+        t,
+        value: baseBranch,
+        onChange: chooseBase,
+        branchInfo: branches.data,
         id: 'dshw-add-base',
         'aria-required': 'true',
         'aria-invalid': fieldErrors.baseBranch ? 'true' : 'false',
