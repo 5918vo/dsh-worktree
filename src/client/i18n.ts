@@ -12,8 +12,14 @@ export function pickDict(locale: any): any {
   try {
     if (typeof locale === 'string') lang = locale
     else if (locale && typeof locale === 'object') {
-      const cur = typeof locale.current === 'function' ? locale.current() : undefined
-      lang = String(cur ?? locale.locale ?? locale.language ?? locale.code ?? '')
+      let cur: any
+      // The host locale service is a LocaleFace: { active, locales, revision }.
+      if (typeof locale.getSnapshot === 'function') {
+        const snap = locale.getSnapshot()
+        cur = snap && (snap.active ?? snap.locale ?? snap.language)
+      }
+      if (cur === undefined && typeof locale.current === 'function') cur = locale.current()
+      lang = String(cur ?? locale.active ?? locale.locale ?? locale.language ?? locale.code ?? '')
     }
   } catch {
     lang = ''

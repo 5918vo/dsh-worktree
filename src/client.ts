@@ -1,4 +1,4 @@
-import { initReact, h } from './client/ui'
+import { initReact, React, h } from './client/ui'
 import { setAppCtx } from './client/context'
 import { FALLBACK, pickDict } from './client/i18n'
 import { BoardIcon, BoardPage } from './client/board-page'
@@ -16,13 +16,18 @@ export function factory(require: Req) {
     inject: ['slots', 'locale', 'remote', 'remote.session', 'remote.directoryPicker', 'remote.workspace', 'uiSession'],
     apply(ctx: any) {
       setAppCtx(ctx)
-      let dict = FALLBACK.zh
+      const localeSvc = (() => {
+        try {
+          return ctx.get ? ctx.get('locale') : undefined
+        } catch {
+          return undefined
+        }
+      })()
+      const dict = pickDict(localeSvc)
       try {
-        const locale = ctx.get ? ctx.get('locale') : undefined
-        dict = pickDict(locale)
-        if (locale && typeof locale.register === 'function') {
+        if (localeSvc && typeof localeSvc.register === 'function') {
           try {
-            locale.register(MODULE_ID, { en: FALLBACK.en, zh: FALLBACK.zh })
+            localeSvc.register(MODULE_ID, { en: FALLBACK.en, zh: FALLBACK.zh })
           } catch {
             /* noop */
           }
@@ -30,7 +35,25 @@ export function factory(require: Req) {
       } catch {
         /* noop */
       }
-      const withT = (C: any) => (props: any) => h(C, Object.assign({}, props, { __t: dict }))
+      // Resolve the dictionary on every render and re-render when the host
+      // locale changes, so switching the GUI language updates live instead of
+      // freezing the language that was active when the plugin was applied.
+      const withT = (C: any) => (props: any) => {
+        const [, force] = React.useState(0)
+        React.useEffect(() => {
+          if (!localeSvc || typeof localeSvc.subscribe !== 'function') return undefined
+          let off: any
+          try {
+            off = localeSvc.subscribe(() => force((n: number) => n + 1))
+          } catch {
+            off = undefined
+          }
+          return () => {
+            if (typeof off === 'function') off()
+          }
+        }, [])
+        return h(C, Object.assign({}, props, { __t: pickDict(localeSvc) }))
+      }
       ctx.effect(() => {
         const offs: Array<() => void> = []
         const reg = (slot: string, make: () => any) => {
