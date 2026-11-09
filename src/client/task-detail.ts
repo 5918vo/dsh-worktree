@@ -374,9 +374,10 @@ export function TaskDetail(props: any) {
     const recheckPreview = () => { void previewController.load({ force: true }) }
 
     // Poll only while there is something to preview and no git mutation is
-    // currently running for this repo; otherwise the timer stops (and resumes on
-    // a later render when the conditions hold again).
-    const pollEnabled = shouldPollPreview({
+    // currently running for this repo. While the merge dialog is open we pause
+    // background polling so its result can only be replaced by an explicit
+    // re-check.
+    const pollEnabled = !mergeOpen && shouldPollPreview({
       status: snap.status,
       branchExists: snap.branchExists,
       ahead: snap.worktree.ahead,
