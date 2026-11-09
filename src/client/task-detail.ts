@@ -373,13 +373,51 @@ export function TaskDetail(props: any) {
     const previewBaseSha = previewChecked ? previewChecked.baseSha : null
     const recheckPreview = () => { void previewController.load({ force: true }) }
 
+    // Poll only while there is something to preview and no git mutation is
+    // currently running for this repo; otherwise the timer stops (and resumes on
+    // a later render when the conditions hold again).
+    const pollEnabled = shouldPollPreview({
+      status: snap.status,
+      branchExists: snap.branchExists,
+      ahead: snap.worktree.ahead,
+      postMergeAhead: snap.postMergeAhead || 0,
+      repoBusy: !!props.repoLockLabel || busy === 'checkout' || busy === 'back' || busy === 'merge' || busy === 'cleanup' || busy === 'stash-apply',
+    })
     React.useEffect(() => {
       void previewController.load({})
+    }, [previewController])
+    React.useEffect(() => {
+      if (!pollEnabled) return
       const timer = window.setInterval(() => {
         if (!document.hidden) void previewController.load({})
       }, 15000)
       return () => window.clearInterval(timer)
+    }, [pollEnabled, previewController])
+    // Immediate (non-forced) re-checks: tab regains focus, the agent finishes a
+    // turn, or any git action for this repo completes.
+    React.useEffect(() => {
+      const kick = () => { if (!document.hidden) void previewController.load({}) }
+      window.addEventListener('focus', kick)
+      const onVisible = () => { if (!document.hidden) kick() }
+      document.addEventListener('visibilitychange', onVisible)
+      return () => {
+        window.removeEventListener('focus', kick)
+        document.removeEventListener('visibilitychange', onVisible)
+      }
     }, [previewController])
+    const prevRunningRef = React.useRef(props.running)
+    React.useEffect(() => {
+      const was = prevRunningRef.current
+      prevRunningRef.current = props.running
+      if (was === true && props.running !== true) void previewController.load({})
+    }, [props.running, previewController])
+    const prevLockRef = React.useRef(props.repoLockLabel || '')
+    React.useEffect(() => {
+      const was = prevLockRef.current
+      const next = props.repoLockLabel || ''
+      prevLockRef.current = next
+      if (was && !next) void previewController.load({})
+    }, [props.repoLockLabel, previewController])
 
     React.useEffect(() => {
       setMergeOpen(false)
@@ -425,6 +463,11 @@ export function TaskDetail(props: any) {
       try {
         const result: any = await fn()
         await props.onChanged()
+        // A finished git action changes the repo/branch state; refresh the
+        // preview right away instead of waiting for the next poll.
+        if (key === 'checkout' || key === 'back' || key === 'merge' || key === 'cleanup') {
+          void previewController.load({})
+        }
         const warning = result && (result as any).warning
         if (warning === 'restore-failed') props.notify(t.mergeRestoreFailed, 'error')
         else if (warning) props.notify(String(warning), 'error')

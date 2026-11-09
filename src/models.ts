@@ -179,6 +179,10 @@ export interface MergePreview {
   conflict: boolean
   /** Whether merge-tree actually ran. */
   checked: boolean
+  /** When this dry-run was computed (ms since epoch); reused by the client. */
+  checkedAt?: number
+  /** True when this result came from the (task, tip, base) cache. */
+  cached?: boolean
   /** Whether the local git supports merge-tree --write-tree (>= 2.38). */
   supported: boolean
   reason?: string

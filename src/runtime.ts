@@ -1129,8 +1129,11 @@ export class Runtime {
     const wtDirty = await this.dirtySummary(task.worktreePath)
     if (wtDirty.count > 0) throw new TaskError(`worktree 有 ${wtDirty.count} 处未提交改动（${wtDirty.shown}），这些改动不会被合并；请先让 Agent 提交`)
     // Refuse before touching the main repo when the dry-run cannot prove a
-    // conflict-free merge. This keeps "merge" from ever failing mid-operation.
-    const pre = await this.mergePreview(task.id)
+    // conflict-free merge. Recompute now: we already hold the repo lock, which
+    // would make the public cache check report "busy" instead of checking.
+    const preTip = await gitx.revParse(this.gitPath, repoPath, task.branch)
+    const preBase = await gitx.revParse(this.gitPath, repoPath, task.baseBranch)
+    const pre = await this.runMergePreview(task, preTip, preBase)
     if (pre.applicable !== false && pre.conflict) {
       const detail = pre.conflictFiles.length ? `冲突文件：${pre.conflictFiles.join('、')}。` : ''
       throw new TaskError(
@@ -1182,12 +1185,16 @@ export class Runtime {
    * Preview whether the task branch can merge into its base. This is a dry run:
    * it never touches either working tree and does not decide the task status.
    */
-  async mergePreview(id: string): Promise<MergePreview> {
+  async mergePreview(id: string, opts: { force?: boolean } = {}): Promise<MergePreview> {
     const task = this.needTask(id)
-    const base: MergePreview = {
+    const tip = await gitx.revParse(this.gitPath, task.repoPath, task.branch)
+    const baseSha = task.baseBranch ? await gitx.revParse(this.gitPath, task.repoPath, task.baseBranch) : null
+    const empty: MergePreview = {
       applicable: false,
       branch: task.branch,
       baseBranch: task.baseBranch,
+      expectedTip: tip,
+      expectedBase: baseSha,
       baseAhead: 0,
       overlapFiles: [],
       conflictFiles: [],
@@ -1195,24 +1202,50 @@ export class Runtime {
       checked: false,
       supported: true,
     }
-    if (task.cleanedAt) return { ...base, reason: 'cleaned' }
+    if (task.cleanedAt) return { ...empty, reason: 'cleaned' }
     if (!(await gitx.branchExists(this.gitPath, task.repoPath, task.branch))) {
-      return { ...base, reason: 'branch-missing' }
+      return { ...empty, reason: 'branch-missing' }
     }
-    base.expectedTip = await gitx.revParse(this.gitPath, task.repoPath, task.branch)
-    base.expectedBase = await gitx.revParse(this.gitPath, task.repoPath, task.baseBranch)
-    const remember = (r: MergePreview): MergePreview => {
-      this.previewCache.set(task.id, { tip: base.expectedTip ?? null, base: base.expectedBase ?? null, at: Date.now(), result: r })
-      return r
-    }
+    // Cache keyed purely by (task, tip, base): if neither tip moved the dry-run
+    // result is still valid no matter how much wall-clock time passed. `force`
+    // bypasses it so the merge dialog can insist on a fresh check.
     const cached = this.previewCache.get(task.id)
-    if (cached && cached.tip === base.expectedTip && cached.base === base.expectedBase && Date.now() - cached.at < 15000) {
-      return cached.result
+    if (!opts.force && cached && cached.tip === tip && cached.base === baseSha) {
+      return { ...cached.result, cached: true }
     }
-    // Never spawn git while another git action holds this repo.
+    // Never spawn git while another git action holds this repo; a cached result
+    // is still safe to show, otherwise report busy.
     if (this.gitOps.get(this.repoKey(task.repoPath))) {
-      if (cached) return cached.result
-      return { ...base, reason: 'busy' }
+      if (cached) return { ...cached.result, cached: true }
+      return { ...empty, reason: 'busy' }
+    }
+    return this.runMergePreview(task, tip, baseSha)
+  }
+
+  /**
+   * Run the merge dry-run and cache it by (task, tip, base). Split out from
+   * `mergePreview` so the merge path can recompute while it holds the repo lock
+   * (which would otherwise look like "busy").
+   */
+  private async runMergePreview(task: WorktreeTask, tip: string | null, baseSha: string | null): Promise<MergePreview> {
+    const base: MergePreview = {
+      applicable: false,
+      branch: task.branch,
+      baseBranch: task.baseBranch,
+      expectedTip: tip,
+      expectedBase: baseSha,
+      baseAhead: 0,
+      overlapFiles: [],
+      conflictFiles: [],
+      conflict: false,
+      checked: false,
+      supported: true,
+    }
+    const remember = (r: MergePreview): MergePreview => {
+      const checkedAt = Date.now()
+      const out: MergePreview = { ...r, checkedAt, cached: false }
+      this.previewCache.set(task.id, { tip, base: baseSha, at: checkedAt, result: out })
+      return out
     }
     const mergeBase = await gitx.mergeBase(this.gitPath, task.repoPath, task.baseBranch, task.branch)
     if (!mergeBase) return remember({ ...base, applicable: true, reason: 'no-merge-base' })

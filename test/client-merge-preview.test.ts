@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createPreviewController } from '../src/client/merge-preview'
+import { createPreviewController, shouldPollPreview } from '../src/client/merge-preview'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -126,4 +126,21 @@ test('a plain call while a request is running awaits it instead of starting anot
   await Promise.all([first, second])
   assert.equal(calls, 1)
   assert.equal(controller.getState().phase, 'ready')
+})
+
+test('poll gating stops when nothing is mergeable and resumes for post-merge commits', () => {
+  // Something to merge -> poll.
+  assert.equal(shouldPollPreview({ status: 'review', branchExists: true, ahead: 1 }), true)
+  // Nothing ahead and no post-merge commits -> stop.
+  assert.equal(shouldPollPreview({ status: 'review', branchExists: true, ahead: 0, postMergeAhead: 0 }), false)
+  // Merged but the old branch moved on -> keep polling (not keyed on status).
+  assert.equal(shouldPollPreview({ status: 'merged', branchExists: true, ahead: 0, postMergeAhead: 2 }), true)
+  // A cleaned task whose branch still has unmerged commits -> keep polling.
+  assert.equal(shouldPollPreview({ status: 'cleaned', branchExists: true, ahead: 2 }), true)
+  // Broken/absent branch or a running git op -> stop.
+  assert.equal(shouldPollPreview({ status: 'broken', branchExists: true, ahead: 1 }), false)
+  assert.equal(shouldPollPreview({ status: 'review', branchExists: false, ahead: 1 }), false)
+  assert.equal(shouldPollPreview({ status: 'review', branchExists: true, ahead: 1, repoBusy: true }), false)
+  // Hidden page -> stop.
+  assert.equal(shouldPollPreview({ hidden: true, status: 'review', branchExists: true, ahead: 1 }), false)
 })

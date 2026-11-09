@@ -274,7 +274,7 @@ export function registerHttp(app: App): () => void {
     requireToken(req)
     const body = await readJson(req)
     try {
-      const preview = await app.runtime.mergePreview(String(body.id || ''))
+      const preview = await app.runtime.mergePreview(String(body.id || ''), { force: body.force === true })
       send(res, 200, { preview })
     } catch (error) {
       if (error instanceof TaskError) return send(res, error.status, { error: error.message })
