@@ -250,11 +250,14 @@ export class Runtime {
   /** Reuse a merge preview while both tips are unchanged (and skip while the repo is locked). */
   private readonly previewCache = new Map<string, { tip: string | null; base: string | null; at: number; result: MergePreview }>()
   private envInfo: { gitVersion: string | null; mergeTreeSupported: boolean; longPaths: boolean | null } | null = null
+  /** Probe a task session's run state ('idle' when no session concept exists). */
+  private readonly sessionState: (sessionId: string) => 'running' | 'idle' | 'unknown'
 
-  constructor(deps: { store: Store; config: WorktreeConfig }) {
+  constructor(deps: { store: Store; config: WorktreeConfig; sessionState?: (sessionId: string) => 'running' | 'idle' | 'unknown' }) {
     this.store = deps.store
     this.config = deps.config
     this.gitPath = deps.config.gitPath
+    this.sessionState = deps.sessionState || (() => 'idle')
   }
 
   /** Cached Git capability info for a startup banner (merge-tree support, long paths). */
@@ -838,6 +841,17 @@ export class Runtime {
     if (state) throw new TaskError(`主仓库有未完成的 ${state} 操作，请先处理后再继续`)
   }
 
+  /**
+   * Refuse a mutating action while the task's agent session is running; an
+   * unknown state also refuses (never mutate what we cannot observe).
+   */
+  private assertAgentIdle(task: WorktreeTask): void {
+    if (!task.sessionId) return
+    const state = this.sessionState(task.sessionId)
+    if (state === 'running') throw new TaskError('Agent 正在运行，请等待其完成后再操作', 409, 'agent-running')
+    if (state === 'unknown') throw new TaskError('无法确认 Agent 运行状态，已阻止该操作；请稍后重试', 409, 'agent-unknown')
+  }
+
   private repoKey(repoPath: string): string {
     return repoPath.replace(/[\\/]+$/, '').toLowerCase()
   }
@@ -955,6 +969,7 @@ export class Runtime {
 
   private async checkoutLocked(task: WorktreeTask, opts: { strategy?: SwitchStrategy; expectedSha?: string } = {}): Promise<WorktreeTask> {
     if (task.cleanedAt) throw new TaskError('worktree 已清理，无法验收切换')
+    this.assertAgentIdle(task)
     const repoPath = task.repoPath
     await this.assertNoInProgress(repoPath)
     if (!(await gitx.branchExists(this.gitPath, repoPath, task.branch))) {
@@ -1005,6 +1020,7 @@ export class Runtime {
 
   private async backLocked(task: WorktreeTask, opts: { strategy?: SwitchStrategy; expectedSha?: string } = {}): Promise<WorktreeTask> {
     const repoPath = task.repoPath
+    this.assertAgentIdle(task)
     await this.assertNoInProgress(repoPath)
     const headSha = await gitx.revParse(this.gitPath, repoPath, 'HEAD')
     const currentRef = await gitx.currentBranch(this.gitPath, repoPath)
@@ -1089,6 +1105,7 @@ export class Runtime {
 
   private async mergeLocked(task: WorktreeTask, opts: { switchToBase?: boolean; restoreTo?: boolean; expectedTip?: string; expectedBase?: string } = {}): Promise<WorktreeTask> {
     if (task.cleanedAt) throw new TaskError('worktree 已清理，分支若仍在可手动合并')
+    this.assertAgentIdle(task)
     const repoPath = task.repoPath
     if (!(await gitx.branchExists(this.gitPath, repoPath, task.branch))) {
       throw new TaskError(`任务分支不存在：${task.branch}`)
@@ -1292,6 +1309,7 @@ export class Runtime {
   }
 
   private async cleanupLocked(task: WorktreeTask, opts: { force?: boolean; deleteBranch?: boolean; forceDeleteBranch?: boolean }): Promise<WorktreeTask> {
+    this.assertAgentIdle(task)
     // Never clean the working copy the main repo is currently reviewing: the
     // user would be left on a detached/branch state with no way back.
     if ((await this.snapshot(task)).status === 'reviewing') {

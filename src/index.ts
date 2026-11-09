@@ -15,6 +15,11 @@ export interface ApplyOptions {
    * into the user's real board.
    */
   store?: Store
+  /**
+   * Override the session run-state probe. Production reads the host UI session
+   * service; tests pass a deterministic probe (e.g. always 'idle').
+   */
+  sessionState?: (sessionId: string) => 'running' | 'idle' | 'unknown'
 }
 
 /**
@@ -26,7 +31,26 @@ export interface ApplyOptions {
 export function apply(ctx: Ctx, rawConfig: unknown, options?: ApplyOptions): App {
   const config = normalizeConfig(rawConfig)
   const store = options?.store ?? new Store()
-  const runtime = new Runtime({ store, config })
+  // Probe a task session's run state from the host UI session service. Unknown
+  // (service/session not resolvable) is reported as 'unknown' so mutations that
+  // could clobber a running agent are refused rather than guessed.
+  const sessionState = (sessionId: string): 'running' | 'idle' | 'unknown' => {
+    try {
+      const svc: any = ctx.get('uiSession')
+      const snapshot = svc && svc.sessionStatus && typeof svc.sessionStatus.getSnapshot === 'function'
+        ? svc.sessionStatus.getSnapshot()
+        : null
+      if (!snapshot) return 'unknown'
+      const state = snapshot instanceof Map ? snapshot.get(sessionId) : snapshot && snapshot[sessionId]
+      if (!state) return 'unknown'
+      if (state.running === true) return 'running'
+      if (state.running === false) return 'idle'
+      return 'unknown'
+    } catch {
+      return 'unknown'
+    }
+  }
+  const runtime = new Runtime({ store, config, sessionState: options?.sessionState ?? sessionState })
   const logger = {
     info: (m: string) => {
       try {

@@ -62,6 +62,6 @@ export function bootHost(rawConfig?: unknown, options?: { stateDir?: string }): 
   // (`~/.dsh/worktree-tasks`). Without this, every run would leave a test
   // project and its subtasks behind on the user's real board.
   const store = options?.stateDir ? new Store(options.stateDir) : undefined
-  const app = apply(ctx, rawConfig, store ? { store } : undefined)
+  const app = apply(ctx, rawConfig, { ...(store ? { store } : {}), sessionState: () => 'idle' })
   return { ctx, tools, routes, app }
 }
