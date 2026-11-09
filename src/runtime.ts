@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import * as gitx from './gitx.js'
-import { DiffFile, MergePreview, Project, ProjectStats, ProjectView, TaskDiff, TaskSnapshot, TaskStatus, TaskView, WorktreeConfig, WorktreeTask } from './models.js'
+import { DiffFile, MergePreview, ModelSelection, Project, ProjectStats, ProjectView, TaskDiff, TaskSnapshot, TaskStatus, TaskView, WorktreeConfig, WorktreeTask } from './models.js'
 import { Store } from './store.js'
 
 export interface PublishInput {
@@ -25,6 +25,8 @@ export interface PublishInput {
   carryLeftover?: boolean
   /** Client publishes bind their own session; tools rely on the board retry. */
   autoBind?: boolean
+  /** Preferred model for the task session (applied when the session is created). */
+  model?: ModelSelection
 }
 
 export interface AddProjectInput {
@@ -445,6 +447,8 @@ export class Runtime {
   async publish(input: PublishInput): Promise<WorktreeTask> {
     if (!input.title?.trim()) throw new TaskError('任务标题不能为空')
     if (!input.description?.trim()) throw new TaskError('任务描述不能为空')
+    const model = input.model === undefined ? undefined : normalizeModelSelection(input.model)
+    if (input.model !== undefined && model === undefined) throw new TaskError('模型选择无效')
 
     const project = await this.ensureProject(input)
     const repoPath = project.repoPath
@@ -499,6 +503,7 @@ export class Runtime {
       sessionId: null,
       firstPrompt: '',
       startOnBind: input.start !== false && input.autoBind !== false,
+      ...(model ? { model } : {}),
       ...(parentId ? { parentId } : {}),
       createdAt: now,
       updatedAt: now,
@@ -937,4 +942,16 @@ export class Runtime {
     this.store.putTask(task)
     return task
   }
+}
+
+/** Trim and validate a client-supplied model route; undefined when unusable. */
+function normalizeModelSelection(value: any): ModelSelection | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const provider = typeof value.provider === 'string' ? value.provider.trim() : ''
+  const model = typeof value.model === 'string' ? value.model.trim() : ''
+  if (!provider || !model) return undefined
+  const reasoningEffort = typeof value.reasoningEffort === 'string' && value.reasoningEffort.trim()
+    ? value.reasoningEffort.trim()
+    : undefined
+  return { provider, model, ...(reasoningEffort ? { reasoningEffort } : {}) }
 }

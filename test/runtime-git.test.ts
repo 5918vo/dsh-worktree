@@ -70,6 +70,18 @@ test('publish honors start/autoBind=false by clearing startOnBind', async () => 
   }
 })
 
+test('publish records the chosen model on the task', async () => {
+  const f = await fixture()
+  try {
+    const model = { provider: 'baba', model: 'mm/chat', reasoningEffort: 'high' }
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'm', description: 'd', model })
+    assert.deepEqual(task.model, model)
+    assert.deepEqual(f.store.getTask(task.id)?.model, model)
+  } finally {
+    await teardown(f)
+  }
+})
+
 test('publish rejects invalid input', async () => {
   const f = await fixture()
   try {
@@ -96,6 +108,10 @@ test('publish rejects invalid input', async () => {
     await assert.rejects(
       () => f.runtime.publish({ title: 't', description: 'd' }),
       (e: any) => e instanceof TaskError && /缺少 projectId 或 repoPath/.test(e.message),
+    )
+    await assert.rejects(
+      () => f.runtime.publish({ repoPath: f.repo, title: 't', description: 'd', model: { provider: '', model: 'x' } }),
+      (e: any) => e instanceof TaskError && /模型选择无效/.test(e.message),
     )
   } finally {
     await teardown(f)

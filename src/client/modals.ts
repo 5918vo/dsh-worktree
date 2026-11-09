@@ -1,5 +1,6 @@
 import { React, h } from './ui'
 import { Btn, Field, Icon, Modal, Spinner, BranchCombobox } from './primitives'
+import { ModelCombobox } from './model-picker'
 import { useBranchInfo } from './hooks'
 import { appCtx, bindSession, post, withTimeout } from './context'
 import { baseName, cx } from './format'
@@ -233,6 +234,30 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
     const [fieldErrors, setFieldErrors] = React.useState({} as any)
     const advancedRef = React.useRef(null)
     const submitRef = React.useRef(false)
+    const [modelCatalog, setModelCatalog] = React.useState(null as any)
+    const [modelChoice, setModelChoice] = React.useState(null as any)
+    const [modelLoading, setModelLoading] = React.useState(true)
+    const [modelError, setModelError] = React.useState('')
+
+    // Model list comes from the host's session model catalog — the same source
+    // the official conversation model dropdown reads.
+    const loadModels = () => {
+      if (!remotes || !remotes.session || typeof remotes.session.modelCatalog !== 'function') {
+        setModelLoading(false)
+        setModelError(t.modelUnavailable)
+        return
+      }
+      setModelLoading(true)
+      setModelError('')
+      remotes.session.modelCatalog()
+        .then((r: any) => {
+          if (r && r.ok && r.value) setModelCatalog(r.value)
+          else setModelError((r && r.error && (r.error.message || r.error.code)) || t.loadFailed)
+        })
+        .catch((e: any) => setModelError((e && e.message) || t.loadFailed))
+        .finally(() => setModelLoading(false))
+    }
+    React.useEffect(() => { loadModels() }, [])
 
     React.useEffect(() => {
       const d = branches.data
@@ -277,6 +302,7 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
           title: title.trim(),
           description,
           branchName: branchName.trim() || undefined,
+          model: modelChoice || undefined,
           ...(parentTask && !asPlain ? { parentId: parentTask.id, carryLeftover } : {}),
           start,
         }), 30000, t.publishTimeout)
@@ -449,6 +475,22 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
       h('details', { className: 'dshw-advanced', ref: advancedRef },
         h('summary', null, h(Icon, { name: 'chevronDown' }), t.advanced),
         h('div', { className: 'dshw-advanced-body' },
+          h('div', { className: 'dshw-field' },
+            h('label', { className: 'dshw-field-label', htmlFor: 'dshw-publish-model' }, t.model),
+            modelLoading
+              ? h('div', { className: 'dshw-select-loading' }, h(Spinner), h('span', null, t.loading))
+              : modelCatalog
+                ? h(ModelCombobox, {
+                  t,
+                  id: 'dshw-publish-model',
+                  value: modelChoice,
+                  onChange: setModelChoice,
+                  groups: modelCatalog.groups,
+                  defaultSelection: modelCatalog.default,
+                })
+                : h('div', { className: 'dshw-select-loading' }, h('span', null, modelError || t.loadFailed), ' ',
+                  h('button', { type: 'button', className: 'dshw-link-btn', onClick: loadModels }, t.retry)),
+            modelCatalog ? h('div', { className: 'dshw-hint' }, t.modelHint) : null),
           h('div', { className: 'dshw-field' },
             h('label', { className: 'dshw-field-label', htmlFor: 'dshw-publish-branch' }, t.branchName),
             h('input', {

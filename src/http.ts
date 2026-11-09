@@ -127,6 +127,7 @@ export function registerHttp(app: App): () => void {
         carryLeftover: body.carryLeftover === true,
         start: body.start !== false,
         autoBind: false,
+        model: body.model && typeof body.model === 'object' ? body.model : undefined,
       })
       send(res, 200, { task })
     } catch (error) {

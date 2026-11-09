@@ -9,6 +9,14 @@ export interface WorktreeConfig {
   gitPath: string
 }
 
+/** A provider/model route chosen for a task's session. */
+export interface ModelSelection {
+  provider: string
+  model: string
+  /** Adapter-owned reasoning effort id; omitted means the adapter default. */
+  reasoningEffort?: string
+}
+
 /** A target repository registered on the board; tasks hang off it. */
 export interface Project {
   id: string
@@ -50,6 +58,8 @@ export interface WorktreeTask {
   firstPrompt: string
   /** Auto-create the session on the next workbench mount (tool-publish path). */
   startOnBind: boolean
+  /** Preferred model for the task session; applied right after the session is created. */
+  model?: ModelSelection
   /** Branch the main repo was on before switching to the task branch. */
   originalBranch?: string
   /** Set when this task branch was merged through the workbench. */

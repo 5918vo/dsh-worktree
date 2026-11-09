@@ -365,6 +365,11 @@ export const CSS = `
 .dshw-combo-check{width:14px;height:14px;color:var(--dshw-brand);flex:none}
 .dshw-combo-tag{font-size:10.5px;color:var(--dshw-text-3);border:1px solid var(--dshw-border);border-radius:99px;padding:1px 6px;flex:none}
 .dshw-combo-empty{padding:12px 9px;text-align:center;font-size:11.5px;color:var(--dshw-text-3)}
+.dshw-model-default{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:transparent;border-radius:7px;padding:8px 9px;margin-top:7px;font-size:12.5px;color:var(--dshw-text);cursor:pointer}
+.dshw-model-default:hover{background:var(--dshw-surface-2)}
+.dshw-model-default--selected{color:var(--dshw-brand);font-weight:600}
+.dshw-model-default .dshw-combo-check{margin-left:auto}
+.dshw-model-group{padding:8px 9px 3px;font-size:10.5px;font-weight:700;letter-spacing:.02em;color:var(--dshw-text-3)}
 .dshw-check{display:flex;align-items:flex-start;gap:9px;font-size:12.5px;cursor:pointer;color:var(--dshw-text)}
 .dshw-check input{width:15px;height:15px;margin:1px 0 0;accent-color:var(--dshw-brand);flex:none;cursor:pointer}
 .dshw-check-copy{min-width:0}

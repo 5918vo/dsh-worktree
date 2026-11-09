@@ -125,6 +125,22 @@ export async function bindSession(remotes: any, task: any, projectTitle?: string
   } catch {
     /* best effort */
   }
+  // Apply the model route chosen at publish time before the first prompt, so the
+  // very first request runs on that model. The catalog and RPC are the same ones
+  // the official conversation model dropdown uses.
+  const model = task.model
+  if (model && typeof model.provider === 'string' && typeof model.model === 'string' && typeof remotes.session.selectModel === 'function') {
+    const selected = await remotes.session.selectModel({
+      sessionId,
+      provider: model.provider,
+      model: model.model,
+      ...(typeof model.reasoningEffort === 'string' && model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
+    })
+    if (selected && selected.ok === false) {
+      const err = selected.error
+      throw new Error(String((err && (err.message || err.code)) || 'model selection failed'))
+    }
+  }
   if (start && task.firstPrompt) {
     const tz = (() => {
       try {
