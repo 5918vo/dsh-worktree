@@ -854,6 +854,19 @@ export class Runtime {
     if (ahead === 0) throw new TaskError('没有领先基线的提交，无需合并')
     const wtDirty = await this.dirtySummary(task.worktreePath)
     if (wtDirty.count > 0) throw new TaskError(`worktree 有 ${wtDirty.count} 处未提交改动（${wtDirty.shown}），这些改动不会被合并；请先让 Agent 提交`)
+    // Refuse before touching the main repo when the dry-run cannot prove a
+    // conflict-free merge. This keeps "merge" from ever failing mid-operation.
+    const pre = await this.mergePreview(task.id)
+    if (pre.applicable !== false && pre.conflict) {
+      const detail = pre.conflictFiles.length ? `冲突文件：${pre.conflictFiles.join('、')}。` : ''
+      throw new TaskError(
+        `无法自动合并：与 ${task.baseBranch} 存在冲突。${detail}请在任务 worktree 中执行 git merge ${task.baseBranch}，解决冲突并提交后再重试。`,
+        409,
+      )
+    }
+    if (pre.applicable !== false && pre.checked === false) {
+      throw new TaskError('无法完成合并前冲突预检，已阻止合并；请重试，或升级 Git 后再合并', 409)
+    }
     // Capture the tip that is about to be merged.
     const mergedTip = await gitx.revParse(this.gitPath, repoPath, task.branch)
     try {
@@ -916,10 +929,17 @@ export class Runtime {
       applicable: true,
       baseAhead,
       overlapFiles,
-      checked: true,
+      checked: false,
     }
-    if (baseAhead === 0 || overlapFiles.length === 0) return preview
+    // When the base has not moved since the merge-base the merge is a
+    // fast-forward and cannot conflict.
+    if (baseAhead === 0) {
+      preview.checked = true
+      return preview
+    }
 
+    // Always run the real dry-run (not only when file names overlap): renames,
+    // mode changes and directory conflicts do not need a same-path overlap.
     const check = await gitx.mergeTreeCheck(this.gitPath, task.repoPath, task.baseBranch, task.branch)
     preview.supported = check.supported
     preview.checked = check.supported && !check.error

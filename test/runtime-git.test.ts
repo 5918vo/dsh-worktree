@@ -357,6 +357,24 @@ test('diff falls back to the recorded branch when the worktree is gone', async (
   }
 })
 
+test('merge preview runs a real dry-run even without overlapping file names', async () => {
+  const f = await fixture()
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'dry', description: 'd' })
+    await commitFile(task.worktreePath, 'src/a.txt', 'a\n', 'feat: a')
+    await commitFile(f.repo, 'src/b.txt', 'b\n', 'base: b')
+
+    const preview = await f.runtime.mergePreview(task.id)
+    assert.equal(preview.applicable, true)
+    assert.equal(preview.baseAhead, 1)
+    assert.deepEqual(preview.overlapFiles, [])
+    assert.equal(preview.checked, true)
+    assert.equal(preview.conflict, false)
+  } finally {
+    await teardown(f)
+  }
+})
+
 test('merge conflict reports the conflicting files and leaves the repo clean', async () => {
   const f = await fixture()
   try {
@@ -372,6 +390,7 @@ test('merge conflict reports the conflicting files and leaves the repo clean', a
     assert.equal(preview.applicable, true)
     assert.equal(preview.baseAhead, 1)
     assert.deepEqual(preview.overlapFiles, ['src/conflict.txt'])
+    assert.equal(preview.checked, true)
     assert.equal(preview.conflict, true)
     assert.ok(preview.conflictFiles.includes('src/conflict.txt'))
 

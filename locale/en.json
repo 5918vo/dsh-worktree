@@ -307,6 +307,7 @@
   "mergePreviewConflictHint": "The base has new commits that conflict with this task. Sync the base in the session first.",
   "mergePreviewOverlapHint": "Both sides changed these files. Git may merge them automatically, but review the risk.",
   "mergePreviewNoCheck": "This Git version cannot pre-check conflicts; only file overlap is shown.",
+  "mergePrecheckBlocked": "Could not complete the conflict pre-check, so merging is blocked. Retry or upgrade Git.",
   "mergePreviewFiles": "Files",
   "syncBaseline": "Sync base in session",
   "syncingBaseline": "Sending sync request…",

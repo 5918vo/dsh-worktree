@@ -613,6 +613,10 @@ export function TaskDetail(props: any) {
     const agentRunning = props.running === true
     const repoLockLabel = props.repoLockLabel || ''
     const conflictNow = !!(preview && preview.conflict)
+    // A merge is only allowed after the dry-run proved it conflict-free. While
+    // the preview is loading/failed/unsupported the button stays disabled, so a
+    // known conflict can never reach the actual merge step.
+    const previewReadyForMerge = !!preview && preview.applicable !== false && preview.supported !== false && preview.checked !== false && !conflictNow && !previewBusy
 
     const showBack = onTaskBranch
     const showCheckout = !onTaskBranch && snap.status !== 'cleaned'
@@ -663,9 +667,11 @@ export function TaskDetail(props: any) {
         if (inProgress) mergeReasons.push({ text: t.acceptInProgress })
         if (agentRunning) mergeReasons.push({ text: t.acceptAgentRunning })
         if (conflictNow) mergeReasons.push({ text: t.mergePreviewConflictHint, action: syncAction })
+        else if (previewBusy || !preview) mergeReasons.push({ text: t.mergePreviewChecking })
+        else if (preview.supported === false || preview.checked === false) mergeReasons.push({ text: t.mergePrecheckBlocked })
       }
     }
-    const mergeEnabled = showMerge && !onTaskBranch && snap.status === 'review' && ahead > 0 && dirty === 0 && repoDirty === 0 && !inProgress && curOnBase && !agentRunning && !repoLockLabel && !conflictNow
+    const mergeEnabled = showMerge && !onTaskBranch && snap.status === 'review' && ahead > 0 && dirty === 0 && repoDirty === 0 && !inProgress && curOnBase && !agentRunning && !repoLockLabel && previewReadyForMerge
 
     const reasonsNode = (() => {
       const list: AcceptReason[] = []
@@ -713,7 +719,7 @@ export function TaskDetail(props: any) {
           h(Btn, {
             key: 'ok',
             variant: 'primary',
-            disabled: busy === 'merge' || dirty > 0 || !curOnBase || agentRunning || previewBusy || !!(preview && preview.conflict),
+            disabled: busy === 'merge' || dirty > 0 || !curOnBase || agentRunning || !previewReadyForMerge,
             title: preview && preview.conflict ? t.mergePreviewConflictHint : undefined,
             onClick: () => {
               props.onRepoBusy && props.onRepoBusy(true, t.merging)
