@@ -115,6 +115,9 @@ export interface TaskSnapshot {
   /** Commits on the task branch after the recorded merge that are not yet in base.
    *  >0 means the task stays `merged` but has patches worth a follow-up. */
   postMergeAhead?: number
+  /** Commits added to the task branch after the commit currently being reviewed.
+   *  >0 means the review is looking at an older commit than the branch tip. */
+  reviewBehind?: number
   status: TaskStatus
   error?: string
 }

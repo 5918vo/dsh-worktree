@@ -65,7 +65,7 @@ export function SettingsPage(props: any) {
         await post('recents/clear', {})
         setRecents([])
         setClearOpen(false)
-        notify(t.clearRecents)
+        notify(t.recentsCleared)
       } catch (e: any) {
         setErr((e && e.message) || t.failed)
       } finally {

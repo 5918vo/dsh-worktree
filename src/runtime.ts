@@ -242,11 +242,32 @@ export class Runtime {
   readonly gitPath: string
   /** One in-flight git action per main repo, shared by chat/board/tool callers. */
   private readonly gitOps = new Map<string, string>()
+  /** Transient (non-persisted) warnings for the next action response, e.g. restore-failed. */
+  private readonly opWarnings = new Map<string, string>()
+  private envInfo: { gitVersion: string | null; mergeTreeSupported: boolean } | null = null
 
   constructor(deps: { store: Store; config: WorktreeConfig }) {
     this.store = deps.store
     this.config = deps.config
     this.gitPath = deps.config.gitPath
+  }
+
+  /** Cached Git capability info for a startup banner (merge-tree support). */
+  async environment(): Promise<{ gitVersion: string | null; mergeTreeSupported: boolean }> {
+    if (!this.envInfo) {
+      const v = await gitx.gitVersion(this.gitPath)
+      this.envInfo = v
+        ? { gitVersion: v.version, mergeTreeSupported: v.mergeTreeSupported }
+        : { gitVersion: null, mergeTreeSupported: true }
+    }
+    return this.envInfo
+  }
+
+  /** Read and clear the one-shot warning left by the last mutating action. */
+  takeWarning(id: string): string | undefined {
+    const warning = this.opWarnings.get(id)
+    if (warning) this.opWarnings.delete(id)
+    return warning
   }
 
   private abs(p: string): string {
@@ -359,6 +380,11 @@ export class Runtime {
       throw new TaskError(`项目下还有 ${tasks.length} 个任务；勾选「连同任务删除」后重试`)
     }
     let deletedWorktrees = 0
+    for (const t of tasks) {
+      if ((await this.snapshot(t)).status === 'reviewing') {
+        throw new TaskError(`任务「${t.title}」正在验收中，请先切回原分支再删除项目`, 409)
+      }
+    }
     if (opts.withWorktrees) {
       for (const t of tasks) {
         if (await this.removeWorktreeDir(t)) deletedWorktrees += 1
@@ -574,6 +600,13 @@ export class Runtime {
       snap.repo.exists = repoIsRepo
       snap.worktree.exists = wtStat
       snap.branchExists = repoIsRepo ? await gitx.branchExists(this.gitPath, task.repoPath, task.branch) : false
+      // Reviewing an older commit than the branch tip: surface how far behind.
+      if (task.reviewSha && snap.branchExists) {
+        const branchTip = await gitx.revParse(this.gitPath, task.repoPath, task.branch)
+        if (branchTip && branchTip !== task.reviewSha) {
+          snap.reviewBehind = await gitx.countCommits(this.gitPath, task.repoPath, `${task.reviewSha}..${task.branch}`)
+        }
+      }
 
       if (repoIsRepo) {
         const [cur, headSha, dirty] = await Promise.all([
@@ -997,8 +1030,28 @@ export class Runtime {
   async applyReviewStash(id: string): Promise<WorktreeTask> {
     const task = this.needTask(id)
     if (!task.reviewStash) throw new TaskError('没有可恢复的验收暂存')
-    await gitx.stashApplyByMessage(this.gitPath, task.repoPath, task.reviewStash)
+    try {
+      // apply (not pop): keep the stash until we know the restore succeeded.
+      await gitx.stashApplyByMessage(this.gitPath, task.repoPath, task.reviewStash)
+    } catch (error) {
+      const text = (error as any)?.stderr || (error instanceof Error ? error.message : String(error))
+      const files = conflictFiles(String(text))
+      const detail = files.length ? files.join('、') : '未知文件'
+      throw new TaskError(`恢复暂存产生冲突：${detail}。暂存记录已保留，请解决冲突后再恢复或丢弃。`, 409)
+    }
+    // Safe now: drop the applied stash so it cannot be applied twice.
+    await gitx.stashDropByMessage(this.gitPath, task.repoPath, task.reviewStash)
+    task.reviewStash = undefined
+    this.store.putTask(task)
     return task
+  }
+
+  /** Read-only unified patch of the recorded review stash, for the "view" dialog. */
+  async reviewStashDiff(id: string): Promise<{ patch: string }> {
+    const task = this.needTask(id)
+    if (!task.reviewStash) return { patch: '' }
+    const patch = await gitx.stashShowByMessage(this.gitPath, task.repoPath, task.reviewStash)
+    return { patch }
   }
 
   async dropReviewStash(id: string): Promise<WorktreeTask> {
@@ -1070,7 +1123,10 @@ export class Runtime {
         409,
       )
     }
-    if (pre.applicable !== false && pre.checked === false) {
+    // Only a failed *real* check blocks the merge. When the local Git is too old
+    // to run merge-tree (supported === false) merging is still allowed, with a
+    // risk warning from the UI — a single consistent policy.
+    if (pre.applicable !== false && pre.supported !== false && pre.checked === false) {
       throw new TaskError('无法完成合并前冲突预检，已阻止合并；请重试，或升级 Git 后再合并', 409)
     }
     // Capture the tip that is about to be merged.
@@ -1098,7 +1154,11 @@ export class Runtime {
     return task
     } finally {
       if (restoreFrom && opts.restoreTo !== false) {
-        try { await gitx.switchBranch(this.gitPath, repoPath, restoreFrom) } catch { /* keep base */ }
+        try { await gitx.switchBranch(this.gitPath, repoPath, restoreFrom) } catch {
+          // Merged successfully but the checkout-back failed (e.g. Windows file
+          // lock). Keep the merge, and report a partial-success warning.
+          this.opWarnings.set(task.id, 'restore-failed')
+        }
       }
     }
   }
@@ -1168,6 +1228,11 @@ export class Runtime {
   }
 
   private async cleanupLocked(task: WorktreeTask, opts: { force?: boolean; deleteBranch?: boolean; forceDeleteBranch?: boolean }): Promise<WorktreeTask> {
+    // Never clean the working copy the main repo is currently reviewing: the
+    // user would be left on a detached/branch state with no way back.
+    if ((await this.snapshot(task)).status === 'reviewing') {
+      throw new TaskError('任务正在验收中，请先切回原分支再清理 worktree', 409)
+    }
     // Validate branch deletion BEFORE touching the worktree, so a refusal never
     // leaves a half-cleaned task (worktree gone, branch still there).
     let branchMerged = false
@@ -1234,7 +1299,11 @@ export class Runtime {
     return task
   }
 
-  delete(id: string): void {
+  async delete(id: string): Promise<void> {
+    const task = this.needTask(id)
+    if ((await this.snapshot(task)).status === 'reviewing') {
+      throw new TaskError('任务正在验收中，请先切回原分支再删除记录', 409)
+    }
     this.store.deleteTask(id)
   }
 

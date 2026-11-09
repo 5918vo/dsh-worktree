@@ -40,6 +40,7 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check:locale": "node scripts/check-locale.mjs",
     "build": "node build.mjs",
     "test": "node scripts/test.mjs",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true}); require('fs').rmSync('.test-dist',{recursive:true,force:true})\"",

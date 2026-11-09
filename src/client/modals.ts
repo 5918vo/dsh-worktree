@@ -478,6 +478,11 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
               ? h('div', { className: 'dshw-hint' }, String(t.baseNotMergeTarget).replace('{base}', parentTask.baseBranch))
               : null)),
         h('div', { className: 'dshw-form-row' },
+          h('span', { className: 'dshw-form-label' }, t.preview),
+          h('div', null,
+            h('div', { className: 'dshw-hint' }, t.previewBranch + '：' + (branchName.trim() || pattern)),
+            h('div', { className: 'dshw-hint' }, t.previewDir + '：' + ((project.dirName || cfg.dirName || '.dsh-worktrees') + '/<id8>')))),
+        h('div', { className: 'dshw-form-row' },
           h('span', { className: 'dshw-form-label', id: 'dshw-publish-start-label' }, t.startNow),
           h('div', null,
             h('div', {

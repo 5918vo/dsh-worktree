@@ -395,6 +395,14 @@ export async function stashDropByMessage(gitPath: string, dir: string, message: 
   await run(gitPath, dir, ['stash', 'drop', ref], GIT_OP_TIMEOUT_MS)
 }
 
+/** Unified patch for a stash entry (used by the "view stash" dialog). */
+export async function stashShowByMessage(gitPath: string, dir: string, message: string): Promise<string> {
+  const ref = await stashRefForMessage(gitPath, dir, message)
+  if (!ref) return ''
+  const result = await tryRun(gitPath, dir, ['stash', 'show', '-p', ref])
+  return result ? result.stdout : ''
+}
+
 /** Restore paths in the index and working tree to HEAD (discard local changes). */
 export async function restorePaths(gitPath: string, dir: string, paths: string[]): Promise<void> {
   if (!paths.length) return
@@ -421,6 +429,31 @@ function mergeTreeFiles(stdout: string, stderr: string): string[] {
   for (const match of all.matchAll(/Merge conflict in (.+)$/gm)) files.add(match[1].trim())
   for (const match of all.matchAll(/CONFLICT \([^)]*\):\s*(.+?)\s+(?:deleted|modified) in/gi)) files.add(match[1].trim())
   return [...files]
+}
+
+export interface GitVersionInfo {
+  version: string
+  major: number
+  minor: number
+  /** Whether `merge-tree --write-tree` (>= 2.38) is available. */
+  mergeTreeSupported: boolean
+}
+
+/** Parse `git --version` once; used for a startup capability banner. */
+export async function gitVersion(gitPath: string): Promise<GitVersionInfo | null> {
+  const r = await tryRun(gitPath, process.cwd(), ['--version'])
+  if (!r) return null
+  const text = r.stdout.trim()
+  const match = text.match(/(\d+)\.(\d+)(?:\.(\d+))?/)
+  if (!match) return null
+  const major = Number(match[1])
+  const minor = Number(match[2])
+  return {
+    version: text.replace(/^git version\s+/i, ''),
+    major,
+    minor,
+    mergeTreeSupported: major > 2 || (major === 2 && minor >= 38),
+  }
 }
 
 /**

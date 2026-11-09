@@ -24,5 +24,21 @@ export function pickDict(locale: any): any {
   } catch {
     lang = ''
   }
-  return String(lang).toLowerCase().startsWith('en') ? FALLBACK.en : FALLBACK.zh
+  const useEn = String(lang).toLowerCase().startsWith('en')
+  const primary: any = useEn ? FALLBACK.en : FALLBACK.zh
+  const secondary: any = useEn ? FALLBACK.zh : FALLBACK.en
+  // Never render a blank string for a missing key: fall back to the other
+  // language, then to the key name itself. This makes a missing translation
+  // obvious (e.g. "reconnecting") instead of silently showing nothing.
+  return new Proxy({}, {
+    get(_target, key) {
+      if (typeof key !== 'string') return undefined
+      if (key in primary && primary[key] != null) return primary[key]
+      if (key in secondary && secondary[key] != null) return secondary[key]
+      return key
+    },
+    has() { return true },
+    ownKeys() { return Object.keys(primary) },
+    getOwnPropertyDescriptor() { return { enumerable: true, configurable: true } },
+  })
 }

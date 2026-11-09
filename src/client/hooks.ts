@@ -43,7 +43,9 @@ export function useToast() {
   const notify = (message: string, kind?: string) => {
     setToast({ message, kind: kind || 'ok' })
     if (timer.current) window.clearTimeout(timer.current)
-    timer.current = window.setTimeout(() => setToast(null), 2800)
+    // Errors stay longer than success toasts (accessibility: enough time to read).
+    const ttl = kind === 'error' ? 6500 : 2800
+    timer.current = window.setTimeout(() => setToast(null), ttl)
   }
   React.useEffect(() => () => {
     if (timer.current) window.clearTimeout(timer.current)

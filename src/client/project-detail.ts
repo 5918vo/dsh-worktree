@@ -38,6 +38,9 @@ export function ProjectDetail(props: any) {
     }
     const pendingTasks = v.tasks.filter((item: any) => item.task.sessionId && props.pendingMap && props.pendingMap[item.task.sessionId])
     const firstPending = pendingTasks[0]
+    const brokenTasks = v.tasks.filter((item: any) => resolveStatus(item.snapshot.status, isRunning(item.task)) === 'broken')
+    const attentionCount = pendingTasks.length + brokenTasks.length
+    const reviewingTasks = v.tasks.filter((item: any) => item.snapshot.status === 'reviewing')
 
     const act = async (label: string, fn: () => Promise<any>) => {
       if (actionRef.current || busy) return
@@ -116,7 +119,7 @@ export function ProjectDetail(props: any) {
           h(Btn, {
             key: 'ok',
             variant: 'danger',
-            disabled: busy === 'del' || (counts.total > 0 && !withTasks),
+            disabled: busy === 'del' || (counts.total > 0 && !withTasks) || reviewingTasks.length > 0,
             onClick: remove,
           }, busy === 'del' ? h(Spinner) : null, busy === 'del' ? t.deleting : t.deleteProjectConfirm),
         ],
@@ -124,6 +127,9 @@ export function ProjectDetail(props: any) {
         counts.total > 0
           ? h(Banner, { tone: 'warn', icon: 'alert', title: String(t.deleteProjectWarning).replace('{n}', String(counts.total)) }, t.deleteProjectWarningHint)
           : h(Banner, { tone: 'info', icon: 'info' }, t.deleteProjectWarningHint),
+        reviewingTasks.length
+          ? h(Banner, { tone: 'warn', icon: 'alert', title: t.reviewingBlockTitle }, t.reviewingBlockHint)
+          : null,
         h('div', { className: 'dshw-info-table' },
           h(KV, { label: t.repoPath }, h('span', { className: 'dshw-mono' }, project.repoPath)),
           h(KV, { label: t.deleteProjectRecords }, counts.total + ' ' + t.taskUnit),
@@ -170,7 +176,7 @@ export function ProjectDetail(props: any) {
       h(Card, null,
         h(CardHead, { icon: 'grid', title: t.overview, right: h('span', { className: 'dshw-hint', style: { margin: 0 } }, t.overviewHint) }),
         h('div', { className: 'dshw-stats' },
-          h(Stat, { label: t.totalTasks, value: counts.total, icon: 'file', tone: 'neutral' }),
+          h(Stat, { label: t.attentionStat, value: attentionCount, icon: 'alert', tone: 'warn' }),
           h(Stat, { label: t.activeTasks, value: counts.active, icon: 'terminal', tone: 'brand' }),
           h(Stat, { label: t.reviewTasks, value: counts.review, icon: 'clock', tone: 'warn' }),
           h(Stat, { label: t.mergedTasks, value: counts.merged, icon: 'branch', tone: 'success' })),
@@ -241,7 +247,10 @@ export function ProjectDetail(props: any) {
       h(Card, { danger: true },
         h(CardHead, { icon: 'alert', title: t.deleteProject }),
         h('p', { className: 'dshw-card-sub' }, t.deleteProjectCardHint),
-        h(Btn, { variant: 'danger', icon: 'trash', disabled: busy !== '', onClick: () => setDeleteOpen(true) }, t.deleteProject)),
+        reviewingTasks.length
+          ? h('div', { className: 'dshw-hint', style: { marginBottom: '8px' } }, h(Icon, { name: 'alert' }), h('span', null, t.reviewingBlockHint))
+          : null,
+        h(Btn, { variant: 'danger', icon: 'trash', disabled: busy !== '' || reviewingTasks.length > 0, onClick: () => setDeleteOpen(true) }, t.deleteProject)),
       deleteModal)
   }
 

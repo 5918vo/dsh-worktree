@@ -191,6 +191,36 @@ test('bind -> developing -> review -> reviewing -> merged -> cleaned full accept
   }
 })
 
+test('reviewing task blocks delete, cleanup and project delete', async () => {
+  const f = await fixture()
+  try {
+    const project = await f.runtime.addProject({ repoPath: f.repo, name: 'rv' })
+    const task = await f.runtime.publish({ projectId: project.id, title: 'reviewing', description: 'd' })
+    f.runtime.bind(task.id, 'sess-rv')
+    await commitFile(task.worktreePath, 'src/rv.txt', 'rv\n', 'feat: rv')
+    await f.runtime.checkout(task.id)
+    assert.equal((await f.runtime.view(task)).snapshot.status, 'reviewing')
+
+    await assert.rejects(
+      () => f.runtime.delete(task.id),
+      (e: any) => e instanceof TaskError && e.status === 409 && /验收中/.test(e.message),
+    )
+    await assert.rejects(
+      () => f.runtime.cleanup(task.id, { force: true }),
+      (e: any) => e instanceof TaskError && e.status === 409 && /验收中/.test(e.message),
+    )
+    await assert.rejects(
+      () => f.runtime.deleteProject(project.id, { withTasks: true, withWorktrees: true }),
+      (e: any) => e instanceof TaskError && e.status === 409 && /验收中/.test(e.message),
+    )
+
+    // Nothing was deleted: the record stays and the repo is still under review.
+    assert.equal((await f.runtime.view(task)).snapshot.status, 'reviewing')
+  } finally {
+    await teardown(f)
+  }
+})
+
 test('cleanup refuses to delete an unmerged branch unless forced', async () => {
   const f = await fixture()
   try {

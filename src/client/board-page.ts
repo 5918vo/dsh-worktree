@@ -1,5 +1,5 @@
 import { React, h, useStyles } from './ui'
-import { Btn, Chip, Dot, Empty, Icon, IconBtn, Modal, Spinner, Toast } from './primitives'
+import { Btn, Banner, Chip, Dot, Empty, Icon, IconBtn, Modal, Spinner, Toast } from './primitives'
 import { AddProjectModal, PublishModal } from './modals'
 import { useToast } from './hooks'
 import { TaskDetail } from './task-detail'
@@ -15,6 +15,7 @@ export function BoardPage(props: any) {
     useStyles()
     const [projectViews, setProjectViews] = React.useState([])
     const [cfg, setCfg] = React.useState(null)
+    const [env, setEnv] = React.useState(null)
     const [loaded, setLoaded] = React.useState(false)
     const [refreshing, setRefreshing] = React.useState(false)
     const [err, setErr] = React.useState('')
@@ -117,7 +118,7 @@ export function BoardPage(props: any) {
     }, [refresh])
 
     React.useEffect(() => {
-      getJson('config').then((d: any) => setCfg(d.config)).catch(() => {})
+      getJson('config').then((d: any) => { setCfg(d.config); if (d.environment) setEnv(d.environment) }).catch(() => {})
     }, [])
 
     // Auto-bind tasks published from tools (no session yet, start requested).
@@ -571,6 +572,22 @@ export function BoardPage(props: any) {
               const dotTone = meta.pending && !meta.note ? 'warn' : healthActive ? (health.kind === 'error' ? 'error' : 'warn') : STATUS_TONE[effectiveStatus] || 'neutral'
               const bound = !!v.task.sessionId
               const terminal = effectiveStatus === 'merged' || effectiveStatus === 'cleaned'
+              // Cap the row at two visible labels; the rest collapse into +N so a
+              // 268px sidebar never overflows. Full detail lives in the tooltip.
+              const metaChips: Array<{ label: string; node: any }> = []
+              metaChips.push({ label: meta.label, node: h(Chip, { tone: meta.tone, small: true }, meta.label) })
+              if (meta.note) metaChips.push({ label: meta.note, node: h(Chip, { tone: 'warn', small: true }, meta.note) })
+              if (v.task.archivedAt) metaChips.push({ label: t.archived, node: h(Chip, { tone: 'neutral', small: true }, t.archived) })
+              if (v.snapshot.postMergeAhead > 0) metaChips.push({ label: postMergeLabel(t, v.snapshot.postMergeAhead), node: h(Chip, { tone: 'warn', small: true }, postMergeLabel(t, v.snapshot.postMergeAhead)) })
+              if (healthActive) {
+                const lbl = health.kind === 'error' ? t.sessionError : t.sessionInterrupted
+                metaChips.push({ label: lbl, node: h(Chip, { tone: health.kind === 'error' ? 'error' : 'warn', small: true }, lbl) })
+              }
+              if (v.snapshot.worktree.ahead > 0) metaChips.push({ label: v.snapshot.worktree.ahead + ' ' + t.commitsAhead, node: h('span', { className: 'dshw-task-count', title: v.snapshot.worktree.ahead + ' ' + t.commitsAhead }, h(Icon, { name: 'arrowUp' }), v.snapshot.worktree.ahead) })
+              if (v.snapshot.worktree.dirtyCount > 0) metaChips.push({ label: v.snapshot.worktree.dirtyCount + ' ' + t.dirty, node: h('span', { className: 'dshw-task-count', title: v.snapshot.worktree.dirtyCount + ' ' + t.dirty }, '±' + v.snapshot.worktree.dirtyCount) })
+              const MAX_META = 2
+              const visibleMeta = metaChips.slice(0, MAX_META)
+              const hiddenMeta = metaChips.slice(MAX_META)
               return h('div', { key: v.task.id, role: 'listitem', className: 'dshw-task' + (active ? ' dshw-task--on' : '') },
                 h('button', {
                   className: 'dshw-task-select',
@@ -583,21 +600,9 @@ export function BoardPage(props: any) {
                   h('span', { className: 'dshw-task-main' },
                     h('span', { className: 'dshw-task-title' }, v.task.title),
                     h('span', { className: 'dshw-task-meta' },
-                      h(Chip, { tone: meta.tone, small: true }, meta.label),
-                      meta.note ? h(Chip, { tone: 'warn', small: true }, meta.note) : null,
-                      v.task.archivedAt ? h(Chip, { tone: 'neutral', small: true }, t.archived) : null,
-                      v.snapshot.postMergeAhead > 0
-                        ? h(Chip, { tone: 'warn', small: true }, postMergeLabel(t, v.snapshot.postMergeAhead))
-                        : null,
-                      healthActive
-                        ? h(Chip, { tone: health.kind === 'error' ? 'error' : 'warn', small: true }, health.kind === 'error' ? t.sessionError : t.sessionInterrupted)
-                        : null,
-                      v.snapshot.worktree.ahead > 0
-                        ? h('span', { className: 'dshw-task-count', title: v.snapshot.worktree.ahead + ' ' + t.commitsAhead },
-                          h(Icon, { name: 'arrowUp' }), v.snapshot.worktree.ahead)
-                        : null,
-                      v.snapshot.worktree.dirtyCount > 0
-                        ? h('span', { className: 'dshw-task-count', title: v.snapshot.worktree.dirtyCount + ' ' + t.dirty }, '±' + v.snapshot.worktree.dirtyCount)
+                      visibleMeta.map((chip) => chip.node),
+                      hiddenMeta.length
+                        ? h(Chip, { tone: 'neutral', small: true, title: hiddenMeta.map((chip) => chip.label).join('、') }, String(t.moreItems).replace('{n}', String(hiddenMeta.length)))
                         : null))),
                 h('button', {
                   className: 'dshw-task-open',
@@ -606,17 +611,7 @@ export function BoardPage(props: any) {
                   'aria-label': (bound ? t.openSessionBtn : t.noSession) + ': ' + v.task.title,
                   disabled: !bound,
                   onClick: () => { if (bound && !openTaskSession(v.task.sessionId)) notify(t.openSessionFailed, 'error') },
-                }, h(Icon, { name: 'external' })),
-                terminal
-                  ? h('button', {
-                    className: 'dshw-task-open',
-                    type: 'button',
-                    title: v.task.archivedAt ? t.unarchive : t.archive,
-                    'aria-label': (v.task.archivedAt ? t.unarchive : t.archive) + ': ' + v.task.title,
-                    disabled: !!taskBusy[v.task.id],
-                    onClick: () => void toggleArchive(v),
-                  }, taskBusy[v.task.id] ? h(Spinner) : h(Icon, { name: v.task.archivedAt ? 'archiveRestore' : 'archive' }))
-                  : null)
+                }, h(Icon, { name: 'external' })))
             }))
             : h('div', { className: 'dshw-tree-inline-empty' },
               h('span', null, t.noTasks),
@@ -651,6 +646,9 @@ export function BoardPage(props: any) {
         : h('div', { role: 'list', 'aria-label': t.projects }, filtered.map(projectRow))
 
     const treeNode = h('section', { className: 'dshw-sidebar', 'aria-label': t.projects },
+      env && env.mergeTreeSupported === false
+        ? h(Banner, { tone: 'warn', icon: 'alert', title: t.gitTooOldTitle }, t.gitTooOldHint)
+        : null,
       h('header', { className: 'dshw-tree-head' },
         h('div', { className: 'dshw-search' },
           h(Icon, { name: 'search' }),

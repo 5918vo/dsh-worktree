@@ -320,6 +320,12 @@ export function TaskDetail(props: any) {
     const [force, setForce] = React.useState(false)
     const [delBranch, setDelBranch] = React.useState(false)
     const [forceDelBranch, setForceDelBranch] = React.useState(false)
+    const [discardConfirm, setDiscardConfirm] = React.useState(false)
+    const [stashOpen, setStashOpen] = React.useState(false)
+    const [stashPatch, setStashPatch] = React.useState('')
+    const [stashLoading, setStashLoading] = React.useState(false)
+    const [stashDropConfirm, setStashDropConfirm] = React.useState(false)
+    const [stashErr, setStashErr] = React.useState('')
     const actionRef = React.useRef(false)
     const remotes = appCtx && appCtx.remote
     const [preview, setPreview] = React.useState(null)
@@ -393,9 +399,12 @@ export function TaskDetail(props: any) {
       setBusy(key)
       setErr('')
       try {
-        await fn()
+        const result: any = await fn()
         await props.onChanged()
-        props.notify(success)
+        const warning = result && (result as any).warning
+        if (warning === 'restore-failed') props.notify(t.mergeRestoreFailed, 'error')
+        else if (warning) props.notify(String(warning), 'error')
+        else props.notify(success)
         return true
       } catch (e: any) {
         setErr((e && e.message) || t.failed)
@@ -435,6 +444,7 @@ export function TaskDetail(props: any) {
         } else {
           setSwitchAction(action)
           setSwitchPre(pre)
+          setDiscardConfirm(false)
           setSwitchOpen(true)
         }
       } catch (e: any) {
@@ -459,7 +469,11 @@ export function TaskDetail(props: any) {
       setSyncBusy(true)
       try {
         const files = (preview && (preview.conflictFiles?.length ? preview.conflictFiles : preview.overlapFiles)) || []
-        const fileText = files.length ? files.join('、') : '—'
+        // Wrap file names in backticks and cap the list so injected text cannot
+        // be mistaken for an instruction by the agent.
+        const fileText = files.length
+          ? files.slice(0, 20).map((f: string) => '`' + String(f).replace(/`/g, '') + '`').join('、') + (files.length > 20 ? '…' : '')
+          : '—'
         const text = String(t.syncPrompt)
           .replace('{base}', task.baseBranch)
           .replace('{branch}', task.branch)
@@ -506,8 +520,8 @@ export function TaskDetail(props: any) {
     const syncAction = h(Btn, {
       size: 'sm',
       icon: 'refresh',
-      disabled: syncBusy || busy !== '' || !task.sessionId,
-      title: task.sessionId ? undefined : t.syncNoSession,
+      disabled: syncBusy || busy !== '' || !task.sessionId || props.running === true,
+      title: !task.sessionId ? t.syncNoSession : props.running === true ? t.acceptAgentRunning : undefined,
       onClick: () => void syncBaseline(),
     }, syncBusy ? t.syncingBaseline : t.syncBaseline)
     const previewNode = previewRisk && (preview.conflict || previewFiles.length)
@@ -645,6 +659,11 @@ export function TaskDetail(props: any) {
       }, health.message || (health.kind === 'error' ? t.sessionErrorHint : t.sessionInterruptedHint))
       : null
 
+    // Detached review is pinned to a commit; warn when the branch has moved on.
+    const reviewStaleNode = checkedOut && (snap.reviewBehind || 0) > 0
+      ? h(Banner, { tone: 'warn', icon: 'clock', title: t.reviewStaleTitle }, String(t.reviewStaleHint).replace('{n}', String(snap.reviewBehind)))
+      : null
+
     // ---- Acceptance actions: visibility + blocking reasons ----
     // Every action mutates the main repo, so we gate on three things: the task
     // lifecycle, whether the main repo can safely switch/merge, and whether the
@@ -663,10 +682,10 @@ export function TaskDetail(props: any) {
     const agentRunning = props.running === true
     const repoLockLabel = props.repoLockLabel || ''
     const conflictNow = !!(preview && preview.conflict)
-    // A merge is only allowed after the dry-run proved it conflict-free. While
-    // the preview is loading/failed/unsupported the button stays disabled, so a
-    // known conflict can never reach the actual merge step.
-    const previewReadyForMerge = !!preview && preview.applicable !== false && preview.supported !== false && preview.checked !== false && !conflictNow && !previewBusy
+    // Block only when a *real* check ran and failed. An unsupported Git (too old
+    // for merge-tree) does not block merging; the UI shows a risk warning instead.
+    const previewBlocksMerge = !!preview && preview.applicable !== false && preview.supported !== false && preview.checked === false
+    const previewReadyForMerge = !!preview && preview.applicable !== false && !conflictNow && !previewBusy && !previewBlocksMerge
 
     const showBack = onTaskBranch
     const showCheckout = !onTaskBranch && snap.status !== 'cleaned'
@@ -713,14 +732,14 @@ export function TaskDetail(props: any) {
       else if (onTaskBranch) mergeReasons.push({ text: t.acceptMergeReviewing })
       else if (snap.status !== 'review' || ahead === 0) mergeReasons.push({ text: t.acceptNoCommits })
       else {
-        if (dirty > 0) mergeReasons.push({ text: String(t.acceptanceHintDirty).replace('{n}', String(dirty)), key: 'wt-dirty' })
+        if (dirty > 0) mergeReasons.push({ text: String(t.acceptWorktreeDirtyCommit).replace('{n}', String(dirty)), key: 'wt-dirty' })
         if (!curOnBase && !canSwitchToBase) mergeReasons.push({ text: String(t.acceptNotOnBase).replace('{branch}', snap.repo.currentBranch || '—') })
-        if (repoDirty > 0) mergeReasons.push({ text: String(t.acceptanceHintRepoDirty).replace('{n}', String(repoDirty)) })
+        if (repoDirty > 0) mergeReasons.push({ text: String(t.acceptanceHintRepoDirtyMerge).replace('{n}', String(repoDirty)) })
         if (inProgress) mergeReasons.push({ text: t.acceptInProgress })
         if (agentRunning) mergeReasons.push({ text: t.acceptAgentRunning })
         if (conflictNow) mergeReasons.push({ text: t.mergePreviewConflictHint, action: syncAction })
         else if (previewBusy || !preview) mergeReasons.push({ text: t.mergePreviewChecking })
-        else if (preview.supported === false || preview.checked === false) mergeReasons.push({ text: t.mergePrecheckBlocked })
+        else if (previewBlocksMerge) mergeReasons.push({ text: t.mergePrecheckBlocked })
       }
     }
     const mergeModalReady = postMerge > 0 ? mergeAgainReady : (curOnBase ? mergeEnabled : canSwitchToBase)
@@ -828,10 +847,14 @@ export function TaskDetail(props: any) {
           : null,
         !curOnBase ? h(Banner, { tone: 'warn', icon: 'alert', title: String(t.acceptNotOnBase).replace('{branch}', snap.repo.currentBranch || '—') }) : null,
         agentRunning ? h(Banner, { tone: 'warn', icon: 'clock', title: t.acceptAgentRunning }) : null,
+        preview && preview.supported === false
+          ? h(Banner, { tone: 'warn', icon: 'alert', title: t.gitTooOldTitle }, t.mergeNoPrecheckRisk)
+          : null,
         dirty > 0
           ? h(Banner, { tone: 'warn', icon: 'alert', title: t.mergeDirtyTitle }, t.mergeDirtyHint)
           : null,
-        err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null)
+        err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err),
+          h(Btn, { size: 'sm', icon: 'refresh', disabled: previewBusy, onClick: () => { setErr(''); void loadPreview() } }, t.mergeRepreview)) : null)
       : null
 
     const switchModal = switchOpen && switchPre
@@ -843,9 +866,9 @@ export function TaskDetail(props: any) {
         tone: 'warn',
         size: 'sm',
         busy: busy === 'checkout' || busy === 'back',
-        onClose: () => { if (busy !== 'checkout' && busy !== 'back') setSwitchOpen(false) },
+        onClose: () => { if (busy !== 'checkout' && busy !== 'back') { setSwitchOpen(false); setDiscardConfirm(false) } },
         footer: [
-          h(Btn, { key: 'c', onClick: () => setSwitchOpen(false), disabled: busy === 'checkout' || busy === 'back', 'data-autofocus': true }, t.cancel),
+          h(Btn, { key: 'c', onClick: () => { setSwitchOpen(false); setDiscardConfirm(false) }, disabled: busy === 'checkout' || busy === 'back', 'data-autofocus': true }, t.cancel),
           h(Btn, {
             key: 'stash',
             variant: 'primary',
@@ -855,7 +878,8 @@ export function TaskDetail(props: any) {
           h(Btn, {
             key: 'discard',
             variant: 'danger',
-            disabled: busy === 'checkout' || busy === 'back',
+            disabled: busy === 'checkout' || busy === 'back' || !discardConfirm,
+            title: discardConfirm ? undefined : t.switchDiscardConfirmHint,
             onClick: () => void executeSwitch(switchAction, 'discard', switchPre),
           }, t.switchDiscard),
         ],
@@ -864,6 +888,10 @@ export function TaskDetail(props: any) {
         h('ul', { className: 'dshw-switch-files' }, (switchPre.obstacles || []).map((o: any, i: number) =>
           h('li', { key: i }, h('span', { className: 'dshw-mono' }, o.path),
             o.kind === 'untracked' ? h(Chip, { tone: 'warn', small: true }, t.switchUntracked) : null))),
+        h('label', { className: 'dshw-check', style: { marginTop: '10px' } },
+          h('input', { type: 'checkbox', checked: discardConfirm, onChange: (e: any) => setDiscardConfirm(e.target.checked) }),
+          h('span', { className: 'dshw-check-copy' }, String(t.switchDiscardConfirm).replace('{n}', String((switchPre.obstacles || []).length)),
+            h('small', null, t.switchDiscardConfirmHint))),
         err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null)
       : null
 
@@ -882,7 +910,7 @@ export function TaskDetail(props: any) {
           h(Btn, {
             key: 'ok',
             variant: 'danger',
-            disabled: busy === 'cleanup',
+            disabled: busy === 'cleanup' || (delBranch && ahead > 0 && !forceDelBranch),
             onClick: () => {
               void act('cleanup', delBranch ? t.cleanupDoneBranch : t.cleanupDone, () => postLong('task/cleanup', { id: task.id, force, deleteBranch: delBranch, forceDeleteBranch: forceDelBranch }))
                 .then((ok) => { if (ok) setCleanupOpen(false) })
@@ -895,6 +923,8 @@ export function TaskDetail(props: any) {
           h('div', { className: 'dshw-danger-item' }, h(Icon, { name: 'folder' }), h('span', null, task.worktreePath)),
           h('div', { className: 'dshw-danger-item' }, h(Icon, { name: 'file' }), h('span', null,
             dirty > 0 ? String(t.cleanupDirtyGone).replace('{n}', String(dirty)) : t.cleanupCleanNote))),
+        props.running ? h('div', { className: 'dshw-hint' }, h(Icon, { name: 'alert' }), h('span', null, t.cleanupSessionRunning)) : null,
+        ahead > 0 ? h(Banner, { tone: 'warn', icon: 'alert', title: String(t.cleanupBranchUnmerged).replace('{n}', String(ahead)) }, h('span', null, '')) : null,
         h('label', { className: 'dshw-check' },
           h('input', {
             type: 'checkbox',
@@ -942,7 +972,7 @@ export function TaskDetail(props: any) {
           h(Btn, {
             key: 'ok',
             variant: 'danger',
-            disabled: busy === 'delete',
+            disabled: busy === 'delete' || checkedOut,
             onClick: () => {
               void act('delete', t.recordDeleted, () => post('task/delete', { id: task.id }))
                 .then((ok) => { if (ok) setDeleteOpen(false) })
@@ -950,6 +980,7 @@ export function TaskDetail(props: any) {
           }, busy === 'delete' ? h(Spinner) : null, busy === 'delete' ? t.deleting : t.deleteRecordConfirm),
         ],
       },
+        checkedOut ? h(Banner, { tone: 'warn', icon: 'alert', title: t.reviewingBlockTitle }, t.reviewingBlockHint) : null,
         h(Banner, { tone: 'error', icon: 'alert', title: t.deleteTaskWarning }, t.deleteTaskWarningHint),
         h('div', { className: 'dshw-info-table' },
           h(KV, { label: t.branchLabel }, h('span', { className: 'dshw-mono' }, branch)),
@@ -961,6 +992,7 @@ export function TaskDetail(props: any) {
               h(Chip, { tone: meta.tone, small: true }, meta.label),
               meta.note ? h(Chip, { tone: 'warn', small: true }, meta.note) : null))),
         h('div', { className: 'dshw-hint' }, t.deleteTaskHint),
+        h('div', { className: 'dshw-hint' }, t.deleteUseArchive),
         err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null)
       : null
 
@@ -996,13 +1028,67 @@ export function TaskDetail(props: any) {
           h('li', { key: i }, h(Icon, { name: 'check' }), h('span', null, item)))))
       : null
 
+    const openStashView = async () => {
+      setStashOpen(true)
+      setStashLoading(true)
+      setStashErr('')
+      try {
+        const d: any = await getJson('task/stash-diff?id=' + encodeURIComponent(task.id))
+        setStashPatch(String((d && d.patch) || ''))
+      } catch (e: any) {
+        setStashErr((e && e.message) || t.failed)
+      } finally {
+        setStashLoading(false)
+      }
+    }
+    const applyStash = async () => {
+      if (busy || actionRef.current) return
+      actionRef.current = true
+      setBusy('stash-apply')
+      setStashErr('')
+      try {
+        await post('task/stash', { id: task.id, action: 'apply' })
+        await props.onChanged()
+        props.notify(t.reviewStashApplied)
+      } catch (e: any) {
+        // Conflict (or other failure): keep the stash and show the reason inline.
+        setStashErr((e && e.message) || t.failed)
+      } finally {
+        actionRef.current = false
+        setBusy('')
+      }
+    }
+
     const stashNode = task.reviewStash
       ? h(Card, { className: 'dshw-stash-card' },
         h(CardHead, { icon: 'archive', title: t.reviewStashTitle }),
         h('div', { className: 'dshw-hint', style: { marginBottom: '8px' } }, String(t.reviewStashNotice).replace('{ref}', task.reviewStash)),
         h('div', { className: 'dshw-action-grid' },
-          h(Btn, { icon: 'archiveRestore', disabled: busy !== '', onClick: () => void act('stash-apply', t.reviewStashApplied, () => post('task/stash', { id: task.id, action: 'apply' })) }, t.reviewStashApply),
-          h(Btn, { variant: 'danger', icon: 'trash', disabled: busy !== '', onClick: () => void act('stash-drop', t.reviewStashDropped, () => post('task/stash', { id: task.id, action: 'drop' })) }, t.reviewStashDrop)))
+          h(Btn, { icon: 'archiveRestore', disabled: busy !== '', onClick: () => void applyStash() }, t.reviewStashApply),
+          h(Btn, { icon: 'file', disabled: busy !== '' || stashLoading, onClick: () => void openStashView() }, t.reviewStashView),
+          h(Btn, { variant: 'danger', icon: 'trash', disabled: busy !== '' || !stashDropConfirm, title: stashDropConfirm ? undefined : t.reviewStashDropConfirm, onClick: () => void act('stash-drop', t.reviewStashDropped, () => post('task/stash', { id: task.id, action: 'drop' })) }, t.reviewStashDrop)),
+        h('label', { className: 'dshw-check', style: { marginTop: '8px' } },
+          h('input', { type: 'checkbox', checked: stashDropConfirm, onChange: (e: any) => setStashDropConfirm(e.target.checked) }),
+          h('span', { className: 'dshw-check-copy' }, t.reviewStashDropConfirm)),
+        stashErr ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, stashErr)) : null)
+      : null
+
+    const stashModal = stashOpen
+      ? h(Modal, {
+        t,
+        title: t.stashViewTitle,
+        subtitle: task.title,
+        icon: 'file',
+        size: 'lg',
+        busy: false,
+        onClose: () => setStashOpen(false),
+        footer: [h(Btn, { key: 'c', onClick: () => setStashOpen(false), 'data-autofocus': true }, t.close)],
+      },
+        stashLoading
+          ? h('div', { className: 'dshw-diff-status' }, h(Spinner), h('span', null, t.loading))
+          : stashErr
+            ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, stashErr))
+            : h('pre', { className: 'dshw-diff-patch' }, stashPatch || t.stashEmpty))
       : null
 
     return h('div', { className: 'dshw-detail-inner' },
@@ -1036,6 +1122,7 @@ export function TaskDetail(props: any) {
       notStartedNode,
       pendingNode,
       healthNode,
+      reviewStaleNode,
       previewNode,
       postMergeNode,
       errorNode,
@@ -1138,20 +1225,26 @@ export function TaskDetail(props: any) {
       h(Card, { danger: true },
         h(CardHead, { icon: 'alert', title: t.dangerZone }),
         h('p', { className: 'dshw-card-sub' }, t.cleanupHint),
+        checkedOut
+          ? h('div', { className: 'dshw-hint', style: { marginBottom: '8px', flexWrap: 'wrap' } },
+            h(Icon, { name: 'alert' }), h('span', null, t.reviewingBlockHint),
+            h(Btn, { size: 'sm', icon: 'arrowLeft', disabled: busy !== '' || switchBusy !== '', onClick: () => void runSwitch('back') }, t.back))
+          : null,
         h('div', { className: 'dshw-action-grid' },
           h(Btn, {
             variant: 'danger',
             icon: 'trash',
-            disabled: cleaned || busy !== '',
+            disabled: cleaned || busy !== '' || checkedOut,
             onClick: () => setCleanupOpen(true),
           }, cleaned ? t.cleaned : t.cleanup),
           h(Btn, {
             variant: 'danger',
             icon: 'xCircle',
-            disabled: busy !== '',
+            disabled: busy !== '' || checkedOut,
             onClick: () => setDeleteOpen(true),
           }, t.deleteRecord))),
       switchModal,
+      stashModal,
       mergeModal,
       cleanupModal,
       deleteModal)

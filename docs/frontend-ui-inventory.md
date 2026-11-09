@@ -618,7 +618,7 @@
 
 > 全部颜色集中在 `src/client/palette.ts` 的 `PALETTE`（明/暗两套），禁止在样式或组件内写死颜色；状态色由 `STATUS_TONE` 统一映射。
 
-## 10. 附录：完整文案字典（中英对照，375 条）
+## 10. 附录：完整文案字典（中英对照，406 条）
 
 | key | 中文 | English |
 | --- | --- | --- |
@@ -676,7 +676,7 @@
 | liveQueued | 排队消息 | Queued msgs |
 | liveSubagents | 子代理 | Subagents |
 | livePerms | 访问模式 | Access |
-| liveLastPrompt | 最近活动 | Last prompt |
+| liveLastPrompt | 最近活动 | Last activity |
 | liveStats | {turns} 轮 · {steps} 步 | {turns} turns · {steps} steps |
 | liveStepsOnly | {steps} 步 | {steps} steps |
 | roleUser | 你 | You |
@@ -694,7 +694,7 @@
 | toolEdit | 编辑 | Edit |
 | toolFind | 查找 | Find |
 | toolCd | 切换目录 | Cd |
-| toolTodos | 清单 | Tasks |
+| toolTodos | 清单 | Todos |
 | toolQuestion | 提问 | Question |
 | toolGeneric | 工具 | Tool |
 | pendingApproval | 待审批 | Waiting approval |
@@ -738,6 +738,8 @@
 | cleanup | 清理 worktree | Clean worktree |
 | deleteRecord | 删除记录 | Delete record |
 | deleteBranch | 同时删除分支 | Also delete branch |
+| forceDeleteBranch | 强制删除分支（丢弃未合并提交） | Force-delete branch (discard unmerged commits) |
+| forceDeleteBranchHint | 默认只删除已合并分支；未合并时必须勾选此项才会丢弃提交。 | Only merged branches are deleted by default; unmerged commits require this option. |
 | force | 强制 | Force |
 | dirty | 处未提交改动 | uncommitted changes |
 | uncommitted | 未提交改动 | Uncommitted changes |
@@ -756,7 +758,7 @@
 | failed | 操作失败 | Operation failed |
 | publishTimeout | 发布请求超时，请刷新看板确认任务是否已创建 | Publish timed out — refresh the board to confirm whether the task was created |
 | bindTimeout | 任务已创建，但会话创建超时；请稍后在看板中打开或创建会话 | Task created, but session creation timed out — open or create the session from the board later |
-| handlePending | 去处理 | Review |
+| handlePending | 去处理 | Respond |
 | close | 关闭 | Close |
 | refresh | 刷新 | Refresh |
 | detail | 任务详情 | Task detail |
@@ -801,7 +803,7 @@
 | addProjectSub | 选择一个 Git 仓库，读取分支并设置默认基线。 | Choose a Git repository, load its branches and set a default base. |
 | totalTasks | 任务总数 | Total tasks |
 | activeTasks | 进行中 | In progress |
-| reviewTasks | 待验收 | Ready |
+| reviewTasks | 待验收 | Ready for review |
 | mergedTasks | 已合并 | Merged |
 | overviewHint | 按 Git 与会话状态推导 | Derived from Git and session state |
 | attention | {n} 个任务等待处理 | {n} tasks need attention |
@@ -895,7 +897,7 @@
 | deleteRecordConfirm | 删除记录 | Delete record |
 | deleteProjectConfirm | 删除项目 | Delete project |
 | settingsSub | 全局配置与最近使用的仓库目录。 | Global configuration and recent repository directories. |
-| configHint | 由宿主配置提供，只读。 | Provided by the host configuration; read-only. |
+| configHint | 由宿主配置提供，只读；如需修改请在 DSH 配置中进行。 | Provided by the host configuration; read-only. Edit it in the DSH config. |
 | recentsHint | 新增项目弹窗不会展示这些目录，这里仅供快速复制与清理。 | Not shown in the add-project dialog. Kept for quick reference and cleanup. |
 | recentsEmpty | 暂无最近目录。 | No recent directories. |
 | clearRecentsShortHint | 清空后不会删除磁盘上的目录，只会从列表中移除。 | Clearing only removes this list; directories on disk stay. |
@@ -943,7 +945,7 @@
 | mergePreviewOverlapTitle | 基线有更新 | Base has new commits |
 | mergePreviewConflictHint | 基线有新提交，且与任务改动存在冲突。建议先让 Agent 同步基线。 | The base has new commits that conflict with this task. Sync the base in the session first. |
 | mergePreviewOverlapHint | 两边都修改了以下文件。Git 可能可以自动合并，但需要留意冲突风险。 | Both sides changed these files. Git may merge them automatically, but review the risk. |
-| mergePreviewNoCheck | 当前 Git 版本不支持冲突预检，仅提示文件重叠。 | This Git version cannot pre-check conflicts; only file overlap is shown. |
+| mergePreviewNoCheck | 当前 Git 版本不支持冲突预检；合并将直接执行，请留意冲突风险。 | This Git version cannot pre-check conflicts; merging runs directly. Watch for conflicts. |
 | mergePrecheckBlocked | 无法完成合并前冲突预检，已阻止合并；请重试或升级 Git。 | Could not complete the conflict pre-check, so merging is blocked. Retry or upgrade Git. |
 | mergePreviewFiles | 文件 | Files |
 | syncBaseline | 让 Agent 同步基线 | Sync base in session |
@@ -997,6 +999,35 @@
 | showArchived | 显示已归档 | Show archived |
 | hideArchived | 隐藏已归档 | Hide archived |
 | archiveToggleTitle | 已归档 {n} 个任务，点击切换显示 | {n} archived tasks — click to toggle |
+| switchDiscardConfirm | 我确认放弃以上 {n} 个文件的改动 | I confirm discarding changes in the above {n} files |
+| switchDiscardConfirmHint | 放弃后这些改动无法恢复。 | Discarded changes cannot be recovered. |
+| recentsCleared | 已清空最近目录 | Recent directories cleared |
+| reviewStashConflict | 恢复暂存产生冲突：{files}。暂存记录已保留，请解决冲突后再恢复或丢弃。 | Restoring the stash hit conflicts: {files}. The stash was kept; resolve the conflicts, then restore or drop it again. |
+| reviewStashView | 查看暂存内容 | View stash contents |
+| reviewStashDropConfirm | 确认丢弃这个暂存？丢弃后无法恢复。 | Drop this stash? It cannot be recovered. |
+| stashViewTitle | 暂存内容 | Stash contents |
+| stashEmpty | 暂存为空 | Stash is empty |
+| mergeBranchChanged | 任务分支或基线已变化，请重新预检后再合并 | The task branch or base changed; re-run the pre-check before merging |
+| mergeRepreview | 重新预检 | Re-check |
+| mergeRestoreFailed | 已合并，但未能切回原分支，请手动切回或稍后重试 | Merged, but could not switch back to the original branch. Switch back manually or retry later. |
+| repoBusyRetry | 稍后重试 | Retry later |
+| reviewingBlockTitle | 任务正在验收中 | Task is under review |
+| reviewingBlockHint | 任务处于验收中，删除记录、清理或删除项目都会让主仓库停在任务分支上且无法切回。请先切回原分支。 | This task is under review. Deleting the record, cleaning it or deleting the project would leave the main repo on the task branch with no way back. Switch back first. |
+| switchBackFirst | 请先切回原分支 | Switch back to the original branch first |
+| reviewStaleTitle | 验收期间任务分支有新提交 | New commits on the task branch during review |
+| reviewStaleHint | 任务分支在验收后又多了 {n} 个提交，当前验收的是旧版本。切回后可重新验收最新提交。 | The task branch has {n} new commits since review started; you are reviewing an older commit. Switch back and review the latest commit again. |
+| gitTooOldTitle | Git 版本过低 | Git version is too old |
+| gitTooOldHint | 当前 Git 版本不支持合并冲突预检（需要 2.38+）。合并仍可执行，但不会提前检测冲突。 | This Git version cannot pre-check merge conflicts (2.38+ required). Merging still works but conflicts are not detected in advance. |
+| mergeNoPrecheckRisk | 当前 Git 版本不支持冲突预检，合并将直接执行，请留意冲突风险。 | This Git version cannot pre-check conflicts; merging will run directly. Watch for conflicts. |
+| cleanupBranchUnmerged | 该分支还有 {n} 个未合并提交，删除后只能通过 reflog 找回。 | This branch has {n} unmerged commits; deleting it can only be recovered via reflog. |
+| cleanupBranchUnmergedForce | 强制删除未合并分支 | Force-delete unmerged branch |
+| cleanupSessionRunning | 会话可能仍在运行，删除 worktree 可能因文件被占用而失败。 | A session may still be running; removing the worktree may fail because files are in use. |
+| deleteUseArchive | 只想从列表隐藏？可以改用「归档」。 | Only want to hide it from the list? Use Archive instead. |
+| previewPanelTitle | 发布预览 | Publish preview |
+| attentionStat | 需要处理 | Needs attention |
+| moreItems | +{n} | +{n} |
+| acceptanceHintRepoDirtyMerge | 主仓库有 {n} 处未提交改动，请先提交或暂存后再合并。 | The main repo has {n} uncommitted changes. Commit or stash them before merging. |
+| reconnecting | 重新连接中… | Reconnecting… |
 
 ## 11. 已知缺口 / 备注
 

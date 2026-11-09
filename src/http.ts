@@ -93,7 +93,7 @@ export function registerHttp(app: App): () => void {
     send(res, 200, { token })
   })
 
-  route('config', 'GET', async (_req, res) => send(res, 200, { config: app.config }))
+  route('config', 'GET', async (_req, res) => send(res, 200, { config: app.config, environment: await app.runtime.environment() }))
 
   route('recents', 'GET', async (_req, res) => send(res, 200, { dirs: app.store.listRecents() }))
   route('recents/clear', 'POST', async (_req, res) => {
@@ -235,6 +235,18 @@ export function registerHttp(app: App): () => void {
     }
   })
 
+  route('task/stash-diff', 'GET', async (req, res) => {
+    requireToken(req)
+    const id = q(req, 'id')
+    if (!id) return send(res, 400, { error: 'id required' })
+    try {
+      send(res, 200, await app.runtime.reviewStashDiff(id))
+    } catch (error) {
+      if (error instanceof TaskError) return send(res, error.status, { error: error.message })
+      send(res, 500, { error: error instanceof Error ? error.message : String(error) })
+    }
+  })
+
   route('bind', 'POST', async (req, res) => {
     requireToken(req)
     const body = await readJson(req)
@@ -291,8 +303,9 @@ export function registerHttp(app: App): () => void {
         await fn(String(body.id || ''), body)
         const id = String(body.id || '')
         const task = app.store.getTask(id)
-        if (!task) return send(res, 200, { ok: true, deleted: true })
-        send(res, 200, { ok: true, view: await app.runtime.view(task) })
+        const warning = app.runtime.takeWarning(id)
+        if (!task) return send(res, 200, { ok: true, deleted: true, ...(warning ? { warning } : {}) })
+        send(res, 200, { ok: true, view: await app.runtime.view(task), ...(warning ? { warning } : {}) })
       } catch (error) {
         if (error instanceof TaskError) return send(res, error.status, { error: error.message })
         send(res, 500, { error: error instanceof Error ? error.message : String(error) })
