@@ -244,7 +244,9 @@ export class Runtime {
   private readonly gitOps = new Map<string, string>()
   /** Transient (non-persisted) warnings for the next action response, e.g. restore-failed. */
   private readonly opWarnings = new Map<string, string>()
-  private envInfo: { gitVersion: string | null; mergeTreeSupported: boolean } | null = null
+  /** Reuse a merge preview while both tips are unchanged (and skip while the repo is locked). */
+  private readonly previewCache = new Map<string, { tip: string | null; base: string | null; at: number; result: MergePreview }>()
+  private envInfo: { gitVersion: string | null; mergeTreeSupported: boolean; longPaths: boolean | null } | null = null
 
   constructor(deps: { store: Store; config: WorktreeConfig }) {
     this.store = deps.store
@@ -252,13 +254,22 @@ export class Runtime {
     this.gitPath = deps.config.gitPath
   }
 
-  /** Cached Git capability info for a startup banner (merge-tree support). */
-  async environment(): Promise<{ gitVersion: string | null; mergeTreeSupported: boolean }> {
+  /** Cached Git capability info for a startup banner (merge-tree support, long paths). */
+  async environment(): Promise<{ gitVersion: string | null; mergeTreeSupported: boolean; longPaths: boolean | null }> {
     if (!this.envInfo) {
       const v = await gitx.gitVersion(this.gitPath)
+      let longPaths: boolean | null = true
+      if (process.platform === 'win32') {
+        try {
+          const values = await gitx.gitConfigGetAll(this.gitPath, process.cwd(), 'core.longpaths')
+          longPaths = values.length ? values.some((x) => x.toLowerCase() === 'true') : null
+        } catch {
+          longPaths = null
+        }
+      }
       this.envInfo = v
-        ? { gitVersion: v.version, mergeTreeSupported: v.mergeTreeSupported }
-        : { gitVersion: null, mergeTreeSupported: true }
+        ? { gitVersion: v.version, mergeTreeSupported: v.mergeTreeSupported, longPaths }
+        : { gitVersion: null, mergeTreeSupported: true, longPaths }
     }
     return this.envInfo
   }
@@ -350,6 +361,10 @@ export class Runtime {
 
   removeAcceptanceCriterion(text: string): string[] {
     return this.store.removeCriterion(String(text || '').trim())
+  }
+
+  setAcceptanceCriteria(values: string[]): string[] {
+    return this.store.setCriteria(normalizeCriteria(values))
   }
 
   /**
@@ -1186,8 +1201,21 @@ export class Runtime {
     }
     base.expectedTip = await gitx.revParse(this.gitPath, task.repoPath, task.branch)
     base.expectedBase = await gitx.revParse(this.gitPath, task.repoPath, task.baseBranch)
+    const remember = (r: MergePreview): MergePreview => {
+      this.previewCache.set(task.id, { tip: base.expectedTip ?? null, base: base.expectedBase ?? null, at: Date.now(), result: r })
+      return r
+    }
+    const cached = this.previewCache.get(task.id)
+    if (cached && cached.tip === base.expectedTip && cached.base === base.expectedBase && Date.now() - cached.at < 15000) {
+      return cached.result
+    }
+    // Never spawn git while another git action holds this repo.
+    if (this.gitOps.get(this.repoKey(task.repoPath))) {
+      if (cached) return cached.result
+      return { ...base, reason: 'busy' }
+    }
     const mergeBase = await gitx.mergeBase(this.gitPath, task.repoPath, task.baseBranch, task.branch)
-    if (!mergeBase) return { ...base, applicable: true, reason: 'no-merge-base' }
+    if (!mergeBase) return remember({ ...base, applicable: true, reason: 'no-merge-base' })
 
     const [baseAhead, baseFiles, taskFiles] = await Promise.all([
       gitx.countCommits(this.gitPath, task.repoPath, `${mergeBase}..${task.baseBranch}`),
@@ -1208,7 +1236,7 @@ export class Runtime {
     // fast-forward and cannot conflict.
     if (baseAhead === 0) {
       preview.checked = true
-      return preview
+      return remember(preview)
     }
 
     // Always run the real dry-run (not only when file names overlap): renames,
@@ -1219,7 +1247,7 @@ export class Runtime {
     preview.conflict = check.conflict
     preview.conflictFiles = check.files
     if (check.error) preview.error = check.error
-    return preview
+    return remember(preview)
   }
 
   async cleanup(id: string, opts: { force?: boolean; deleteBranch?: boolean; forceDeleteBranch?: boolean }): Promise<WorktreeTask> {

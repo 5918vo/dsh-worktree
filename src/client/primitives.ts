@@ -424,12 +424,14 @@ export function BranchCombobox(props: any) {
   }
 
 
-export function Toast(props: { toast: any }) {
+export function Toast(props: { toast: any; onClose?: () => void }) {
   const toast = props.toast
   return h('div', {
     className: 'dshw-toast' + (toast ? ' dshw-toast--show' : ''),
     role: toast && toast.kind === 'error' ? 'alert' : 'status',
     'aria-live': toast && toast.kind === 'error' ? 'assertive' : 'polite',
+    onClick: toast && props.onClose ? props.onClose : undefined,
+    style: toast && props.onClose ? { cursor: 'pointer' } : undefined,
   },
     toast ? [h(Icon, { key: 'i', name: toast.kind === 'error' ? 'alert' : 'checkCircle' }), h('span', { key: 's' }, toast.message)] : null)
 }

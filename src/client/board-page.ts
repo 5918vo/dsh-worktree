@@ -38,7 +38,7 @@ export function BoardPage(props: any) {
     const [projectModalOpen, setProjectModalOpen] = React.useState(false)
     const [sessionMap, setSessionMap] = React.useState({})
     const [pendingMap, setPendingMap] = React.useState({})
-    const { toast, notify } = useToast()
+    const { toast, notify, dismiss } = useToast()
     const bindingRef = React.useRef(new Set<string>())
     const searchRef = React.useRef(null)
     const detailRef = React.useRef(null)
@@ -649,6 +649,9 @@ export function BoardPage(props: any) {
       env && env.mergeTreeSupported === false
         ? h(Banner, { tone: 'warn', icon: 'alert', title: t.gitTooOldTitle }, t.gitTooOldHint)
         : null,
+      env && env.longPaths === false
+        ? h(Banner, { tone: 'warn', icon: 'alert', title: t.longPathsTitle }, t.longPathsHint)
+        : null,
       h('header', { className: 'dshw-tree-head' },
         h('div', { className: 'dshw-search' },
           h(Icon, { name: 'search' }),
@@ -857,7 +860,7 @@ export function BoardPage(props: any) {
 
     return h('div', { className: 'dshw-scope dshw-shell', ref: shellRef },
       h('div', { className: 'dshw-app' + (showDetail ? ' dshw-app--detail' : '') }, treeNode, detailNode, modalNode),
-      h(Toast, { toast }))
+      h(Toast, { toast, onClose: dismiss }))
   }
 
 export function BoardIcon() {

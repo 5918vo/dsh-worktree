@@ -431,8 +431,14 @@ function mergeTreeFiles(stdout: string, stderr: string): string[] {
   return [...files]
 }
 
-export interface GitVersionInfo {
-  version: string
+/** All values of a git config key (empty when unset). */
+export async function gitConfigGetAll(gitPath: string, dir: string, key: string): Promise<string[]> {
+  const r = await tryRun(gitPath, dir, ['config', '--get-all', key])
+  if (!r) return []
+  return r.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+}
+
+export interface GitVersionInfo {  version: string
   major: number
   minor: number
   /** Whether `merge-tree --write-tree` (>= 2.38) is available. */

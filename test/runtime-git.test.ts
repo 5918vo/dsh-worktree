@@ -107,6 +107,17 @@ test('publish records acceptance criteria and lists them in the prompt', async (
   }
 })
 
+test('acceptance criteria library supports set/reorder and drops blanks/dupes', async () => {
+  const f = await fixture()
+  try {
+    assert.deepEqual(f.runtime.addAcceptanceCriteria(['a', 'b', 'c']), ['a', 'b', 'c'])
+    assert.deepEqual(f.runtime.setAcceptanceCriteria(['c', 'a', 'a', '', 'b']), ['c', 'a', 'b'])
+    assert.deepEqual(f.runtime.listAcceptanceCriteria(), ['c', 'a', 'b'])
+  } finally {
+    await teardown(f)
+  }
+})
+
 test('publish rejects invalid input', async () => {
   const f = await fixture()
   try {

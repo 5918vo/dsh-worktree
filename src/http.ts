@@ -121,6 +121,15 @@ export function registerHttp(app: App): () => void {
       send(res, 400, { error: error instanceof Error ? error.message : String(error) })
     }
   })
+  route('acceptance-criteria/set', 'POST', async (req, res) => {
+    requireToken(req)
+    const body = await readJson(req)
+    try {
+      send(res, 200, { items: app.runtime.setAcceptanceCriteria(Array.isArray(body.items) ? body.items.map(String) : []) })
+    } catch (error) {
+      send(res, 400, { error: error instanceof Error ? error.message : String(error) })
+    }
+  })
 
   route('branches', 'GET', async (req, res) => {
     const dir = q(req, 'path')

@@ -85,9 +85,7 @@ PAGES.append({
             ["打开会话按钮", "图标按钮 task-open（external）",
              "title / aria-label：打开会话（openSessionBtn）：{标题}；无会话显示：未创建会话（noSession）",
              "调用原生 uiWorkspace.openSession 打开会话；失败 Toast「无法打开会话」（openSessionFailed）", "无会话时禁用"],
-            ["归档 / 取消归档按钮", "图标按钮（archive / archiveRestore）",
-             "title / aria-label：归档（archive）/ 取消归档（unarchive）：{标题}",
-             "直接归档或恢复；成功 Toast「任务已归档 / 已取消归档」", "仅 merged / cleaned 终态任务；处理中显示 Spinner"],
+            ["归档 / 取消归档按钮", "已移除（改在任务详情归档卡）", "任务行不再放归档按钮，避免窄栏误点；归档/取消归档在详情「归档」卡操作", "详情页操作", "—"],
         ]),
         sec("空 / 加载状态", ELEMENT_HEADERS, [
             ["加载骨架屏", "骨架占位（aria-hidden）", "无文字", "首屏加载时显示", "loaded=false"],
@@ -133,8 +131,8 @@ PAGES.append({
     "title": "任务详情（TaskDetail）",
     "route": "右栏（BoardPage 渲染 TaskDetail）",
     "layout": [
-        "纵向堆叠的卡片流：Hero → 验收标准 → 横幅（未开始/待处理/健康/预览/合并后/同步失败）→ 实时会话 → 改动文件 → 会话信息 → 任务关系 → 验收操作 → Worktree/主仓库 → 归档 → 危险操作。",
-        "Hero 为两列：左侧面包屑/标题/描述/元信息，右侧主操作 + 最近活动；窄屏换行。",
+        "纵向堆叠的卡片流：Hero → 验收标准 → 横幅 → 验收操作（提到横幅下方）→ 任务关系 → 实时会话（默认最近 5 步，可展开全部）→ 改动文件 → 技术信息（会话 + Worktree + 主仓库，默认折叠）→ 归档 → 危险操作。",
+        "Hero 主操作随状态变化：ready 启动/创建会话、developing 打开会话、review 切到任务分支验收、reviewing 切回原分支、merged 清理 worktree、cleaned 仅显示状态。",
         "实时会话为卡片：顶栏（模型/统计/token）+ 左右两栏（日志主区 + 侧栏执行清单/上下文）；≤1100px 侧栏移到日志下方。",
         "改动文件、Worktree/主仓库、验收操作等均使用卡片 + 键值行；≤420px 键值行改为上下排列。",
     ],
@@ -188,6 +186,7 @@ PAGES.append({
             ["· 工具结果摘要", "文本", "读取完成 · {行} 行 · {字符} 字符（resultRead）/ 匹配 {n} 个文件（resultMatch）/ 写入完成（resultWrite）/ 内容：{n} 字符（contentSize）", "只读", "工具结果"],
             ["无对话", "文本", "还没有对话记录（noTurns）", "只读", "entries 为空"],
             ["执行清单侧栏", "列表", "标题：执行清单（liveTodos）；每项勾/圈图标 + 内容；最多 10 条", "只读", "有 todos"],
+            ["最近步数 / 会话入口", "链接按钮", "超过 5 步时显示「最近 5 步 / 全部折叠」（showRecentSteps / collapseAll）切换；「在会话中查看全部」（openInSession）", "切换显示全部/最近几步；跳转原生会话", "控制台顶栏"],
             ["上下文侧栏", "进度条", "标题：上下文（livePressure）；百分比 + 缓存读（liveTokensCache）", "只读", "常驻"],
         ]),
         sec("3.6 改动文件卡（DiffCard）", ELEMENT_HEADERS, [
@@ -312,6 +311,28 @@ PAGES.append({
 })
 
 PAGES.append({
+    "id": "modal-stash-view", "group": "modal", "title": "弹窗 · 暂存内容（stashModal）",
+    "route": "任务详情「查看暂存内容」触发",
+    "layout": ["Modal 尺寸 lg；正文为等宽 unified diff 预览（可滚动）；footer 仅「关闭」。"],
+    "sections": [sec("内容与操作", ELEMENT_HEADERS, [
+        ["标题", "Modal 头部", "暂存内容（stashViewTitle）；副标题：任务标题；图标 file", "只读", "打开即显示"],
+        ["补丁预览", "pre.dshw-diff-patch", "git stash show -p 的 unified diff；为空时显示「暂存为空」（stashEmpty）", "只读、可滚动", "—"],
+        ["关闭", "Modal footer 按钮", "关闭（close）", "关闭弹窗", "—"],
+    ])],
+})
+
+PAGES.append({
+    "id": "modal-sync-confirm", "group": "modal", "title": "弹窗 · 发送同步基线确认（syncConfirmModal）",
+    "route": "任务详情「让 Agent 同步基线」触发",
+    "layout": ["Modal 尺寸 sm；先展示将发送给会话的指令全文，确认后才发送（Agent 运行时按钮禁用）。"],
+    "sections": [sec("内容与操作", ELEMENT_HEADERS, [
+        ["标题", "Modal 头部", "发送同步基线指令？（syncConfirmTitle）；副标题：让 Agent 同步基线（syncBaseline）", "只读", "打开即显示"],
+        ["说明 + 预览", "文本 + pre", "将以你的名义向当前会话发送以下内容：（syncConfirmHint）+ 指令全文（基线/任务分支/冲突文件，文件名以反引号包裹并截断）", "只读", "—"],
+        ["取消 / 发送", "Modal footer 按钮", "取消（cancel，autofocus）/ 发送（send，primary）", "确认后才向会话发送", "发送中禁用"],
+    ])],
+})
+
+PAGES.append({
     "id": "modal-cleanup", "group": "modal", "title": "弹窗 · 清理 worktree",
     "route": "任务详情「清理 worktree」触发",
     "layout": ["Modal 尺寸 sm、tone danger；危险列表（标题 + 路径 + 改动说明）+ 选项复选框；固定 footer（取消 / 清理 worktree）。"],
@@ -414,7 +435,7 @@ PAGES.append({
         ]),
         sec("概览卡（overview）", ELEMENT_HEADERS, [
             ["卡头", "CardHead（grid）", "概览（overview）+ 右侧：按 Git 与会话状态推导（overviewHint）", "只读", "常驻"],
-            ["统计卡 ×4", "Stat", "任务总数（totalTasks）/ 进行中（activeTasks）/ 待验收（reviewTasks）/ 已合并（mergedTasks）", "只读", "常驻"],
+            ["统计卡 ×4", "Stat", "需要处理（attentionStat，= 待处理 + 异常）/ 进行中（activeTasks）/ 待验收（reviewTasks）/ 已合并（mergedTasks）", "只读", "常驻"],
             ["待处理提示", "行 + 链接", "{n} 个任务等待处理（attention）+ 查看（view）", "点击查看跳转首个待处理任务", "有 pending 任务时"],
             ["键值", "KV 列表", "仓库路径（+复制）/ 默认基线分支（defaultBase）/ 分支前缀（branchPrefix, code）/ Worktree 目录（worktreeDirName, code）", "复制仓库路径", "常驻"],
         ]),
@@ -449,7 +470,8 @@ PAGES.append({
         sec("验收标准库卡", ELEMENT_HEADERS, [
             ["卡头", "CardHead（checkCircle）", "验收标准库（acceptanceLibrary）+ 说明：在这里维护可复用的验收标准；发布任务时可勾选，也可临时手动补充。（acceptanceLibraryHint）", "只读", "常驻"],
             ["添加行", "输入框 + 按钮", "输入占位：输入一条验收标准（criterionInputPlaceholder）；按钮：添加（addCriterion，primary）", "Enter 或点添加提交；成功 Toast「已添加验收标准」", "输入为空或处理中禁用"],
-            ["标准列表行", "行 + 移除按钮", "勾图标 + 文本 + 移除（x，aria 移除 removeCriterion）", "点击移除；Toast「已移除验收标准」", "有标准时"],
+            ["标准列表行", "行 + 上下移/编辑/移除按钮", "勾图标 + 文本 + 上移（arrowUp）/ 下移（chevronDown）/ 编辑（file）/ 移除（x）；编辑时就地输入 + 保存（criteriaSave）/取消", "点击上移/下移调整顺序；编辑保存；移除；均写回 acceptance-criteria/set", "有标准时"],
+            ["搜索框", "输入框", "占位：搜索验收标准…（criteriaSearch）", "按名称过滤标准列表", "有标准时"],
             ["空态", "文本 hint", "暂无验收标准，先在上方添加一条。（acceptanceLibraryEmpty）", "只读", "无标准"],
         ]),
         sec("最近目录卡", ELEMENT_HEADERS, [
@@ -584,7 +606,7 @@ def render_md():
     L.append("| 2 | 侧栏入口图标 | `sidebar.panellist`（id=worktree-board） | BoardIcon |")
     L.append("| 3 | 设置页 | `settings.section`（id=deepseek-worktree-settings） | SettingsPage |")
     L.append("")
-    L.append("工作台内部再由右侧详情容器路由到「任务详情」「项目详情」；共 9 个弹窗。")
+    L.append("工作台内部再由右侧详情容器路由到「任务详情」「项目详情」；共 11 个弹窗。")
     L.append("")
 
     page_idx = 0

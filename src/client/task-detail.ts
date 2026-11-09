@@ -31,11 +31,14 @@ export function modelLabel(model: any): string | null {
     return null
   }
 
-export function LiveCard(props: { t: any; task: any; running: boolean | null; pendingKind?: string | null; live?: any; history?: any }) {
+export function LiveCard(props: { t: any; task: any; running: boolean | null; pendingKind?: string | null; live?: any; history?: any; onOpenSession?: () => void }) {
     const t = props.t
     const live = readLive(props.live)
     const logRef = React.useRef(null)
     const stickRef = React.useRef(true)
+    // The console is a read-only summary: show the most recent few steps by
+    // default and let the user expand the full history on demand.
+    const [showAllSteps, setShowAllSteps] = React.useState(false)
     React.useEffect(() => {
       const el: any = logRef.current
       if (el && stickRef.current) el.scrollTop = el.scrollHeight
@@ -95,13 +98,16 @@ export function LiveCard(props: { t: any; task: any; running: boolean | null; pe
     }
     const durationLabel = (ms: number | undefined) => {
       const duration = fmtDuration(ms, t)
-      return duration ? String(t.duration).replace('{s}', duration) : ''
+      return duration ? String(t.duration).replace('{n}', duration) : ''
     }
     const statusLabel = (status?: string) => (status === 'error' ? t.stepFailed : status === 'running' ? t.stepRunning : t.stepDone)
 
     const tokenText = tokens
       ? [fmtK(tokens.uncachedInputTokens) ? fmtK(tokens.uncachedInputTokens) + ' ' + t.liveTokensIn : '', fmtK(tokens.outputTokens) ? fmtK(tokens.outputTokens) + ' ' + t.liveTokensOut : ''].filter(Boolean).join(' · ')
       : ''
+    const RECENT_STEPS = 5
+    const visibleEntries = showAllSteps ? entries : entries.slice(-RECENT_STEPS)
+    const entryOffset = showAllSteps ? 0 : Math.max(0, entries.length - RECENT_STEPS)
 
     return h(Card, null, head,
       h('div', { className: 'dshw-console' },
@@ -110,6 +116,13 @@ export function LiveCard(props: { t: any; task: any; running: boolean | null; pe
           h('span', { className: 'dshw-sep' }, '/'),
           h('span', null, statsText),
           h('span', { className: 'dshw-grow' }),
+          entries.length > RECENT_STEPS
+            ? h('button', { type: 'button', className: 'dshw-link-btn', onClick: () => setShowAllSteps((v: boolean) => !v) },
+              showAllSteps ? t.collapseAll : String(t.showRecentSteps).replace('{n}', String(RECENT_STEPS)))
+            : null,
+          props.onOpenSession
+            ? h('button', { type: 'button', className: 'dshw-link-btn', onClick: () => props.onOpenSession && props.onOpenSession() }, t.openInSession)
+            : null,
           tokenText ? h('span', { className: 'dshw-tok' }, tokenText) : null),
         h('div', { className: 'dshw-console-grid' },
           h('div', {
@@ -120,15 +133,15 @@ export function LiveCard(props: { t: any; task: any; running: boolean | null; pe
               stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 32
             },
           },
-            entries.length
-              ? entries.map((entry, index) => {
+            visibleEntries.length
+              ? visibleEntries.map((entry, index) => {
                 const tag = entry.kind === 'think' ? t.roleThinking : entry.kind === 'user' ? t.roleUser : entry.kind === 'agent' ? t.roleAssistant : toolTag(entry.tool)
                 const title = entry.kind === 'think' ? (durationLabel(entry.durationMs) || firstLine(entry.detail)) : (entry.title || '—')
                 const status = entry.kind === 'tool' ? statusLabel(entry.status) : ''
                 const statusClass = entry.status === 'error' ? 'dshw-step-status--error' : entry.status === 'running' ? '' : 'dshw-step-status--ok'
                 return h('details', { key: entry.id || index, className: 'dshw-step dshw-step--' + entry.kind },
                   h('summary', { className: 'dshw-step-head' },
-                    h('span', { className: 'dshw-step-gutter' }, pad2(index + 1)),
+                    h('span', { className: 'dshw-step-gutter' }, pad2(entryOffset + index + 1)),
                     h('span', { className: 'dshw-step-tag' }, tag),
                     h('span', { className: 'dshw-step-title', title: entry.detail ? clipText(entry.detail, 500) : title }, title),
                     entry.meta ? h('span', { className: 'dshw-step-meta' }, entry.meta) : null,
@@ -331,6 +344,7 @@ export function TaskDetail(props: any) {
     const [preview, setPreview] = React.useState(null)
     const [previewBusy, setPreviewBusy] = React.useState(false)
     const [syncBusy, setSyncBusy] = React.useState(false)
+    const [syncConfirm, setSyncConfirm] = React.useState(false)
     const previewRef = React.useRef(false)
 
     const loadPreview = React.useCallback(async () => {
@@ -510,6 +524,10 @@ export function TaskDetail(props: any) {
         : preview.overlapFiles || [])
       : []
     const previewFilesText = previewFiles.slice(0, 8).join('、') + (previewFiles.length > 8 ? '…' : '')
+    const syncFileText = previewFiles.length
+      ? previewFiles.slice(0, 20).map((f: string) => '`' + String(f).replace(/`/g, '') + '`').join('、') + (previewFiles.length > 20 ? '…' : '')
+      : '—'
+    const syncPreviewText = String(t.syncPrompt).replace('{base}', task.baseBranch).replace('{branch}', task.branch).replace('{files}', syncFileText)
     const previewChip = previewRisk
       ? preview.conflict
         ? { tone: 'error', label: String(t.mergePreviewConflict).replace('{n}', String(Math.max(1, previewFiles.length))) }
@@ -522,7 +540,7 @@ export function TaskDetail(props: any) {
       icon: 'refresh',
       disabled: syncBusy || busy !== '' || !task.sessionId || props.running === true,
       title: !task.sessionId ? t.syncNoSession : props.running === true ? t.acceptAgentRunning : undefined,
-      onClick: () => void syncBaseline(),
+      onClick: () => setSyncConfirm(true),
     }, syncBusy ? t.syncingBaseline : t.syncBaseline)
     const previewNode = previewRisk && (preview.conflict || previewFiles.length)
       ? h(Banner, {
@@ -564,59 +582,10 @@ export function TaskDetail(props: any) {
       }, String(t.postMergeHint).replace('{n}', String(postMerge)))
       : null
 
-    const primary = continued && props.onContinue
-      ? h(Btn, {
-        variant: 'primary',
-        size: 'lg',
-        icon: 'plus',
-        disabled: busy !== '',
-        onClick: () => props.onContinue(),
-      }, t.continueTask)
-      : cleaned
-        ? h(Btn, { variant: 'primary', size: 'lg', icon: 'trash', disabled: true }, t.cleaned)
-        : canStart
-          ? h(Btn, {
-            variant: 'primary',
-            size: 'lg',
-            icon: busy === 'start' ? undefined : 'play',
-            disabled: busy !== '',
-            onClick: () => { void act('start', t.taskStarted, () => Promise.resolve(props.onStartTask())) },
-          }, busy === 'start' ? h(Spinner) : null, busyLabel('start', t.startTask, t.startingTask))
-          : task.sessionId
-            ? h(Btn, {
-              variant: 'primary',
-              size: 'lg',
-              icon: 'external',
-              disabled: !props.onOpenSession,
-              onClick: () => {
-                const opened = props.onOpenSession && props.onOpenSession()
-                if (opened === false) props.notify(t.openSessionFailed, 'error')
-              },
-            }, t.openSessionBtn)
-            : h(Btn, {
-              variant: 'primary',
-              size: 'lg',
-              icon: busy === 'session' ? undefined : 'message',
-              disabled: !props.onCreateSession || busy !== '',
-              onClick: () => {
-                if (!props.onCreateSession) return
-                void act('session', t.sessionCreated, () => Promise.resolve(props.onCreateSession()))
-              },
-            }, busy === 'session' ? h(Spinner) : null, busyLabel('session', t.createSession, t.creatingSession))
-
-    // On a merged/cleaned task the continue action is primary; keep "open session"
-    // available as a secondary action for reviewing history.
-    const secondaryOpen = continued && task.sessionId && props.onOpenSession
-      ? h(Btn, {
-        size: 'lg',
-        icon: 'external',
-        disabled: busy !== '',
-        onClick: () => {
-          const opened = props.onOpenSession && props.onOpenSession()
-          if (opened === false) props.notify(t.openSessionFailed, 'error')
-        },
-      }, t.openSessionBtn)
-      : null
+    // Hero primary/secondary are chosen by lifecycle state further below, once the
+    // acceptance flags (checkoutEnabled/backEnabled/…) are known.
+    let primary: any = null
+    const heroSecondary: any[] = []
 
     const lastActivity = task.sessionId && task.updatedAt ? t.lastActivity + ' · ' + relTime(task.updatedAt, t) : ''
 
@@ -724,6 +693,39 @@ export function TaskDetail(props: any) {
       if (inProgress) backReasons.push({ text: t.acceptInProgress })
     }
     const backEnabled = showBack && backReasons.length === 0
+
+    // ---- Status-based hero actions (information architecture) ----
+    const openSessionAction = () => {
+      const opened = props.onOpenSession && props.onOpenSession()
+      if (opened === false) props.notify(t.openSessionFailed, 'error')
+    }
+    const openSessionBtn = () => h(Btn, { size: 'lg', icon: 'external', disabled: busy !== '' || !props.onOpenSession, onClick: openSessionAction }, t.openSessionBtn)
+    const continueSecondary = () => h(Btn, { size: 'lg', icon: 'plus', disabled: busy !== '', onClick: () => props.onContinue && props.onContinue() }, t.continueTask)
+    const cleanupSecondary = () => h(Btn, { size: 'lg', icon: 'trash', disabled: busy !== '', onClick: () => setCleanupOpen(true) }, t.cleanup)
+    if (continued && props.onContinue) {
+      primary = h(Btn, { variant: 'primary', size: 'lg', icon: 'plus', disabled: busy !== '', onClick: () => props.onContinue() }, t.continueTask)
+      if (merged) heroSecondary.push(cleanupSecondary())
+      if (task.sessionId && props.onOpenSession) heroSecondary.push(openSessionBtn())
+    } else if (cleaned) {
+      primary = h(Btn, { variant: 'primary', size: 'lg', icon: 'trash', disabled: true }, t.cleaned)
+      if (props.onContinue) heroSecondary.push(continueSecondary())
+    } else if (merged) {
+      primary = h(Btn, { variant: 'primary', size: 'lg', icon: 'trash', disabled: busy !== '', onClick: () => setCleanupOpen(true) }, t.cleanup)
+      if (props.onContinue) heroSecondary.push(continueSecondary())
+      if (task.sessionId && props.onOpenSession) heroSecondary.push(openSessionBtn())
+    } else if (checkedOut) {
+      primary = h(Btn, { variant: 'primary', size: 'lg', icon: 'arrowLeft', disabled: !backEnabled || busy !== '' || switchBusy !== '', onClick: () => void runSwitch('back') }, originalBranchExists ? t.back : t.switchToBase)
+      if (task.sessionId && props.onOpenSession) heroSecondary.push(openSessionBtn())
+    } else if (effStatus === 'review') {
+      primary = h(Btn, { variant: 'primary', size: 'lg', icon: 'branch', disabled: !checkoutEnabled || busy !== '' || switchBusy !== '', onClick: () => void runSwitch('checkout') }, t.checkout)
+      if (task.sessionId && props.onOpenSession) heroSecondary.push(openSessionBtn())
+    } else if (canStart) {
+      primary = h(Btn, { variant: 'primary', size: 'lg', icon: busy === 'start' ? undefined : 'play', disabled: busy !== '', onClick: () => { void act('start', t.taskStarted, () => Promise.resolve(props.onStartTask())) } }, busy === 'start' ? h(Spinner) : null, busyLabel('start', t.startTask, t.startingTask))
+    } else if (task.sessionId) {
+      primary = h(Btn, { variant: 'primary', size: 'lg', icon: 'external', disabled: busy !== '' || !props.onOpenSession, onClick: openSessionAction }, t.openSessionBtn)
+    } else {
+      primary = h(Btn, { variant: 'primary', size: 'lg', icon: busy === 'session' ? undefined : 'message', disabled: !props.onCreateSession || busy !== '', onClick: () => { if (!props.onCreateSession) return; void act('session', t.sessionCreated, () => Promise.resolve(props.onCreateSession())) } }, busy === 'session' ? h(Spinner) : null, busyLabel('session', t.createSession, t.creatingSession))
+    }
 
     const mergeReasons: AcceptReason[] = []
     if (showMerge) {
@@ -1091,6 +1093,93 @@ export function TaskDetail(props: any) {
             : h('pre', { className: 'dshw-diff-patch' }, stashPatch || t.stashEmpty))
       : null
 
+    const syncConfirmModal = syncConfirm
+      ? h(Modal, {
+        t,
+        title: t.syncConfirmTitle,
+        subtitle: t.syncBaseline,
+        icon: 'refresh',
+        size: 'sm',
+        busy: syncBusy,
+        onClose: () => { if (!syncBusy) setSyncConfirm(false) },
+        footer: [
+          h(Btn, { key: 'c', onClick: () => setSyncConfirm(false), disabled: syncBusy, 'data-autofocus': true }, t.cancel),
+          h(Btn, { key: 'ok', variant: 'primary', disabled: syncBusy, onClick: () => { setSyncConfirm(false); void syncBaseline() } }, syncBusy ? h(Spinner) : null, t.send),
+        ],
+      },
+        h('div', { className: 'dshw-hint' }, t.syncConfirmHint),
+        h('pre', { className: 'dshw-diff-patch' }, syncPreviewText))
+      : null
+
+    // Acceptance actions are pulled up under the banners (they are the primary
+    // job while a task waits for review), and session/worktree details collapse
+    // into one read-only "technical info" card.
+    const acceptanceActionsCard = hasAcceptActions
+      ? h(Card, null,
+        h(CardHead, {
+          icon: 'checkCircle',
+          title: t.acceptance,
+          right: h('span', { className: 'dshw-hint', style: { margin: 0 } }, t.mainRepo + ' · ' + task.baseBranch),
+        }),
+        h('div', { className: 'dshw-action-grid' },
+          showCheckout ? h(Btn, {
+            icon: 'branch',
+            disabled: !checkoutEnabled || busy !== '' || switchBusy !== '',
+            onClick: () => { void runSwitch('checkout') },
+          }, (busy === 'checkout' || switchBusy === 'checkout') ? h(Spinner) : null, t.checkout) : null,
+          showBack ? h(Btn, {
+            icon: 'arrowLeft',
+            disabled: !backEnabled || busy !== '' || switchBusy !== '',
+            onClick: () => void runSwitch('back'),
+          }, (busy === 'back' || switchBusy === 'back') ? h(Spinner) : null, originalBranchExists ? t.back : t.switchToBase) : null,
+          showMerge ? h(Btn, {
+            icon: 'merge',
+            disabled: !(curOnBase ? mergeEnabled : canSwitchToBase) || busy !== '',
+            onClick: () => { setPreview(null); setMergeSwitch(!curOnBase); setMergeRestore(true); setMergeOpen(true); void loadPreview() },
+          }, busy === 'merge' ? h(Spinner) : null, curOnBase ? t.merge : t.mergeSwitchToBase) : null),
+        reasonsNode) : null
+
+    const techCard = h(Card, null,
+      h('details', { className: 'dshw-advanced' },
+        h('summary', null, h(Icon, { name: 'sliders' }), t.techInfo,
+          worktreeState.tone === 'error' ? h(Chip, { tone: 'error', small: true }, worktreeState.label) : null),
+        h('div', { className: 'dshw-advanced-body' },
+          task.sessionId
+            ? h('div', { className: 'dshw-kv' }, [
+              h(KV, { key: 'sid', label: t.sessionId },
+                h('span', { className: 'dshw-mono' }, task.sessionId),
+                h(CopyBtn, { text: task.sessionId, label: t.copySessionId, t, notify: props.notify })),
+              h(KV, { key: 'cwd', label: t.liveCwd },
+                h('span', { className: 'dshw-mono' }, liveCwd || task.worktreePath),
+                cwdOff ? h(Chip, { tone: 'warn', small: true }, t.liveCwdOff) : null,
+                h(CopyBtn, { text: liveCwd || task.worktreePath, label: t.copyWorktree, t, notify: props.notify })),
+            ])
+            : null,
+          h('div', { className: 'dshw-git-section' },
+            h('div', { className: 'dshw-section-label' }, h(Icon, { name: 'folder' }), t.worktree),
+            h('div', { className: 'dshw-kv' },
+              h(KV, { label: t.path },
+                h('span', { className: 'dshw-mono' }, task.worktreePath),
+                h(CopyBtn, { text: task.worktreePath, label: t.copyWorktree, t, notify: props.notify })),
+              cleaned
+                ? h('div', { className: 'dshw-hint', style: { margin: 0 } }, t.worktreeRemovedHint)
+                : [
+                  h(KV, { key: 'wt-branch', label: t.currentBranch },
+                    h('span', { className: 'dshw-mono' }, snap.worktree.branch || '—'),
+                    h(CopyBtn, { text: snap.worktree.branch || '', label: t.copyBranch, t, notify: props.notify })),
+                ])),
+          h('div', { className: 'dshw-git-section' },
+            h('div', { className: 'dshw-section-label' }, h(Icon, { name: 'database' }), t.mainRepo),
+            h('div', { className: 'dshw-kv' },
+              h(KV, { label: t.repoPath },
+                h('span', { className: 'dshw-mono' }, task.repoPath),
+                h(CopyBtn, { text: task.repoPath, label: t.copyRepoPath, t, notify: props.notify })),
+              h(KV, { label: t.currentBranch }, h('span', { className: 'dshw-mono' }, snap.repo.currentBranch || '—')),
+              task.originalBranch ? h(KV, { label: t.originalBranch }, h('span', { className: 'dshw-mono' }, task.originalBranch)) : null,
+              snap.repo.dirtyCount > 0
+                ? h(KV, { label: t.uncommitted }, h(Chip, { tone: 'warn', small: true }, snap.repo.dirtyCount + ' ' + t.changesUnit))
+                : null)))))
+
     return h('div', { className: 'dshw-detail-inner' },
       h('article', { className: 'dshw-card dshw-hero' },
         h('div', { className: 'dshw-hero-top' },
@@ -1114,7 +1203,7 @@ export function TaskDetail(props: any) {
                 ? h('span', { className: 'dshw-meta-pill dshw-meta-pill--warn' }, h(Icon, { name: 'alert' }), dirty + ' ' + t.dirty)
                 : null)),
           h('div', { className: 'dshw-hero-action' },
-            h('div', { className: 'dshw-inline', style: { gap: '8px', flexWrap: 'wrap' } }, primary, secondaryOpen),
+            h('div', { className: 'dshw-inline', style: { gap: '8px', flexWrap: 'wrap' } }, primary, ...heroSecondary),
             h('span', { className: 'dshw-hint' }, lastActivity))),
         err ? h('div', { className: 'dshw-err', role: 'alert', style: { marginTop: '12px' } }, h(Icon, { name: 'alert' }), h('span', null, err)) : null),
       acceptanceNode,
@@ -1126,81 +1215,10 @@ export function TaskDetail(props: any) {
       previewNode,
       postMergeNode,
       errorNode,
+      acceptanceActionsCard,
       relationsNode,
-      h(LiveCard, { t, task, running: props.running, pendingKind: props.pendingKind, live: props.live, history: props.history }),
+      h(LiveCard, { t, task, running: props.running, pendingKind: props.pendingKind, live: props.live, history: props.history, onOpenSession: props.onOpenSession }),
       showDiff ? h(DiffCard, { t, task, version: diffVersion, notify: props.notify }) : null,
-      // Session identity is the only thing this card adds over the live console;
-      // status, model and last activity already appear on the hero / live card.
-      task.sessionId ? h(Card, null,
-        h(CardHead, { icon: 'message', title: t.sessionInfo }),
-        h('div', { className: 'dshw-kv' }, [
-          h(KV, { key: 'sid', label: t.sessionId },
-            h('span', { className: 'dshw-mono' }, task.sessionId),
-            h(CopyBtn, { text: task.sessionId, label: t.copySessionId, t, notify: props.notify })),
-          h(KV, { key: 'cwd', label: t.liveCwd },
-            h('span', { className: 'dshw-mono' }, liveCwd || task.worktreePath),
-            cwdOff ? h(Chip, { tone: 'warn', small: true }, t.liveCwdOff) : null,
-            h(CopyBtn, { text: liveCwd || task.worktreePath, label: t.copyWorktree, t, notify: props.notify })),
-        ])) : null,
-      hasAcceptActions ? h(Card, null,
-        h(CardHead, {
-          icon: 'checkCircle',
-          title: t.acceptance,
-          right: h('span', { className: 'dshw-hint', style: { margin: 0 } }, t.mainRepo + ' · ' + task.baseBranch),
-        }),
-        h('div', { className: 'dshw-action-grid' },
-          showCheckout ? h(Btn, {
-            icon: 'branch',
-            disabled: !checkoutEnabled || busy !== '' || switchBusy !== '',
-            onClick: () => { void runSwitch('checkout') },
-          }, (busy === 'checkout' || switchBusy === 'checkout') ? h(Spinner) : null, t.checkout) : null,
-          showBack ? h(Btn, {
-            icon: 'arrowLeft',
-            disabled: !backEnabled || busy !== '' || switchBusy !== '',
-            onClick: () => { void runSwitch('back') },
-          }, (busy === 'back' || switchBusy === 'back') ? h(Spinner) : null, originalBranchExists ? t.back : t.switchToBase) : null,
-          showMerge ? h(Btn, {
-            icon: 'merge',
-            disabled: !(curOnBase ? mergeEnabled : canSwitchToBase) || busy !== '',
-            onClick: () => {
-              setPreview(null)
-              setMergeSwitch(!curOnBase)
-              setMergeRestore(true)
-              setMergeOpen(true)
-              void loadPreview()
-            },
-          }, busy === 'merge' ? h(Spinner) : null, curOnBase ? t.merge : t.mergeSwitchToBase) : null),
-        reasonsNode) : null,
-      h(Card, null,
-        h(CardHead, {
-          icon: 'branch',
-          title: t.worktree + ' / ' + t.mainRepo,
-          right: worktreeState.tone === 'error' ? h(Chip, { tone: 'error', small: true }, worktreeState.label) : null,
-        }),
-        h('div', { className: 'dshw-git-section' },
-          h('div', { className: 'dshw-section-label' }, h(Icon, { name: 'folder' }), t.worktree),
-          h('div', { className: 'dshw-kv' },
-            h(KV, { label: t.path },
-              h('span', { className: 'dshw-mono' }, task.worktreePath),
-              h(CopyBtn, { text: task.worktreePath, label: t.copyWorktree, t, notify: props.notify })),
-            cleaned
-              ? h('div', { className: 'dshw-hint', style: { margin: 0 } }, t.worktreeRemovedHint)
-              : [
-                h(KV, { key: 'wt-branch', label: t.currentBranch },
-                  h('span', { className: 'dshw-mono' }, snap.worktree.branch || '—'),
-                  h(CopyBtn, { text: snap.worktree.branch || '', label: t.copyBranch, t, notify: props.notify })),
-              ])),
-        h('div', { className: 'dshw-git-section' },
-          h('div', { className: 'dshw-section-label' }, h(Icon, { name: 'database' }), t.mainRepo),
-          h('div', { className: 'dshw-kv' },
-            h(KV, { label: t.repoPath },
-              h('span', { className: 'dshw-mono' }, task.repoPath),
-              h(CopyBtn, { text: task.repoPath, label: t.copyRepoPath, t, notify: props.notify })),
-            h(KV, { label: t.currentBranch }, h('span', { className: 'dshw-mono' }, snap.repo.currentBranch || '—')),
-            task.originalBranch ? h(KV, { label: t.originalBranch }, h('span', { className: 'dshw-mono' }, task.originalBranch)) : null,
-            snap.repo.dirtyCount > 0
-              ? h(KV, { label: t.uncommitted }, h(Chip, { tone: 'warn', small: true }, snap.repo.dirtyCount + ' ' + t.changesUnit))
-              : null))),
       canArchive
         ? h(Card, null,
           h(CardHead, {
@@ -1245,6 +1263,7 @@ export function TaskDetail(props: any) {
           }, t.deleteRecord))),
       switchModal,
       stashModal,
+      syncConfirmModal,
       mergeModal,
       cleanupModal,
       deleteModal)

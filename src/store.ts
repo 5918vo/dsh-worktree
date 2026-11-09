@@ -452,6 +452,23 @@ export class Store {
     })
   }
 
+  /** Replace the whole library (used by edit/reorder; blanks and duplicates dropped). */
+  setCriteria(values: string[]): string[] {
+    const out: string[] = []
+    const seen = new Set<string>()
+    for (const value of Array.isArray(values) ? values : []) {
+      const text = String(value == null ? '' : value).trim()
+      if (!text || seen.has(text)) continue
+      seen.add(text)
+      out.push(text)
+    }
+    return this.withLock(() => {
+      this.criteria = out
+      this.saveCriteria()
+      return [...this.criteria]
+    })
+  }
+
   async flush(): Promise<void> {
     this.withLock(() => {
       this.saveAll()

@@ -217,10 +217,10 @@
             ],
             [
               "归档 / 取消归档按钮",
-              "图标按钮（archive / archiveRestore）",
-              "title / aria-label：归档（archive）/ 取消归档（unarchive）：{标题}",
-              "直接归档或恢复；成功 Toast「任务已归档 / 已取消归档」",
-              "仅 merged / cleaned 终态任务；处理中显示 Spinner"
+              "已移除（改在任务详情归档卡）",
+              "任务行不再放归档按钮，避免窄栏误点；归档/取消归档在详情「归档」卡操作",
+              "详情页操作",
+              "—"
             ]
           ]
         },
@@ -345,8 +345,8 @@
       "title": "任务详情（TaskDetail）",
       "route": "右栏（BoardPage 渲染 TaskDetail）",
       "layout": [
-        "纵向堆叠的卡片流：Hero → 验收标准 → 横幅（未开始/待处理/健康/预览/合并后/同步失败）→ 实时会话 → 改动文件 → 会话信息 → 任务关系 → 验收操作 → Worktree/主仓库 → 归档 → 危险操作。",
-        "Hero 为两列：左侧面包屑/标题/描述/元信息，右侧主操作 + 最近活动；窄屏换行。",
+        "纵向堆叠的卡片流：Hero → 验收标准 → 横幅 → 验收操作（提到横幅下方）→ 任务关系 → 实时会话（默认最近 5 步，可展开全部）→ 改动文件 → 技术信息（会话 + Worktree + 主仓库，默认折叠）→ 归档 → 危险操作。",
+        "Hero 主操作随状态变化：ready 启动/创建会话、developing 打开会话、review 切到任务分支验收、reviewing 切回原分支、merged 清理 worktree、cleaned 仅显示状态。",
         "实时会话为卡片：顶栏（模型/统计/token）+ 左右两栏（日志主区 + 侧栏执行清单/上下文）；≤1100px 侧栏移到日志下方。",
         "改动文件、Worktree/主仓库、验收操作等均使用卡片 + 键值行；≤420px 键值行改为上下排列。"
       ],
@@ -611,6 +611,13 @@
               "标题：执行清单（liveTodos）；每项勾/圈图标 + 内容；最多 10 条",
               "只读",
               "有 todos"
+            ],
+            [
+              "最近步数 / 会话入口",
+              "链接按钮",
+              "超过 5 步时显示「最近 5 步 / 全部折叠」（showRecentSteps / collapseAll）切换；「在会话中查看全部」（openInSession）",
+              "切换显示全部/最近几步；跳转原生会话",
+              "控制台顶栏"
             ],
             [
               "上下文侧栏",
@@ -1230,6 +1237,94 @@
       ]
     },
     {
+      "id": "modal-stash-view",
+      "group": "modal",
+      "title": "弹窗 · 暂存内容（stashModal）",
+      "route": "任务详情「查看暂存内容」触发",
+      "layout": [
+        "Modal 尺寸 lg；正文为等宽 unified diff 预览（可滚动）；footer 仅「关闭」。"
+      ],
+      "sections": [
+        {
+          "title": "内容与操作",
+          "headers": [
+            "元素",
+            "类型",
+            "文案 / 语义 key",
+            "交互 / 行为",
+            "状态 / 条件"
+          ],
+          "rows": [
+            [
+              "标题",
+              "Modal 头部",
+              "暂存内容（stashViewTitle）；副标题：任务标题；图标 file",
+              "只读",
+              "打开即显示"
+            ],
+            [
+              "补丁预览",
+              "pre.dshw-diff-patch",
+              "git stash show -p 的 unified diff；为空时显示「暂存为空」（stashEmpty）",
+              "只读、可滚动",
+              "—"
+            ],
+            [
+              "关闭",
+              "Modal footer 按钮",
+              "关闭（close）",
+              "关闭弹窗",
+              "—"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "modal-sync-confirm",
+      "group": "modal",
+      "title": "弹窗 · 发送同步基线确认（syncConfirmModal）",
+      "route": "任务详情「让 Agent 同步基线」触发",
+      "layout": [
+        "Modal 尺寸 sm；先展示将发送给会话的指令全文，确认后才发送（Agent 运行时按钮禁用）。"
+      ],
+      "sections": [
+        {
+          "title": "内容与操作",
+          "headers": [
+            "元素",
+            "类型",
+            "文案 / 语义 key",
+            "交互 / 行为",
+            "状态 / 条件"
+          ],
+          "rows": [
+            [
+              "标题",
+              "Modal 头部",
+              "发送同步基线指令？（syncConfirmTitle）；副标题：让 Agent 同步基线（syncBaseline）",
+              "只读",
+              "打开即显示"
+            ],
+            [
+              "说明 + 预览",
+              "文本 + pre",
+              "将以你的名义向当前会话发送以下内容：（syncConfirmHint）+ 指令全文（基线/任务分支/冲突文件，文件名以反引号包裹并截断）",
+              "只读",
+              "—"
+            ],
+            [
+              "取消 / 发送",
+              "Modal footer 按钮",
+              "取消（cancel，autofocus）/ 发送（send，primary）",
+              "确认后才向会话发送",
+              "发送中禁用"
+            ]
+          ]
+        }
+      ]
+    },
+    {
       "id": "modal-cleanup",
       "group": "modal",
       "title": "弹窗 · 清理 worktree",
@@ -1711,7 +1806,7 @@
             [
               "统计卡 ×4",
               "Stat",
-              "任务总数（totalTasks）/ 进行中（activeTasks）/ 待验收（reviewTasks）/ 已合并（mergedTasks）",
+              "需要处理（attentionStat，= 待处理 + 异常）/ 进行中（activeTasks）/ 待验收（reviewTasks）/ 已合并（mergedTasks）",
               "只读",
               "常驻"
             ],
@@ -1883,9 +1978,16 @@
             ],
             [
               "标准列表行",
-              "行 + 移除按钮",
-              "勾图标 + 文本 + 移除（x，aria 移除 removeCriterion）",
-              "点击移除；Toast「已移除验收标准」",
+              "行 + 上下移/编辑/移除按钮",
+              "勾图标 + 文本 + 上移（arrowUp）/ 下移（chevronDown）/ 编辑（file）/ 移除（x）；编辑时就地输入 + 保存（criteriaSave）/取消",
+              "点击上移/下移调整顺序；编辑保存；移除；均写回 acceptance-criteria/set",
+              "有标准时"
+            ],
+            [
+              "搜索框",
+              "输入框",
+              "占位：搜索验收标准…（criteriaSearch）",
+              "按名称过滤标准列表",
               "有标准时"
             ],
             [
@@ -2349,12 +2451,7 @@
       "liveTokensOut": "输出",
       "liveTokensCache": "缓存读",
       "liveTodos": "执行清单",
-      "liveTurns": "轮次",
-      "liveTurnN": "第{n}轮",
       "liveTurnEmpty": "暂无轮次",
-      "liveQueued": "排队消息",
-      "liveSubagents": "子代理",
-      "livePerms": "访问模式",
       "liveLastPrompt": "最近活动",
       "liveStats": "{turns} 轮 · {steps} 步",
       "liveStepsOnly": "{steps} 步",
@@ -2364,7 +2461,7 @@
       "roleTool": "工具",
       "roleResult": "结果",
       "roleError": "错误",
-      "duration": "持续了 {s}",
+      "duration": "持续了 {n}",
       "stepDone": "已完成",
       "stepFailed": "执行失败",
       "stepRunning": "执行中",
@@ -2400,7 +2497,6 @@
       "deleteProject": "删除项目",
       "withTasks": "连同任务一起删除",
       "withWorktrees": "同时删除 worktree 文件夹",
-      "tasksUnit": "任务",
       "noProjects": "暂无项目",
       "developing": "进行中",
       "review": "待验收",
@@ -2426,7 +2522,6 @@
       "clean": "工作区干净",
       "commitsAhead": "个领先提交",
       "openSessionFailed": "无法打开会话",
-      "confirmDelete": "删除这条任务记录？",
       "config": "配置",
       "recents": "最近目录",
       "clearRecents": "清空最近目录",
@@ -2440,8 +2535,6 @@
       "handlePending": "去处理",
       "close": "关闭",
       "refresh": "刷新",
-      "detail": "任务详情",
-      "description": "描述",
       "worktree": "Worktree",
       "mainRepo": "主仓库",
       "currentBranch": "当前分支",
@@ -2451,7 +2544,6 @@
       "sessionIdle": "空闲",
       "mergedFlag": "已合并进基线",
       "branchMissing": "分支不存在",
-      "onBranch": "主仓库正检出该分支",
       "commits": "领先基线的提交",
       "selectTask": "未选择任务",
       "ready": "待开始",
@@ -2462,8 +2554,6 @@
       "dangerZone": "危险操作",
       "creatingSession": "正在创建会话…",
       "saving": "正在保存…",
-      "confirmMerge": "确定将任务分支合并回基线分支吗？",
-      "confirmCleanup": "确定清理这个 worktree 吗？请先确认分支和未提交改动。",
       "backToList": "返回项目列表",
       "retry": "重试",
       "loadBranchesFailed": "分支加载失败，可以手动输入分支或重试。",
@@ -2510,13 +2600,12 @@
       "cleanupHint": "清理会删除 worktree 目录；删除记录只移除看板条目，不会删除仓库中的提交。",
       "mergeTitle": "合并到 {base}",
       "mergeSub": "将任务分支的提交合并到基线分支。",
-      "mergeCleanHint": "合并前请确认代码已通过所需的检查，并且没有冲突。",
       "mergeDirtyTitle": "worktree 有未提交改动",
       "mergeDirtyHint": "先提交或暂存改动，再执行合并。",
       "cleanupTitle": "清理 worktree",
       "cleanupSub": "清理指定的 worktree 及其相关文件。",
       "cleanupDangerTitle": "以下内容将被永久删除，且无法恢复：",
-      "cleanupDirtyGone": "{n} 个未提交改动将丢失",
+      "cleanupDirtyGone": "{n} 处未提交改动将丢失",
       "cleanupCleanNote": "工作区干净，没有未提交改动",
       "worktreeRemovedHint": "worktree 目录已删除，此路径仅作记录。",
       "cleanupForceHint": "即使存在未提交的改动也执行清理。",
@@ -2706,7 +2795,21 @@
       "attentionStat": "需要处理",
       "moreItems": "+{n}",
       "acceptanceHintRepoDirtyMerge": "主仓库有 {n} 处未提交改动，请先提交或暂存后再合并。",
-      "reconnecting": "重新连接中…"
+      "reconnecting": "重新连接中…",
+      "techInfo": "技术信息",
+      "showRecentSteps": "最近 {n} 步",
+      "openInSession": "在会话中查看全部",
+      "syncConfirmTitle": "发送同步基线指令？",
+      "syncConfirmHint": "将以你的名义向当前会话发送以下内容：",
+      "send": "发送",
+      "criteriaSearch": "搜索验收标准…",
+      "criteriaEdit": "编辑",
+      "criteriaMoveUp": "上移",
+      "criteriaMoveDown": "下移",
+      "criteriaSave": "保存",
+      "criteriaEditPlaceholder": "修改验收标准",
+      "longPathsTitle": "Windows 长路径未启用",
+      "longPathsHint": "建议执行 git config --global core.longpaths true；否则深层路径的 worktree 可能失败。"
     },
     "en": {
       "title": "Worktree Tasks",
@@ -2757,12 +2860,7 @@
       "liveTokensOut": "out",
       "liveTokensCache": "cached",
       "liveTodos": "Todos",
-      "liveTurns": "Turns",
-      "liveTurnN": "Turn {n}",
       "liveTurnEmpty": "No turns yet",
-      "liveQueued": "Queued msgs",
-      "liveSubagents": "Subagents",
-      "livePerms": "Access",
       "liveLastPrompt": "Last activity",
       "liveStats": "{turns} turns · {steps} steps",
       "liveStepsOnly": "{steps} steps",
@@ -2772,7 +2870,7 @@
       "roleTool": "Tool",
       "roleResult": "Result",
       "roleError": "Error",
-      "duration": "Lasted {s}",
+      "duration": "Lasted {n}",
       "stepDone": "Done",
       "stepFailed": "Failed",
       "stepRunning": "Running",
@@ -2808,7 +2906,6 @@
       "deleteProject": "Delete project",
       "withTasks": "Also delete task records",
       "withWorktrees": "Also delete worktree folders",
-      "tasksUnit": "Tasks",
       "noProjects": "No projects",
       "developing": "In progress",
       "review": "Ready for review",
@@ -2834,7 +2931,6 @@
       "clean": "Working tree clean",
       "commitsAhead": "commits ahead",
       "openSessionFailed": "Could not open session",
-      "confirmDelete": "Delete this task record?",
       "config": "Config",
       "recents": "Recent directories",
       "clearRecents": "Clear recents",
@@ -2848,8 +2944,6 @@
       "handlePending": "Respond",
       "close": "Close",
       "refresh": "Refresh",
-      "detail": "Task detail",
-      "description": "Description",
       "worktree": "Worktree",
       "mainRepo": "Main repo",
       "currentBranch": "Current branch",
@@ -2859,7 +2953,6 @@
       "sessionIdle": "Idle",
       "mergedFlag": "Merged into base",
       "branchMissing": "Branch missing",
-      "onBranch": "Main repo is on this branch",
       "commits": "Commits ahead of base",
       "selectTask": "No task selected",
       "ready": "Ready",
@@ -2870,8 +2963,6 @@
       "dangerZone": "Danger zone",
       "creatingSession": "Creating session…",
       "saving": "Saving…",
-      "confirmMerge": "Merge this task branch into its base branch?",
-      "confirmCleanup": "Remove this worktree? Review the branch and uncommitted changes before continuing.",
       "backToList": "Back to projects",
       "retry": "Retry",
       "loadBranchesFailed": "Could not load branches. You can enter a branch manually or retry.",
@@ -2893,7 +2984,7 @@
       "reviewTasks": "Ready for review",
       "mergedTasks": "Merged",
       "overviewHint": "Derived from Git and session state",
-      "attention": "{n} tasks need attention",
+      "attention": "{n} task(s) need attention",
       "view": "View",
       "lastActivity": "Last activity",
       "justNow": "just now",
@@ -2918,13 +3009,12 @@
       "cleanupHint": "Cleaning removes the worktree directory. Deleting a record only hides it from the board.",
       "mergeTitle": "Merge into {base}",
       "mergeSub": "Merge the task branch commits into the base branch.",
-      "mergeCleanHint": "Make sure the code passed required checks and has no conflicts.",
       "mergeDirtyTitle": "Uncommitted changes in the worktree",
       "mergeDirtyHint": "Commit or stash them before merging.",
       "cleanupTitle": "Clean worktree",
       "cleanupSub": "Remove the worktree and its files.",
       "cleanupDangerTitle": "These will be permanently deleted:",
-      "cleanupDirtyGone": "{n} uncommitted changes will be lost",
+      "cleanupDirtyGone": "{n} uncommitted change(s) will be lost",
       "cleanupCleanNote": "Working tree is clean",
       "worktreeRemovedHint": "The worktree directory was removed. The path is kept for reference.",
       "cleanupForceHint": "Clean even when uncommitted changes exist.",
@@ -2934,7 +3024,7 @@
       "deleteTaskWarningHint": "The record is removed from the board; the worktree and branch stay on disk.",
       "deleteTaskHint": "Merge first if you still need the code.",
       "deleteProjectTitle": "Delete project",
-      "deleteProjectWarning": "The project still has {n} task records",
+      "deleteProjectWarning": "The project still has {n} task record(s)",
       "deleteProjectWarningHint": "Delete them together to remove the project. The repository and commits stay on disk.",
       "deleteProjectCardHint": "Removing a project hides its configuration and task records from the board. The repository and commits stay on disk.",
       "withWorktreesHint": "Force-remove the worktree folders on disk; uncommitted changes are lost.",
@@ -3011,7 +3101,7 @@
       "startingTask": "Starting…",
       "taskStarted": "Task started",
       "changedFiles": "Changed files",
-      "diffFiles": "{n} files",
+      "diffFiles": "{n} file(s)",
       "diffLoading": "Loading changes…",
       "diffEmpty": "No changes against the base branch.",
       "diffBinary": "Binary",
@@ -3106,7 +3196,7 @@
       "gitTooOldTitle": "Git version is too old",
       "gitTooOldHint": "This Git version cannot pre-check merge conflicts (2.38+ required). Merging still works but conflicts are not detected in advance.",
       "mergeNoPrecheckRisk": "This Git version cannot pre-check conflicts; merging will run directly. Watch for conflicts.",
-      "cleanupBranchUnmerged": "This branch has {n} unmerged commits; deleting it can only be recovered via reflog.",
+      "cleanupBranchUnmerged": "This branch has {n} unmerged commit(s); deleting it can only be recovered via reflog.",
       "cleanupBranchUnmergedForce": "Force-delete unmerged branch",
       "cleanupSessionRunning": "A session may still be running; removing the worktree may fail because files are in use.",
       "deleteUseArchive": "Only want to hide it from the list? Use Archive instead.",
@@ -3114,7 +3204,21 @@
       "attentionStat": "Needs attention",
       "moreItems": "+{n}",
       "acceptanceHintRepoDirtyMerge": "The main repo has {n} uncommitted changes. Commit or stash them before merging.",
-      "reconnecting": "Reconnecting…"
+      "reconnecting": "Reconnecting…",
+      "techInfo": "Technical info",
+      "showRecentSteps": "Recent {n} steps",
+      "openInSession": "View all in session",
+      "syncConfirmTitle": "Send the base-sync instruction?",
+      "syncConfirmHint": "This message will be sent to the current session on your behalf:",
+      "send": "Send",
+      "criteriaSearch": "Search criteria…",
+      "criteriaEdit": "Edit",
+      "criteriaMoveUp": "Move up",
+      "criteriaMoveDown": "Move down",
+      "criteriaSave": "Save",
+      "criteriaEditPlaceholder": "Edit acceptance criterion",
+      "longPathsTitle": "Windows long paths are disabled",
+      "longPathsHint": "Run `git config --global core.longpaths true`; otherwise worktrees with deep paths may fail."
     }
   }
 }

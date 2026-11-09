@@ -50,5 +50,9 @@ export function useToast() {
   React.useEffect(() => () => {
     if (timer.current) window.clearTimeout(timer.current)
   }, [])
-  return { toast, notify }
+  const dismiss = () => {
+    if (timer.current) window.clearTimeout(timer.current)
+    setToast(null)
+  }
+  return { toast, notify, dismiss }
 }

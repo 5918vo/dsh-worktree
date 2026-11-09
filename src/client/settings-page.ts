@@ -12,10 +12,13 @@ export function SettingsPage(props: any) {
     const [criteria, setCriteria] = React.useState([] as string[])
     const [newCriterion, setNewCriterion] = React.useState('')
     const [criteriaBusy, setCriteriaBusy] = React.useState(false)
+    const [criteriaSearch, setCriteriaSearch] = React.useState('')
+    const [editingText, setEditingText] = React.useState('')
+    const [editingValue, setEditingValue] = React.useState('')
     const [clearing, setClearing] = React.useState(false)
     const [clearOpen, setClearOpen] = React.useState(false)
     const [err, setErr] = React.useState('')
-    const { toast, notify } = useToast()
+    const { toast, notify, dismiss } = useToast()
     const clearRef = React.useRef(false)
 
     React.useEffect(() => {
@@ -54,6 +57,34 @@ export function SettingsPage(props: any) {
       } finally {
         setCriteriaBusy(false)
       }
+    }
+
+    const saveCriteriaList = async (next: string[]) => {
+      if (criteriaBusy) return
+      setCriteriaBusy(true)
+      setErr('')
+      try {
+        const d: any = await post('acceptance-criteria/set', { items: next })
+        setCriteria(Array.isArray(d.items) ? d.items : [])
+      } catch (e: any) {
+        setErr((e && e.message) || t.failed)
+      } finally {
+        setCriteriaBusy(false)
+      }
+    }
+    const moveCriterion = (text: string, dir: number) => {
+      const index = criteria.indexOf(text)
+      const target = index + dir
+      if (index < 0 || target < 0 || target >= criteria.length) return
+      const next = [...criteria]
+      ;[next[index], next[target]] = [next[target], next[index]]
+      void saveCriteriaList(next)
+    }
+    const saveEdit = () => {
+      const value = editingValue.trim()
+      if (!value || criteriaBusy) return
+      const next = criteria.map((item: string) => (item === editingText ? value : item))
+      void saveCriteriaList(next).then(() => { setEditingText(''); setEditingValue('') })
     }
 
     const clearRecents = async () => {
@@ -119,11 +150,39 @@ export function SettingsPage(props: any) {
             h(Btn, { variant: 'primary', disabled: !newCriterion.trim() || criteriaBusy, onClick: () => void addCriterion() },
               criteriaBusy ? h(Spinner) : null, t.addCriterion)),
           criteria.length
-            ? h('div', { className: 'dshw-criteria-lib' }, criteria.map((item: string) =>
-              h('div', { key: item, className: 'dshw-criteria-lib-row' },
+            ? h('input', {
+              className: 'dshw-input',
+              value: criteriaSearch,
+              placeholder: t.criteriaSearch,
+              style: { marginTop: '8px' },
+              onChange: (e: any) => setCriteriaSearch(e.target.value),
+            })
+            : null,
+          criteria.length
+            ? h('div', { className: 'dshw-criteria-lib' }, criteria
+              .filter((item: string) => !criteriaSearch.trim() || item.toLowerCase().includes(criteriaSearch.trim().toLowerCase()))
+              .map((item: string) => h('div', { key: item, className: 'dshw-criteria-lib-row' },
                 h(Icon, { name: 'check' }),
-                h('span', { className: 'dshw-criteria-lib-text' }, item),
-                h(IconBtn, { size: 'sm', icon: 'x', label: t.removeCriterion, onClick: () => void removeCriterion(item) }))))
+                editingText === item
+                  ? h('input', {
+                    className: 'dshw-input',
+                    value: editingValue,
+                    placeholder: t.criteriaEditPlaceholder,
+                    onChange: (e: any) => setEditingValue(e.target.value),
+                    onKeyDown: (e: any) => { if (e.key === 'Enter') { e.preventDefault(); saveEdit() } },
+                  })
+                  : h('span', { className: 'dshw-criteria-lib-text' }, item),
+                editingText === item
+                  ? [
+                    h(Btn, { key: 's', size: 'sm', variant: 'primary', disabled: criteriaBusy, onClick: () => saveEdit() }, t.criteriaSave),
+                    h(Btn, { key: 'c', size: 'sm', disabled: criteriaBusy, onClick: () => { setEditingText(''); setEditingValue('') } }, t.cancel),
+                  ]
+                  : [
+                    h(IconBtn, { key: 'up', size: 'sm', icon: 'arrowUp', label: t.criteriaMoveUp, disabled: criteria.indexOf(item) === 0, onClick: () => moveCriterion(item, -1) }),
+                    h(IconBtn, { key: 'down', size: 'sm', icon: 'chevronDown', label: t.criteriaMoveDown, disabled: criteria.indexOf(item) === criteria.length - 1, onClick: () => moveCriterion(item, 1) }),
+                    h(IconBtn, { key: 'edit', size: 'sm', icon: 'file', label: t.criteriaEdit, onClick: () => { setEditingText(item); setEditingValue(item) } }),
+                    h(IconBtn, { key: 'x', size: 'sm', icon: 'x', label: t.removeCriterion, onClick: () => void removeCriterion(item) }),
+                  ])))
             : h('div', { className: 'dshw-hint' }, t.acceptanceLibraryEmpty)),
         h(Card, null,
           h(CardHead, {
@@ -162,7 +221,7 @@ export function SettingsPage(props: any) {
             h(KV, { label: t.branchPrefix }, h('code', null, cfg ? String(cfg.branchPrefix) : '…')),
             h(KV, { label: t.gitPath }, h('code', null, cfg ? String(cfg.gitPath) : '…')))),
         clearModal),
-      h(Toast, { toast }))
+      h(Toast, { toast, onClose: dismiss }))
   }
 
 

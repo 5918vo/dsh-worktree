@@ -12,7 +12,7 @@
 | 2 | 侧栏入口图标 | `sidebar.panellist`（id=worktree-board） | BoardIcon |
 | 3 | 设置页 | `settings.section`（id=deepseek-worktree-settings） | SettingsPage |
 
-工作台内部再由右侧详情容器路由到「任务详情」「项目详情」；共 9 个弹窗。
+工作台内部再由右侧详情容器路由到「任务详情」「项目详情」；共 11 个弹窗。
 
 ## 1. 工作台 · 左侧项目树（Worktree 任务）
 
@@ -62,7 +62,7 @@
 | · 领先提交数 | 文本 | ↑ {n}（title：{n} 个领先提交 commitsAhead） | 只读 | ahead > 0 |
 | · 未提交改动数 | 文本 | ±{n}（title：{n} 处未提交改动 dirty） | 只读 | dirtyCount > 0 |
 | 打开会话按钮 | 图标按钮 task-open（external） | title / aria-label：打开会话（openSessionBtn）：{标题}；无会话显示：未创建会话（noSession） | 调用原生 uiWorkspace.openSession 打开会话；失败 Toast「无法打开会话」（openSessionFailed） | 无会话时禁用 |
-| 归档 / 取消归档按钮 | 图标按钮（archive / archiveRestore） | title / aria-label：归档（archive）/ 取消归档（unarchive）：{标题} | 直接归档或恢复；成功 Toast「任务已归档 / 已取消归档」 | 仅 merged / cleaned 终态任务；处理中显示 Spinner |
+| 归档 / 取消归档按钮 | 已移除（改在任务详情归档卡） | 任务行不再放归档按钮，避免窄栏误点；归档/取消归档在详情「归档」卡操作 | 详情页操作 | — |
 
 ### 空 / 加载状态
 
@@ -105,8 +105,8 @@
 
 **布局**：
 
-- 纵向堆叠的卡片流：Hero → 验收标准 → 横幅（未开始/待处理/健康/预览/合并后/同步失败）→ 实时会话 → 改动文件 → 会话信息 → 任务关系 → 验收操作 → Worktree/主仓库 → 归档 → 危险操作。
-- Hero 为两列：左侧面包屑/标题/描述/元信息，右侧主操作 + 最近活动；窄屏换行。
+- 纵向堆叠的卡片流：Hero → 验收标准 → 横幅 → 验收操作（提到横幅下方）→ 任务关系 → 实时会话（默认最近 5 步，可展开全部）→ 改动文件 → 技术信息（会话 + Worktree + 主仓库，默认折叠）→ 归档 → 危险操作。
+- Hero 主操作随状态变化：ready 启动/创建会话、developing 打开会话、review 切到任务分支验收、reviewing 切回原分支、merged 清理 worktree、cleaned 仅显示状态。
 - 实时会话为卡片：顶栏（模型/统计/token）+ 左右两栏（日志主区 + 侧栏执行清单/上下文）；≤1100px 侧栏移到日志下方。
 - 改动文件、Worktree/主仓库、验收操作等均使用卡片 + 键值行；≤420px 键值行改为上下排列。
 
@@ -163,6 +163,7 @@
 | · 工具结果摘要 | 文本 | 读取完成 · {行} 行 · {字符} 字符（resultRead）/ 匹配 {n} 个文件（resultMatch）/ 写入完成（resultWrite）/ 内容：{n} 字符（contentSize） | 只读 | 工具结果 |
 | 无对话 | 文本 | 还没有对话记录（noTurns） | 只读 | entries 为空 |
 | 执行清单侧栏 | 列表 | 标题：执行清单（liveTodos）；每项勾/圈图标 + 内容；最多 10 条 | 只读 | 有 todos |
+| 最近步数 / 会话入口 | 链接按钮 | 超过 5 步时显示「最近 5 步 / 全部折叠」（showRecentSteps / collapseAll）切换；「在会话中查看全部」（openInSession） | 切换显示全部/最近几步；跳转原生会话 | 控制台顶栏 |
 | 上下文侧栏 | 进度条 | 标题：上下文（livePressure）；百分比 + 缓存读（liveTokensCache） | 只读 | 常驻 |
 
 ### 3.6 改动文件卡（DiffCard）
@@ -273,7 +274,7 @@
 | 元素 | 类型 | 文案 / 语义 key | 交互 / 行为 | 状态 / 条件 |
 | --- | --- | --- | --- | --- |
 | 卡头 | CardHead（grid） | 概览（overview）+ 右侧：按 Git 与会话状态推导（overviewHint） | 只读 | 常驻 |
-| 统计卡 ×4 | Stat | 任务总数（totalTasks）/ 进行中（activeTasks）/ 待验收（reviewTasks）/ 已合并（mergedTasks） | 只读 | 常驻 |
+| 统计卡 ×4 | Stat | 需要处理（attentionStat，= 待处理 + 异常）/ 进行中（activeTasks）/ 待验收（reviewTasks）/ 已合并（mergedTasks） | 只读 | 常驻 |
 | 待处理提示 | 行 + 链接 | {n} 个任务等待处理（attention）+ 查看（view） | 点击查看跳转首个待处理任务 | 有 pending 任务时 |
 | 键值 | KV 列表 | 仓库路径（+复制）/ 默认基线分支（defaultBase）/ 分支前缀（branchPrefix, code）/ Worktree 目录（worktreeDirName, code） | 复制仓库路径 | 常驻 |
 
@@ -319,7 +320,8 @@
 | --- | --- | --- | --- | --- |
 | 卡头 | CardHead（checkCircle） | 验收标准库（acceptanceLibrary）+ 说明：在这里维护可复用的验收标准；发布任务时可勾选，也可临时手动补充。（acceptanceLibraryHint） | 只读 | 常驻 |
 | 添加行 | 输入框 + 按钮 | 输入占位：输入一条验收标准（criterionInputPlaceholder）；按钮：添加（addCriterion，primary） | Enter 或点添加提交；成功 Toast「已添加验收标准」 | 输入为空或处理中禁用 |
-| 标准列表行 | 行 + 移除按钮 | 勾图标 + 文本 + 移除（x，aria 移除 removeCriterion） | 点击移除；Toast「已移除验收标准」 | 有标准时 |
+| 标准列表行 | 行 + 上下移/编辑/移除按钮 | 勾图标 + 文本 + 上移（arrowUp）/ 下移（chevronDown）/ 编辑（file）/ 移除（x）；编辑时就地输入 + 保存（criteriaSave）/取消 | 点击上移/下移调整顺序；编辑保存；移除；均写回 acceptance-criteria/set | 有标准时 |
+| 搜索框 | 输入框 | 占位：搜索验收标准…（criteriaSearch） | 按名称过滤标准列表 | 有标准时 |
 | 空态 | 文本 hint | 暂无验收标准，先在上方添加一条。（acceptanceLibraryEmpty） | 只读 | 无标准 |
 
 ### 最近目录卡
@@ -407,7 +409,35 @@
 | 取消 / 确认合并 | Modal footer 按钮 | 取消（cancel，autofocus）/ 确认合并（mergeConfirm → merging，primary） | 执行 no-ff 合并；成功后关闭并刷新；带仓库级忙碌锁 | 冲突/脏/Agent 运行等条件下禁用 |
 | 错误提示 | role=alert | {err} | 只读 | 合并失败 |
 
-### 6.4 清理 worktree
+### 6.4 暂存内容（stashModal）
+
+**入口**：任务详情「查看暂存内容」触发
+
+**布局**：
+
+- Modal 尺寸 lg；正文为等宽 unified diff 预览（可滚动）；footer 仅「关闭」。
+
+| 元素 | 类型 | 文案 / 语义 key | 交互 / 行为 | 状态 / 条件 |
+| --- | --- | --- | --- | --- |
+| 标题 | Modal 头部 | 暂存内容（stashViewTitle）；副标题：任务标题；图标 file | 只读 | 打开即显示 |
+| 补丁预览 | pre.dshw-diff-patch | git stash show -p 的 unified diff；为空时显示「暂存为空」（stashEmpty） | 只读、可滚动 | — |
+| 关闭 | Modal footer 按钮 | 关闭（close） | 关闭弹窗 | — |
+
+### 6.5 发送同步基线确认（syncConfirmModal）
+
+**入口**：任务详情「让 Agent 同步基线」触发
+
+**布局**：
+
+- Modal 尺寸 sm；先展示将发送给会话的指令全文，确认后才发送（Agent 运行时按钮禁用）。
+
+| 元素 | 类型 | 文案 / 语义 key | 交互 / 行为 | 状态 / 条件 |
+| --- | --- | --- | --- | --- |
+| 标题 | Modal 头部 | 发送同步基线指令？（syncConfirmTitle）；副标题：让 Agent 同步基线（syncBaseline） | 只读 | 打开即显示 |
+| 说明 + 预览 | 文本 + pre | 将以你的名义向当前会话发送以下内容：（syncConfirmHint）+ 指令全文（基线/任务分支/冲突文件，文件名以反引号包裹并截断） | 只读 | — |
+| 取消 / 发送 | Modal footer 按钮 | 取消（cancel，autofocus）/ 发送（send，primary） | 确认后才向会话发送 | 发送中禁用 |
+
+### 6.6 清理 worktree
 
 **入口**：任务详情「清理 worktree」触发
 
@@ -424,7 +454,7 @@
 | 取消 / 清理 worktree | Modal footer 按钮 | 取消（cancel，autofocus）/ 清理 worktree（cleanup → cleaning，danger） | 执行清理；成功 Toast「worktree 已清理 / worktree 与分支已清理」 | 执行中禁用 |
 | 错误提示 | role=alert | {err} | 只读 | 失败 |
 
-### 6.5 删除任务记录
+### 6.7 删除任务记录
 
 **入口**：任务详情「删除记录」触发
 
@@ -441,7 +471,7 @@
 | 取消 / 删除记录 | Modal footer 按钮 | 取消（cancel，autofocus）/ 删除记录（deleteRecordConfirm → deleting，danger） | 执行删除；成功 Toast「任务记录已删除」 | 执行中禁用 |
 | 错误提示 | role=alert | {err} | 只读 | 失败 |
 
-### 6.6 删除项目
+### 6.8 删除项目
 
 **入口**：项目详情「删除项目」触发
 
@@ -459,7 +489,7 @@
 | 取消 / 删除项目 | Modal footer 按钮 | 取消（cancel，autofocus）/ 删除项目（deleteProjectConfirm → deleting，danger） | 执行删除；Toast「项目「{name}」已删除」 | 有任务未勾「连同任务」时禁用 |
 | 错误提示 | role=alert | {err} | 只读 | 失败 |
 
-### 6.7 清理前序任务的 worktree（发布续做后）
+### 6.9 清理前序任务的 worktree（发布续做后）
 
 **入口**：发布后续任务成功后，前序 worktree 仍存在时弹出
 
@@ -476,7 +506,7 @@
 | 保留 / 清理 | Modal footer 按钮 | 保留（keepWorktree，autofocus）/ 清理 worktree（cleanup → cleaning，danger） | 保留则不清理；清理后 Toast「前序 worktree 已清理」 | 执行中禁用 |
 | 错误提示 | role=alert | {err} | 只读 | 失败 |
 
-### 6.8 清空最近目录（设置页）
+### 6.10 清空最近目录（设置页）
 
 **入口**：设置页「清空最近目录」触发
 
@@ -492,7 +522,7 @@
 | 取消 / 清空 | Modal footer 按钮 | 取消（cancel，autofocus）/ 清空最近目录（clearRecents → deleting，danger） | 执行清空；Toast「清空最近目录」 | 执行中禁用 |
 | 错误提示 | role=alert | {err} | 只读 | 失败 |
 
-### 6.9 切换分支冲突处理（switchModal）
+### 6.11 切换分支冲突处理（switchModal）
 
 **入口**：任务详情「切到任务分支验收 / 切回原分支」预检发现主仓库有未提交改动时
 
@@ -618,7 +648,7 @@
 
 > 全部颜色集中在 `src/client/palette.ts` 的 `PALETTE`（明/暗两套），禁止在样式或组件内写死颜色；状态色由 `STATUS_TONE` 统一映射。
 
-## 10. 附录：完整文案字典（中英对照，406 条）
+## 10. 附录：完整文案字典（中英对照，407 条）
 
 | key | 中文 | English |
 | --- | --- | --- |
@@ -670,12 +700,7 @@
 | liveTokensOut | 输出 | out |
 | liveTokensCache | 缓存读 | cached |
 | liveTodos | 执行清单 | Todos |
-| liveTurns | 轮次 | Turns |
-| liveTurnN | 第{n}轮 | Turn {n} |
 | liveTurnEmpty | 暂无轮次 | No turns yet |
-| liveQueued | 排队消息 | Queued msgs |
-| liveSubagents | 子代理 | Subagents |
-| livePerms | 访问模式 | Access |
 | liveLastPrompt | 最近活动 | Last activity |
 | liveStats | {turns} 轮 · {steps} 步 | {turns} turns · {steps} steps |
 | liveStepsOnly | {steps} 步 | {steps} steps |
@@ -685,7 +710,7 @@
 | roleTool | 工具 | Tool |
 | roleResult | 结果 | Result |
 | roleError | 错误 | Error |
-| duration | 持续了 {s} | Lasted {s} |
+| duration | 持续了 {n} | Lasted {n} |
 | stepDone | 已完成 | Done |
 | stepFailed | 执行失败 | Failed |
 | stepRunning | 执行中 | Running |
@@ -721,7 +746,6 @@
 | deleteProject | 删除项目 | Delete project |
 | withTasks | 连同任务一起删除 | Also delete task records |
 | withWorktrees | 同时删除 worktree 文件夹 | Also delete worktree folders |
-| tasksUnit | 任务 | Tasks |
 | noProjects | 暂无项目 | No projects |
 | developing | 进行中 | In progress |
 | review | 待验收 | Ready for review |
@@ -747,7 +771,6 @@
 | clean | 工作区干净 | Working tree clean |
 | commitsAhead | 个领先提交 | commits ahead |
 | openSessionFailed | 无法打开会话 | Could not open session |
-| confirmDelete | 删除这条任务记录？ | Delete this task record? |
 | config | 配置 | Config |
 | recents | 最近目录 | Recent directories |
 | clearRecents | 清空最近目录 | Clear recents |
@@ -761,8 +784,6 @@
 | handlePending | 去处理 | Respond |
 | close | 关闭 | Close |
 | refresh | 刷新 | Refresh |
-| detail | 任务详情 | Task detail |
-| description | 描述 | Description |
 | worktree | Worktree | Worktree |
 | mainRepo | 主仓库 | Main repo |
 | currentBranch | 当前分支 | Current branch |
@@ -772,7 +793,6 @@
 | sessionIdle | 空闲 | Idle |
 | mergedFlag | 已合并进基线 | Merged into base |
 | branchMissing | 分支不存在 | Branch missing |
-| onBranch | 主仓库正检出该分支 | Main repo is on this branch |
 | commits | 领先基线的提交 | Commits ahead of base |
 | selectTask | 未选择任务 | No task selected |
 | ready | 待开始 | Ready |
@@ -783,8 +803,6 @@
 | dangerZone | 危险操作 | Danger zone |
 | creatingSession | 正在创建会话… | Creating session… |
 | saving | 正在保存… | Saving… |
-| confirmMerge | 确定将任务分支合并回基线分支吗？ | Merge this task branch into its base branch? |
-| confirmCleanup | 确定清理这个 worktree 吗？请先确认分支和未提交改动。 | Remove this worktree? Review the branch and uncommitted changes before continuing. |
 | backToList | 返回项目列表 | Back to projects |
 | retry | 重试 | Retry |
 | loadBranchesFailed | 分支加载失败，可以手动输入分支或重试。 | Could not load branches. You can enter a branch manually or retry. |
@@ -806,7 +824,7 @@
 | reviewTasks | 待验收 | Ready for review |
 | mergedTasks | 已合并 | Merged |
 | overviewHint | 按 Git 与会话状态推导 | Derived from Git and session state |
-| attention | {n} 个任务等待处理 | {n} tasks need attention |
+| attention | {n} 个任务等待处理 | {n} task(s) need attention |
 | view | 查看 | View |
 | lastActivity | 最近活动 | Last activity |
 | justNow | 刚刚 | just now |
@@ -831,13 +849,12 @@
 | cleanupHint | 清理会删除 worktree 目录；删除记录只移除看板条目，不会删除仓库中的提交。 | Cleaning removes the worktree directory. Deleting a record only hides it from the board. |
 | mergeTitle | 合并到 {base} | Merge into {base} |
 | mergeSub | 将任务分支的提交合并到基线分支。 | Merge the task branch commits into the base branch. |
-| mergeCleanHint | 合并前请确认代码已通过所需的检查，并且没有冲突。 | Make sure the code passed required checks and has no conflicts. |
 | mergeDirtyTitle | worktree 有未提交改动 | Uncommitted changes in the worktree |
 | mergeDirtyHint | 先提交或暂存改动，再执行合并。 | Commit or stash them before merging. |
 | cleanupTitle | 清理 worktree | Clean worktree |
 | cleanupSub | 清理指定的 worktree 及其相关文件。 | Remove the worktree and its files. |
 | cleanupDangerTitle | 以下内容将被永久删除，且无法恢复： | These will be permanently deleted: |
-| cleanupDirtyGone | {n} 个未提交改动将丢失 | {n} uncommitted changes will be lost |
+| cleanupDirtyGone | {n} 处未提交改动将丢失 | {n} uncommitted change(s) will be lost |
 | cleanupCleanNote | 工作区干净，没有未提交改动 | Working tree is clean |
 | worktreeRemovedHint | worktree 目录已删除，此路径仅作记录。 | The worktree directory was removed. The path is kept for reference. |
 | cleanupForceHint | 即使存在未提交的改动也执行清理。 | Clean even when uncommitted changes exist. |
@@ -847,7 +864,7 @@
 | deleteTaskWarningHint | 任务记录会从看板移除，但 worktree 与分支不会被删除。 | The record is removed from the board; the worktree and branch stay on disk. |
 | deleteTaskHint | 如果还需要保留代码，请先合并，再删除记录。 | Merge first if you still need the code. |
 | deleteProjectTitle | 删除项目 | Delete project |
-| deleteProjectWarning | 项目下还有 {n} 条任务记录 | The project still has {n} task records |
+| deleteProjectWarning | 项目下还有 {n} 条任务记录 | The project still has {n} task record(s) |
 | deleteProjectWarningHint | 需要同时删除这些任务记录才能移除项目。仓库和提交不会被删除。 | Delete them together to remove the project. The repository and commits stay on disk. |
 | deleteProjectCardHint | 删除后，项目配置与任务记录会从工作台移除；仓库和提交不会被删除。 | Removing a project hides its configuration and task records from the board. The repository and commits stay on disk. |
 | withWorktreesHint | 强制删除磁盘上的 worktree 目录，未提交的改动会一并丢失。 | Force-remove the worktree folders on disk; uncommitted changes are lost. |
@@ -924,7 +941,7 @@
 | startingTask | 正在启动… | Starting… |
 | taskStarted | 任务已开始 | Task started |
 | changedFiles | 改动文件 | Changed files |
-| diffFiles | {n} 个文件 | {n} files |
+| diffFiles | {n} 个文件 | {n} file(s) |
 | diffLoading | 正在加载改动… | Loading changes… |
 | diffEmpty | 相对基线分支没有改动。 | No changes against the base branch. |
 | diffBinary | 二进制文件 | Binary |
@@ -1019,7 +1036,7 @@
 | gitTooOldTitle | Git 版本过低 | Git version is too old |
 | gitTooOldHint | 当前 Git 版本不支持合并冲突预检（需要 2.38+）。合并仍可执行，但不会提前检测冲突。 | This Git version cannot pre-check merge conflicts (2.38+ required). Merging still works but conflicts are not detected in advance. |
 | mergeNoPrecheckRisk | 当前 Git 版本不支持冲突预检，合并将直接执行，请留意冲突风险。 | This Git version cannot pre-check conflicts; merging will run directly. Watch for conflicts. |
-| cleanupBranchUnmerged | 该分支还有 {n} 个未合并提交，删除后只能通过 reflog 找回。 | This branch has {n} unmerged commits; deleting it can only be recovered via reflog. |
+| cleanupBranchUnmerged | 该分支还有 {n} 个未合并提交，删除后只能通过 reflog 找回。 | This branch has {n} unmerged commit(s); deleting it can only be recovered via reflog. |
 | cleanupBranchUnmergedForce | 强制删除未合并分支 | Force-delete unmerged branch |
 | cleanupSessionRunning | 会话可能仍在运行，删除 worktree 可能因文件被占用而失败。 | A session may still be running; removing the worktree may fail because files are in use. |
 | deleteUseArchive | 只想从列表隐藏？可以改用「归档」。 | Only want to hide it from the list? Use Archive instead. |
@@ -1028,6 +1045,20 @@
 | moreItems | +{n} | +{n} |
 | acceptanceHintRepoDirtyMerge | 主仓库有 {n} 处未提交改动，请先提交或暂存后再合并。 | The main repo has {n} uncommitted changes. Commit or stash them before merging. |
 | reconnecting | 重新连接中… | Reconnecting… |
+| techInfo | 技术信息 | Technical info |
+| showRecentSteps | 最近 {n} 步 | Recent {n} steps |
+| openInSession | 在会话中查看全部 | View all in session |
+| syncConfirmTitle | 发送同步基线指令？ | Send the base-sync instruction? |
+| syncConfirmHint | 将以你的名义向当前会话发送以下内容： | This message will be sent to the current session on your behalf: |
+| send | 发送 | Send |
+| criteriaSearch | 搜索验收标准… | Search criteria… |
+| criteriaEdit | 编辑 | Edit |
+| criteriaMoveUp | 上移 | Move up |
+| criteriaMoveDown | 下移 | Move down |
+| criteriaSave | 保存 | Save |
+| criteriaEditPlaceholder | 修改验收标准 | Edit acceptance criterion |
+| longPathsTitle | Windows 长路径未启用 | Windows long paths are disabled |
+| longPathsHint | 建议执行 git config --global core.longpaths true；否则深层路径的 worktree 可能失败。 | Run `git config --global core.longpaths true`; otherwise worktrees with deep paths may fail. |
 
 ## 11. 已知缺口 / 备注
 
