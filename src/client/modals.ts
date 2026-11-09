@@ -2,7 +2,7 @@ import { React, h } from './ui'
 import { Btn, Field, Icon, Modal, Spinner, BranchCombobox } from './primitives'
 import { ModelCombobox } from './model-picker'
 import { useBranchInfo } from './hooks'
-import { appCtx, bindSession, getJson, post, withTimeout } from './context'
+import { appCtx, bindSession, getJson, post, postLong, withTimeout } from './context'
 import { baseName, cx } from './format'
 import { normalizeCriteria, parseCriteriaText } from '../criteria'
 
@@ -309,7 +309,7 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
       submitRef.current = true
       setBusy(true)
       try {
-        const r = await withTimeout(post('publish', {
+        const r = await withTimeout(postLong('publish', {
           projectId: project.id,
           baseBranch: baseBranch || undefined,
           title: title.trim(),

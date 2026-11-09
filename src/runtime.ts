@@ -222,6 +222,8 @@ export class Runtime {
   private readonly store: Store
   private readonly config: WorktreeConfig
   readonly gitPath: string
+  /** One in-flight git action per main repo, shared by chat/board/tool callers. */
+  private readonly gitOps = new Map<string, string>()
 
   constructor(deps: { store: Store; config: WorktreeConfig }) {
     this.store = deps.store
@@ -757,6 +759,28 @@ export class Runtime {
     if (state) throw new TaskError(`主仓库有未完成的 ${state} 操作，请先处理后再继续`)
   }
 
+  private repoKey(repoPath: string): string {
+    return repoPath.replace(/[\\/]+$/, '').toLowerCase()
+  }
+
+  /**
+   * Serialize git-mutating actions per main repo. A slow hook (e.g. eslint in a
+   * pre-merge-commit hook) can keep `merge` running for minutes; without this a
+   * second click would start a concurrent merge on the same repo and corrupt the
+   * working tree. Keyed by the main repo, so worktrees of one project stay serial.
+   */
+  private async withRepoLock<T>(repoPath: string, label: string, fn: () => Promise<T>): Promise<T> {
+    const key = this.repoKey(repoPath)
+    const active = this.gitOps.get(key)
+    if (active) throw new TaskError(`主仓库正在执行「${active}」，请等待完成后再操作`, 409)
+    this.gitOps.set(key, label)
+    try {
+      return await fn()
+    } finally {
+      if (this.gitOps.get(key) === label) this.gitOps.delete(key)
+    }
+  }
+
   async checkout(id: string): Promise<WorktreeTask> {
     const task = this.needTask(id)
     if (task.cleanedAt) throw new TaskError('worktree 已清理，无法验收切换')
@@ -810,6 +834,10 @@ export class Runtime {
 
   async merge(id: string): Promise<WorktreeTask> {
     const task = this.needTask(id)
+    return this.withRepoLock(task.repoPath, '合并', () => this.mergeLocked(task))
+  }
+
+  private async mergeLocked(task: WorktreeTask): Promise<WorktreeTask> {
     if (task.cleanedAt) throw new TaskError('worktree 已清理，分支若仍在可手动合并')
     const repoPath = task.repoPath
     if (!(await gitx.branchExists(this.gitPath, repoPath, task.branch))) {

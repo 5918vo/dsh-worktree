@@ -49,11 +49,13 @@ export function withTimeout<T>(p: Promise<T>, ms: number, message: string): Prom
 }
 
 const REQUEST_TIMEOUT_MS = 12_000
+/** Git actions can run slow repo hooks (eslint/pre-commit) for minutes. */
+export const LONG_REQUEST_TIMEOUT_MS = 10 * 60 * 1000
 
 /** Never let a dead localhost connection hold the board in a loading state forever. */
-function request(path: string, init?: RequestInit): Promise<Response> {
+function request(path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController()
-  const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs)
   return fetch(api(path), Object.assign({}, init || {}, { signal: controller.signal })).finally(() => {
     window.clearTimeout(timer)
   })
@@ -75,9 +77,9 @@ export async function sendJsonRaw(path: string, body: any, method: string) {
   return data
 }
 
-export async function sendJson(path: string, body: any, method: string) {
+export async function sendJson(path: string, body: any, method: string, timeoutMs?: number) {
   return withToken((token) =>
-    request(path, { method, headers: { 'content-type': 'application/json', 'x-dsh-worktree-token': token }, body: JSON.stringify(body || {}) }).then(async (res) => {
+    request(path, { method, headers: { 'content-type': 'application/json', 'x-dsh-worktree-token': token }, body: JSON.stringify(body || {}) }, timeoutMs).then(async (res) => {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw Object.assign(new Error(data.error || data.message || 'HTTP ' + res.status), { status: res.status })
       return data
@@ -86,6 +88,8 @@ export async function sendJson(path: string, body: any, method: string) {
 }
 
 export const post = (path: string, body: any) => sendJson(path, body, 'POST')
+/** Same as post, but survives slow git hooks (merge/checkout/cleanup). */
+export const postLong = (path: string, body: any) => sendJson(path, body, 'POST', LONG_REQUEST_TIMEOUT_MS)
 
 /**
  * Create the DSH conversation for a task and optionally kick it off.

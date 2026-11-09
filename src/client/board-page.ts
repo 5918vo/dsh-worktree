@@ -5,7 +5,7 @@ import { useToast } from './hooks'
 import { TaskDetail } from './task-detail'
 import { ProjectDetail } from './project-detail'
 import { upsertPublishedTask, visibleProjectViews } from './board-data'
-import { appCtx, bindSession, getJson, post } from './context'
+import { appCtx, bindSession, getJson, post, postLong } from './context'
 import { uuid } from './format'
 import { STATUS_TONE, pendingLabel, postMergeLabel, resolveStatus, statusMeta } from './status'
 import { buildHistoryEntries } from './timeline'
@@ -762,7 +762,7 @@ export function BoardPage(props: any) {
       setPredecessorBusy(true)
       setPredecessorErr('')
       try {
-        await post('task/cleanup', { id: cleanupPredecessor.task.id, force: predecessorForce, deleteBranch: false })
+        await postLong('task/cleanup', { id: cleanupPredecessor.task.id, force: predecessorForce, deleteBranch: false })
         setCleanupPredecessor(null)
         setPredecessorForce(false)
         notify(t.cleanupPredecessorDone)

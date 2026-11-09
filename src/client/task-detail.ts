@@ -1,6 +1,6 @@
 import { React, h } from './ui'
 import { Banner, Btn, Card, CardHead, Chip, CopyBtn, Dot, Icon, IconBtn, KV, Modal, Spinner } from './primitives'
-import { appCtx, getJson, post } from './context'
+import { appCtx, getJson, post, postLong } from './context'
 import { clipText, cx, firstLine, fmtDuration, fmtK, jp, pad2, relTime, uuid } from './format'
 import { pendingLabel, resolveStatus, statusMeta } from './status'
 import { fallbackEntries } from './timeline'
@@ -386,6 +386,9 @@ export function TaskDetail(props: any) {
         return true
       } catch (e: any) {
         setErr((e && e.message) || t.failed)
+        // A slow git hook may have let the request time out after the work
+        // actually succeeded; reconcile the board instead of leaving stale rows.
+        try { void Promise.resolve(props.onChanged()).catch(() => {}) } catch { /* noop */ }
         return false
       } finally {
         actionRef.current = false
@@ -393,7 +396,7 @@ export function TaskDetail(props: any) {
       }
     }
     const actPost = (key: string, path: string, body: any, success: string) =>
-      act(key, success, () => post(path, Object.assign({ id: task.id }, body)))
+      act(key, success, () => postLong(path, Object.assign({ id: task.id }, body)))
     const busyLabel = (key: string, label: string, working: string) => (busy === key ? working : label)
 
     const syncBaseline = async () => {
@@ -714,7 +717,7 @@ export function TaskDetail(props: any) {
             title: preview && preview.conflict ? t.mergePreviewConflictHint : undefined,
             onClick: () => {
               props.onRepoBusy && props.onRepoBusy(true, t.merging)
-              void act('merge', String(t.mergeDone).replace('{base}', task.baseBranch), () => post('task/merge', { id: task.id }))
+              void act('merge', String(t.mergeDone).replace('{base}', task.baseBranch), () => postLong('task/merge', { id: task.id }))
                 .then((ok) => { if (ok) setMergeOpen(false) })
                 .finally(() => { props.onRepoBusy && props.onRepoBusy(false, '') })
             },
@@ -772,7 +775,7 @@ export function TaskDetail(props: any) {
             variant: 'danger',
             disabled: busy === 'cleanup',
             onClick: () => {
-              void act('cleanup', delBranch ? t.cleanupDoneBranch : t.cleanupDone, () => post('task/cleanup', { id: task.id, force, deleteBranch: delBranch }))
+              void act('cleanup', delBranch ? t.cleanupDoneBranch : t.cleanupDone, () => postLong('task/cleanup', { id: task.id, force, deleteBranch: delBranch }))
                 .then((ok) => { if (ok) setCleanupOpen(false) })
             },
           }, busy === 'cleanup' ? h(Spinner) : null, busy === 'cleanup' ? t.cleaning : t.cleanup),
