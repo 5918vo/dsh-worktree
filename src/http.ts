@@ -309,7 +309,7 @@ export function registerHttp(app: App): () => void {
     expectedTip: body.expectedTip ? String(body.expectedTip) : undefined,
     expectedBase: body.expectedBase ? String(body.expectedBase) : undefined,
   }))
-  act('cleanup', async (id, body) => app.runtime.cleanup(id, { force: !!body.force, deleteBranch: !!body.deleteBranch }))
+  act('cleanup', async (id, body) => app.runtime.cleanup(id, { force: !!body.force, deleteBranch: !!body.deleteBranch, forceDeleteBranch: !!body.forceDeleteBranch }))
   act('archive', async (id) => app.runtime.archive(id))
   act('unarchive', async (id) => app.runtime.unarchive(id))
   act('delete', async (id) => app.runtime.delete(id))

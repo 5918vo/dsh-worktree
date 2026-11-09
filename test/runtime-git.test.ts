@@ -191,6 +191,26 @@ test('bind -> developing -> review -> reviewing -> merged -> cleaned full accept
   }
 })
 
+test('cleanup refuses to delete an unmerged branch unless forced', async () => {
+  const f = await fixture()
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'unmerged-cleanup', description: 'd' })
+    await commitFile(task.worktreePath, 'src/a.txt', 'a\n', 'feat: a')
+    await assert.rejects(
+      () => f.runtime.cleanup(task.id, { deleteBranch: true }),
+      (e: any) => e instanceof TaskError && e.status === 409 && /未合并/.test(e.message),
+    )
+    assert.ok(await exists(task.worktreePath), 'worktree is untouched after the refusal')
+    assert.ok((await git(f.repo, ['branch', '--list', task.branch])).includes(task.branch), 'branch still exists')
+
+    const done = await f.runtime.cleanup(task.id, { deleteBranch: true, forceDeleteBranch: true })
+    assert.equal((await f.runtime.view(done)).snapshot.status, 'cleaned')
+    assert.equal((await git(f.repo, ['branch', '--list', task.branch])).includes(task.branch), false)
+  } finally {
+    await teardown(f)
+  }
+})
+
 test('deleteProject removes task records and worktree folders on request', async () => {
   const f = await fixture()
   try {

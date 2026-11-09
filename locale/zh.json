@@ -115,6 +115,8 @@
   "cleanup": "清理 worktree",
   "deleteRecord": "删除记录",
   "deleteBranch": "同时删除分支",
+  "forceDeleteBranch": "强制删除分支（丢弃未合并提交）",
+  "forceDeleteBranchHint": "默认只删除已合并分支；未合并时必须勾选此项才会丢弃提交。",
   "force": "强制",
   "dirty": "处未提交改动",
   "uncommitted": "未提交改动",

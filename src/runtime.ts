@@ -1162,19 +1162,46 @@ export class Runtime {
     return preview
   }
 
-  async cleanup(id: string, opts: { force?: boolean; deleteBranch?: boolean }): Promise<WorktreeTask> {
+  async cleanup(id: string, opts: { force?: boolean; deleteBranch?: boolean; forceDeleteBranch?: boolean }): Promise<WorktreeTask> {
     const task = this.needTask(id)
+    return this.withRepoLock(task.repoPath, '清理', () => this.cleanupLocked(task, opts))
+  }
+
+  private async cleanupLocked(task: WorktreeTask, opts: { force?: boolean; deleteBranch?: boolean; forceDeleteBranch?: boolean }): Promise<WorktreeTask> {
+    // Validate branch deletion BEFORE touching the worktree, so a refusal never
+    // leaves a half-cleaned task (worktree gone, branch still there).
+    let branchMerged = false
+    const hasBranch = await gitx.branchExists(this.gitPath, task.repoPath, task.branch)
+    if (opts.deleteBranch && hasBranch) {
+      if (!(await gitx.branchExists(this.gitPath, task.repoPath, task.baseBranch))) {
+        throw new TaskError(`基线分支 ${task.baseBranch} 不存在，无法判断分支是否已合并；确认丢弃请勾选「强制删除分支」`, 409)
+      }
+      const ahead = await gitx.countCommits(this.gitPath, task.repoPath, `${task.baseBranch}..${task.branch}`)
+      branchMerged = ahead === 0
+      if (!branchMerged && !opts.forceDeleteBranch) {
+        throw new TaskError(`分支还有 ${ahead} 个提交未合并到 ${task.baseBranch}；确认丢弃这些提交请勾选「强制删除分支」`, 409)
+      }
+    }
     const wtExists = await fs.stat(task.worktreePath).then((s) => s.isDirectory()).catch(() => false)
     if (wtExists) {
       if (!opts.force) await this.refuseDirty(task.worktreePath, 'worktree')
       await gitx.worktreeRemove(this.gitPath, task.repoPath, task.worktreePath, !!opts.force)
     }
-    if (opts.deleteBranch && (await gitx.branchExists(this.gitPath, task.repoPath, task.branch))) {
+    if (opts.deleteBranch && hasBranch) {
       const cur = await gitx.currentBranch(this.gitPath, task.repoPath)
-      if (cur === task.branch && task.originalBranch) {
-        await gitx.switchBranch(this.gitPath, task.repoPath, task.originalBranch)
+      if (cur === task.branch) {
+        const fallback = task.originalBranch && (await gitx.branchExists(this.gitPath, task.repoPath, task.originalBranch))
+          ? task.originalBranch
+          : task.baseBranch
+        if (fallback && fallback !== task.branch && (await gitx.branchExists(this.gitPath, task.repoPath, fallback))) {
+          await gitx.switchBranch(this.gitPath, task.repoPath, fallback)
+        } else {
+          throw new TaskError('主仓库仍在任务分支且没有可切回的分支，请先切回后再删除分支', 409)
+        }
       }
-      await gitx.removeBranch(this.gitPath, task.repoPath, task.branch, true)
+      // -D is safe when the branch is fully merged; only an explicit force may
+      // discard unmerged commits.
+      await gitx.removeBranch(this.gitPath, task.repoPath, task.branch, !!opts.forceDeleteBranch || branchMerged)
     }
     task.cleanedAt = Date.now()
     this.store.putTask(task)

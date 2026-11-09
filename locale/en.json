@@ -115,6 +115,8 @@
   "cleanup": "Clean worktree",
   "deleteRecord": "Delete record",
   "deleteBranch": "Also delete branch",
+  "forceDeleteBranch": "Force-delete branch (discard unmerged commits)",
+  "forceDeleteBranchHint": "Only merged branches are deleted by default; unmerged commits require this option.",
   "force": "Force",
   "dirty": "uncommitted changes",
   "uncommitted": "Uncommitted changes",

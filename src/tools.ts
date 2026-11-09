@@ -146,6 +146,7 @@ export function registerTools(app: App): () => void {
           action: { type: 'string', enum: ['checkout', 'back', 'merge', 'cleanup', 'archive', 'unarchive', 'delete'], description: 'Operation.' },
           force: { type: 'boolean', description: 'For cleanup: remove even with uncommitted changes.' },
           delete_branch: { type: 'boolean', description: 'For cleanup: also delete the task branch.' },
+          force_delete_branch: { type: 'boolean', description: 'For cleanup: delete an unmerged branch (data loss).' },
           switch_to_base: { type: 'boolean', description: 'For merge: check out the base branch first when the main repo is on another branch.' },
           restore_to: { type: 'boolean', description: 'For merge: switch back to the previous branch after merging (default true).' },
         },
@@ -159,7 +160,7 @@ export function registerTools(app: App): () => void {
           if (action === 'back') return clean({ ok: true, task: brief(await app.runtime.view(await app.runtime.back(id))) })
           if (action === 'merge') return clean({ ok: true, task: brief(await app.runtime.view(await app.runtime.merge(id, { switchToBase: args.switch_to_base === true, restoreTo: args.restore_to !== false }))) })
           if (action === 'cleanup') {
-            const t = await app.runtime.cleanup(id, { force: !!args.force, deleteBranch: !!args.delete_branch })
+            const t = await app.runtime.cleanup(id, { force: !!args.force, deleteBranch: !!args.delete_branch, forceDeleteBranch: !!args.force_delete_branch })
             return clean({ ok: true, task: brief(await app.runtime.view(t)) })
           }
           if (action === 'archive') return clean({ ok: true, task: brief(await app.runtime.view(await app.runtime.archive(id))) })

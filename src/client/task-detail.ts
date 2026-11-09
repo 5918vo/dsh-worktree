@@ -319,6 +319,7 @@ export function TaskDetail(props: any) {
     const [deleteOpen, setDeleteOpen] = React.useState(false)
     const [force, setForce] = React.useState(false)
     const [delBranch, setDelBranch] = React.useState(false)
+    const [forceDelBranch, setForceDelBranch] = React.useState(false)
     const actionRef = React.useRef(false)
     const remotes = appCtx && appCtx.remote
     const [preview, setPreview] = React.useState(null)
@@ -883,7 +884,7 @@ export function TaskDetail(props: any) {
             variant: 'danger',
             disabled: busy === 'cleanup',
             onClick: () => {
-              void act('cleanup', delBranch ? t.cleanupDoneBranch : t.cleanupDone, () => postLong('task/cleanup', { id: task.id, force, deleteBranch: delBranch }))
+              void act('cleanup', delBranch ? t.cleanupDoneBranch : t.cleanupDone, () => postLong('task/cleanup', { id: task.id, force, deleteBranch: delBranch, forceDeleteBranch: forceDelBranch }))
                 .then((ok) => { if (ok) setCleanupOpen(false) })
             },
           }, busy === 'cleanup' ? h(Spinner) : null, busy === 'cleanup' ? t.cleaning : t.cleanup),
@@ -913,6 +914,16 @@ export function TaskDetail(props: any) {
             onChange: (e: any) => setDelBranch(e.target.checked),
           }),
           h('span', { className: 'dshw-check-copy' }, t.deleteBranch, h('small', { id: 'dshw-cleanup-branch-hint' }, t.cleanupBranchHint))),
+        delBranch
+          ? h('label', { className: 'dshw-check' },
+            h('input', {
+              type: 'checkbox',
+              checked: forceDelBranch,
+              'aria-label': t.forceDeleteBranch,
+              onChange: (e: any) => setForceDelBranch(e.target.checked),
+            }),
+            h('span', { className: 'dshw-check-copy' }, t.forceDeleteBranch, h('small', null, t.forceDeleteBranchHint)))
+          : null,
         err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null)
       : null
 
