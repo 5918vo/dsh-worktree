@@ -78,7 +78,15 @@ export function apply(ctx: Ctx, rawConfig: unknown, options?: ApplyOptions): App
   const app: App = { ctx, store, config, runtime, tokens: new Map(), logger }
 
   ctx.effect(() => {
-    void store.load()
+    void store
+      .load()
+      .then(() => runtime.reconcilePendingOps())
+      .then((results) => {
+        for (const result of results) {
+          if (result.status === 'needs-manual') logger.warn(`worktree pending operation needs manual handling: ${result.taskId} — ${result.message}`)
+        }
+      })
+      .catch(() => {})
     return () => store.dispose()
   }, 'deepseek-worktree: store')
 

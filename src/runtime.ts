@@ -1470,6 +1470,120 @@ export class Runtime {
   }
 
   /**
+   * Reconcile journals left behind by a crash/restart. Only journals whose repo
+   * identity matches the live repo are touched; anything else is flagged for
+   * manual handling. Uses the real Git state as the source of truth.
+   */
+  async reconcilePendingOps(): Promise<Array<{ taskId: string; status: 'recovered' | 'needs-manual'; message: string }>> {
+    const out: Array<{ taskId: string; status: 'recovered' | 'needs-manual'; message: string }> = []
+    for (const task of this.store.listTasks()) {
+      const op = task.pendingOp
+      if (!op) continue
+      try {
+        const result = await this.reconcileOne(task)
+        out.push({ taskId: task.id, ...result })
+      } catch (error) {
+        task.pendingOp = { ...op, recoveryStatus: 'needs-manual', updatedAt: Date.now() }
+        this.store.putTask(task)
+        out.push({ taskId: task.id, status: 'needs-manual', message: error instanceof Error ? error.message : String(error) })
+      }
+    }
+    return out
+  }
+
+  private async reconcileOne(task: WorktreeTask): Promise<{ status: 'recovered' | 'needs-manual'; message: string }> {
+    const op = task.pendingOp!
+    const repoPath = task.repoPath
+    // Prove ownership before touching anything.
+    const identity = await this.repoIdentity(repoPath).catch(() => null)
+    if (!identity || identity !== op.repoIdentity) {
+      task.pendingOp = { ...op, recoveryStatus: 'needs-manual', updatedAt: Date.now() }
+      this.store.putTask(task)
+      return { status: 'needs-manual', message: '仓库身份不匹配，需人工确认' }
+    }
+
+    // Ensure a recorded stash is present on the task (never auto-apply).
+    if (op.stashRef && !(task.pendingStashes || []).some((s) => s.sha === op.stashRef)) {
+      const exists = (await gitx.stashListEntries(this.gitPath, repoPath)).some((s) => s.sha === op.stashRef)
+      this.addPendingStash(task, {
+        sha: op.stashRef,
+        source: 'merge',
+        ref: `dsh-wt:${id8(task.id)}:merge`,
+        createdAt: op.startedAt,
+        files: exists ? await gitx.stashFiles(this.gitPath, repoPath, op.stashRef) : [],
+        unverified: !exists,
+      })
+    }
+
+    // A committed merge: only the restore may be incomplete.
+    if (op.mergeCommit) {
+      const restored = await this.tryRestoreOriginal(task, op.originalRef)
+      if (!restored) {
+        task.pendingOp = { ...op, recoveryStatus: 'needs-manual', updatedAt: Date.now() }
+        this.store.putTask(task)
+        return { status: 'needs-manual', message: '合并已提交但无法切回原分支，需人工切回' }
+      }
+      task.pendingOp = undefined
+      this.partials.delete(task.id)
+      this.store.putTask(task)
+      return { status: 'recovered', message: '已恢复原分支' }
+    }
+
+    // Pre-merge: clean up any partial merge, then recognise completion or switch back.
+    if (await gitx.hasMergeHead(this.gitPath, repoPath)) await gitx.mergeAbort(this.gitPath, repoPath)
+
+    let mergedNow = false
+    if (op.expectedTip) {
+      try {
+        mergedNow = await gitx.isAncestor(this.gitPath, repoPath, op.expectedTip, task.baseBranch)
+      } catch {
+        mergedNow = false
+      }
+    }
+    if (mergedNow) {
+      task.mergedAt = task.mergedAt || Date.now()
+      task.mergedBranchTip = op.expectedTip || undefined
+      const head = await gitx.revParse(this.gitPath, repoPath, task.baseBranch)
+      if (head) task.mergedCommit = head
+      const restored = await this.tryRestoreOriginal(task, op.originalRef)
+      task.pendingOp = undefined
+      this.store.putTask(task)
+      return restored
+        ? { status: 'recovered', message: '补记合并结果并恢复原分支' }
+        : { status: 'needs-manual', message: '已补记合并结果，但未能切回原分支' }
+    }
+
+    const restored = await this.tryRestoreOriginal(task, op.originalRef)
+    task.pendingOp = undefined
+    this.store.putTask(task)
+    return restored
+      ? { status: 'recovered', message: '已清理未完成的合并并恢复原分支' }
+      : { status: 'needs-manual', message: '未能切回原分支，需人工处理' }
+  }
+
+  /** Try to put the main repo back on the journal's original branch/commit. */
+  private async tryRestoreOriginal(task: WorktreeTask, originalRef: { branch: string | null; sha: string | null }): Promise<boolean> {
+    const repoPath = task.repoPath
+    try {
+      const cur = await gitx.currentBranch(this.gitPath, repoPath)
+      const head = await gitx.revParse(this.gitPath, repoPath, 'HEAD')
+      if (originalRef.branch) {
+        if (cur === originalRef.branch) return true
+        await gitx.switchBranch(this.gitPath, repoPath, originalRef.branch)
+        return true
+      }
+      if (originalRef.sha) {
+        if (head === originalRef.sha) return true
+        await gitx.checkoutDetach(this.gitPath, repoPath, originalRef.sha)
+        return true
+      }
+      return false
+    } catch {
+      return false
+    }
+  }
+
+  /**
    * Preview whether the task branch can merge into its base. This is a dry run:
    * it never touches either working tree and does not decide the task status.
    */
