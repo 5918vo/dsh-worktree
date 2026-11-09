@@ -245,9 +245,7 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
     }
 
     const prefix = project.branchPrefix || cfg.branchPrefix || 'dsh-wt/'
-    const dirName = project.dirName || cfg.dirName || '.dsh-worktrees'
     const pattern = prefix + '<id8>'
-    const wtPattern = project.repoPath.replace(/\\/g, '/').replace(/\/+$/, '') + '/' + dirName + '/<id8>'
 
     const validBranch = (value: string) => {
       if (!value) return true
@@ -337,7 +335,6 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
     return h(Modal, {
       t,
       title: parentTask && !asPlain ? t.continueTask : t.publish,
-      subtitle: project.name,
       icon: 'play',
       size: 'lg',
       busy,
@@ -470,10 +467,5 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
               : null))),
       h('div', { className: 'dshw-hint', style: { margin: '-3px 0 10px' } },
         t.branchRule.replace('{pattern}', pattern)),
-      h('div', { className: 'dshw-preview' },
-        h('span', { className: 'dshw-preview-label' }, t.preview),
-        h('span', { className: 'dshw-preview-item' }, h('span', null, t.previewBranch), h('code', { className: 'dshw-mono' }, branchName.trim() || pattern)),
-        h('span', { className: 'dshw-sep' }, '·'),
-        h('span', { className: 'dshw-preview-item' }, h('span', null, t.previewDir), h('code', { className: 'dshw-mono' }, wtPattern))),
       err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null))
   }

@@ -439,11 +439,6 @@ export const CSS = `
 .dshw-advanced>summary .dshw-ico{width:14px;height:14px;color:var(--dshw-text-2);transition:transform .16s}
 .dshw-advanced[open]>summary .dshw-ico{transform:rotate(180deg)}
 .dshw-advanced-body{padding:2px 0 13px}
-.dshw-preview{display:flex;align-items:center;gap:9px;flex-wrap:wrap;border:1px solid var(--dshw-border);background:var(--dshw-surface-2);border-radius:8px;padding:8px 11px;font-size:11px;color:var(--dshw-text-3);margin-top:2px}
-.dshw-preview .dshw-preview-label{font-weight:600;flex:none}
-.dshw-preview-item{display:inline-flex;align-items:center;gap:5px;min-width:0;max-width:100%}
-.dshw-preview .dshw-mono{font-size:11px;color:var(--dshw-text-2);overflow-wrap:anywhere;min-width:0}
-.dshw-preview .dshw-sep{color:var(--dshw-border-strong)}
 .dshw-info-table{border:1px solid var(--dshw-border);background:var(--dshw-surface-2);border-radius:9px;padding:3px 11px;margin-bottom:15px}
 .dshw-info-table .dshw-kv-row{grid-template-columns:88px minmax(0,1fr);border-top:1px solid var(--dshw-border-soft)}
 .dshw-info-table .dshw-kv-row:first-child{border-top:0}
