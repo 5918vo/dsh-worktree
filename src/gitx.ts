@@ -28,12 +28,28 @@ export interface GitRunResult {
   stderr: string
 }
 
+/** Stable, English, non-interactive git environment (Windows Chinese locales included). */
+const GIT_ENV = {
+  ...process.env,
+  LC_ALL: 'C',
+  LANG: 'C',
+  LANGUAGE: 'C',
+  GIT_TERMINAL_PROMPT: '0',
+  GIT_EDITOR: 'true',
+  GIT_MERGE_AUTOEDIT: 'no',
+}
+
+/** Long lease for git operations that may run user hooks (eslint, etc.). */
+export const GIT_OP_TIMEOUT_MS = 10 * 60 * 1000
+
 function run(gitPath: string, cwd: string, args: string[], timeoutMs = 120_000): Promise<GitRunResult> {
   return new Promise((resolve, reject) => {
+    // -c core.quotePath=false keeps non-ASCII paths unquoted in every command.
+    const execArgs = ['-c', 'core.quotePath=false', ...args]
     execFile(
       gitPath,
-      args,
-      { cwd, windowsHide: true, maxBuffer: 16 * 1024 * 1024, timeout: timeoutMs },
+      execArgs,
+      { cwd, env: GIT_ENV, windowsHide: true, maxBuffer: 16 * 1024 * 1024, timeout: timeoutMs },
       (error, stdout, stderr) => {
         if (error) {
           const code = typeof (error as any).code === 'number' ? (error as any).code : null
@@ -138,8 +154,8 @@ export async function uniqueBranchName(gitPath: string, dir: string, want: strin
   return name
 }
 
-export async function worktreeAdd(gitPath: string, repoDir: string, worktreePath: string, newBranch: string, baseBranch: string): Promise<void> {
-  await run(gitPath, repoDir, ['worktree', 'add', '-b', newBranch, worktreePath, baseBranch])
+export async function worktreeAdd(gitPath: string, repoDir: string, worktreePath: string, newBranch: string, baseBranch: string, timeoutMs = GIT_OP_TIMEOUT_MS): Promise<void> {
+  await run(gitPath, repoDir, ['worktree', 'add', '-b', newBranch, worktreePath, baseBranch], timeoutMs)
 }
 
 export async function worktreeRemove(gitPath: string, repoDir: string, worktreePath: string, force: boolean): Promise<void> {
@@ -199,22 +215,32 @@ export async function worktreeList(gitPath: string, repoDir: string): Promise<Wo
  * worktree, so the plain switch fails with "already used by worktree"; retry
  * with --ignore-other-worktrees (review happens with both checkouts alive).
  */
-export async function switchBranch(gitPath: string, repoDir: string, branch: string): Promise<void> {
+export async function switchBranch(gitPath: string, repoDir: string, branch: string, timeoutMs = GIT_OP_TIMEOUT_MS): Promise<void> {
   try {
-    await run(gitPath, repoDir, ['switch', branch])
+    await run(gitPath, repoDir, ['switch', branch], timeoutMs)
   } catch (error) {
     const msg = error instanceof GitError ? error.stderr : String(error)
     if (/used by worktree|already checked out/i.test(msg)) {
-      await run(gitPath, repoDir, ['switch', '--ignore-other-worktrees', branch])
+      await run(gitPath, repoDir, ['switch', '--ignore-other-worktrees', branch], timeoutMs)
       return
     }
     throw error
   }
 }
 
-export async function mergeNoFF(gitPath: string, repoDir: string, branch: string): Promise<void> {
+/** Detached checkout of an exact commit (acceptance review; avoids dual branch checkout). */
+export async function checkoutDetach(gitPath: string, repoDir: string, rev: string, timeoutMs = GIT_OP_TIMEOUT_MS): Promise<void> {
+  await run(gitPath, repoDir, ['checkout', '--detach', rev], timeoutMs)
+}
+
+/** Refresh the index stat cache so CRLF/mtime-only changes are not reported dirty. */
+export async function updateIndexRefresh(gitPath: string, repoDir: string): Promise<void> {
+  await tryRun(gitPath, repoDir, ['update-index', '-q', '--refresh'])
+}
+
+export async function mergeNoFF(gitPath: string, repoDir: string, branch: string, timeoutMs = GIT_OP_TIMEOUT_MS): Promise<void> {
   try {
-    await run(gitPath, repoDir, ['merge', '--no-ff', '--no-edit', branch])
+    await run(gitPath, repoDir, ['merge', '--no-ff', '--no-edit', branch], timeoutMs)
   } catch (error) {
     // Undo a conflicted merge so the repo is not left mid-merge.
     await tryRun(gitPath, repoDir, ['merge', '--abort'])
@@ -293,6 +319,88 @@ export async function diffNameOnly(gitPath: string, dir: string, from: string, t
   return result.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
 }
 
+/** Same as diffNameOnly but NUL-separated (safe for spaces/non-ASCII paths). */
+export async function diffNameOnlyZ(gitPath: string, dir: string, from: string, to: string): Promise<string[]> {
+  const result = await tryRun(gitPath, dir, ['diff', '--name-only', '-z', from, to])
+  if (!result) return []
+  return result.stdout.split('\0').filter(Boolean)
+}
+
+export interface StatusEntry {
+  /** Repo-relative path (rename/copy: the new path). */
+  path: string
+  /** Two-letter porcelain status, e.g. " M", "??", "A ". */
+  status: string
+  untracked: boolean
+}
+
+/**
+ * Working-tree entries from `git status --porcelain=v1 -z`.
+ * Ignored files never appear; `--untracked-files=all` lists every untracked file.
+ */
+export async function statusEntries(gitPath: string, dir: string, includeUntracked = true): Promise<StatusEntry[]> {
+  const args = ['status', '--porcelain=v1', '-z']
+  args.push(includeUntracked ? '--untracked-files=all' : '--untracked-files=no')
+  const result = await tryRun(gitPath, dir, args)
+  if (!result) return []
+  const parts = result.stdout.split('\0')
+  const out: StatusEntry[] = []
+  for (let i = 0; i < parts.length; i += 1) {
+    const entry = parts[i]
+    if (!entry) continue
+    const status = entry.slice(0, 2)
+    let path = entry.slice(3)
+    if (status[0] === 'R' || status[0] === 'C') {
+      // Rename/copy carries the original path in the next NUL field.
+      const original = parts[i + 1]
+      if (original) { i += 1; if (!path) path = original }
+    }
+    if (path) out.push({ path, status, untracked: status[0] === '?' })
+  }
+  return out
+}
+
+/** All tracked paths in a revision (used to detect untracked-file overwrite). */
+export async function lsTreePaths(gitPath: string, dir: string, rev: string): Promise<Set<string>> {
+  const result = await tryRun(gitPath, dir, ['ls-tree', '-r', '--name-only', '-z', rev])
+  if (!result) return new Set()
+  return new Set(result.stdout.split('\0').filter(Boolean))
+}
+
+export async function stashPush(gitPath: string, dir: string, message: string): Promise<void> {
+  await run(gitPath, dir, ['stash', 'push', '-u', '-m', message], GIT_OP_TIMEOUT_MS)
+}
+
+/** Find a stash entry by exact message; returns its stash@{n} ref. */
+async function stashRefForMessage(gitPath: string, dir: string, message: string): Promise<string | null> {
+  const result = await tryRun(gitPath, dir, ['stash', 'list', '--format=%gd\t%s'])
+  if (!result) return null
+  for (const line of result.stdout.split(/\r?\n/)) {
+    const tab = line.indexOf('\t')
+    if (tab < 0) continue
+    if (line.slice(tab + 1) === message) return line.slice(0, tab)
+  }
+  return null
+}
+
+export async function stashApplyByMessage(gitPath: string, dir: string, message: string): Promise<void> {
+  const ref = await stashRefForMessage(gitPath, dir, message)
+  if (!ref) throw new Error(`stash not found: ${message}`)
+  await run(gitPath, dir, ['stash', 'apply', ref], GIT_OP_TIMEOUT_MS)
+}
+
+export async function stashDropByMessage(gitPath: string, dir: string, message: string): Promise<void> {
+  const ref = await stashRefForMessage(gitPath, dir, message)
+  if (!ref) return
+  await run(gitPath, dir, ['stash', 'drop', ref], GIT_OP_TIMEOUT_MS)
+}
+
+/** Restore paths in the index and working tree to HEAD (discard local changes). */
+export async function restorePaths(gitPath: string, dir: string, paths: string[]): Promise<void> {
+  if (!paths.length) return
+  await run(gitPath, dir, ['restore', '--staged', '--worktree', '--', ...paths], GIT_OP_TIMEOUT_MS)
+}
+
 export interface MergeTreeCheck {
   supported: boolean
   conflict: boolean
@@ -324,8 +432,8 @@ export function mergeTreeCheck(gitPath: string, dir: string, base: string, branc
   return new Promise((resolve) => {
     execFile(
       gitPath,
-      ['merge-tree', '--write-tree', '--name-only', base, branch],
-      { cwd: dir, windowsHide: true, maxBuffer: 16 * 1024 * 1024, timeout: 120_000 },
+      ['-c', 'core.quotePath=false', 'merge-tree', '--write-tree', '--name-only', base, branch],
+      { cwd: dir, env: GIT_ENV, windowsHide: true, maxBuffer: 16 * 1024 * 1024, timeout: GIT_OP_TIMEOUT_MS },
       (error, stdout, stderr) => {
         const out = String(stdout ?? '')
         const err = String(stderr ?? '')

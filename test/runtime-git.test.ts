@@ -375,6 +375,23 @@ test('merge preview runs a real dry-run even without overlapping file names', as
   }
 })
 
+test('merge rejects when the branch changed after the preview', async () => {
+  const f = await fixture()
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'tip-change', description: 'd' })
+    await commitFile(task.worktreePath, 'src/a.txt', 'a\n', 'feat: a')
+    const preview = await f.runtime.mergePreview(task.id)
+    assert.ok(preview.expectedTip)
+    await commitFile(task.worktreePath, 'src/b.txt', 'b\n', 'feat: b')
+    await assert.rejects(
+      () => f.runtime.merge(task.id, { expectedTip: preview.expectedTip || undefined, expectedBase: preview.expectedBase || undefined }),
+      (e: any) => e instanceof TaskError && e.status === 409 && /已变化/.test(e.message),
+    )
+  } finally {
+    await teardown(f)
+  }
+})
+
 test('merge conflict reports the conflicting files and leaves the repo clean', async () => {
   const f = await fixture()
   try {
@@ -553,16 +570,39 @@ test('checkout rejects when the worktree only has uncommitted changes (no commit
   }
 })
 
-test('checkout rejects when the main repo is dirty', async () => {
+test('checkout uses detached HEAD and carries over a non-conflicting dirty file', async () => {
   const f = await fixture()
   try {
     const task = await f.runtime.publish({ repoPath: f.repo, title: 'repo-dirty', description: 'd' })
     await commitFile(task.worktreePath, 'src/a.txt', 'a\n', 'feat: a')
     await fs.writeFile(join(f.repo, 'README.md'), '# dirty\n', 'utf8')
+
+    const checkedOut = await f.runtime.checkout(task.id)
+    const view = await f.runtime.view(checkedOut)
+    assert.equal(view.snapshot.status, 'reviewing')
+    assert.equal(view.snapshot.repo.currentBranch, null, 'detached HEAD')
+    assert.equal(view.snapshot.repo.headSha, checkedOut.reviewSha)
+    assert.match(await fs.readFile(join(f.repo, 'README.md'), 'utf8'), /dirty/, 'local edit carried over')
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('checkout rejects a dirty file changed by the task branch and can stash it', async () => {
+  const f = await fixture()
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'repo-conflict', description: 'd' })
+    await commitFile(task.worktreePath, 'src/a.txt', 'a\n', 'feat: a')
+    await fs.mkdir(join(f.repo, 'src'), { recursive: true })
+    await fs.writeFile(join(f.repo, 'src', 'a.txt'), 'local\n', 'utf8')
+
     await assert.rejects(
       () => f.runtime.checkout(task.id),
-      (e: any) => e instanceof TaskError && /主仓库有 1 处未提交改动/.test(e.message) && /README\.md/.test(e.message),
+      (e: any) => e instanceof TaskError && e.status === 409 && /会阻止切换/.test(e.message) && /src\/a\.txt/.test(e.message),
     )
+    const checkedOut = await f.runtime.checkout(task.id, { strategy: 'stash' })
+    assert.ok(checkedOut.reviewStash, 'records the stash message')
+    assert.equal((await f.runtime.view(checkedOut)).snapshot.status, 'reviewing')
   } finally {
     await teardown(f)
   }
@@ -673,17 +713,72 @@ test('back falls back to the base branch when no original branch is recorded', a
   }
 })
 
-test('back refuses when the main repo is dirty', async () => {
+test('back carries over a non-conflicting dirty file', async () => {
   const f = await fixture()
   try {
     const task = await f.runtime.publish({ repoPath: f.repo, title: 'back-dirty', description: 'd' })
     await commitFile(task.worktreePath, 'src/a.txt', 'a\n', 'feat: a')
     await f.runtime.checkout(task.id)
     await fs.writeFile(join(f.repo, 'README.md'), '# dirty\n', 'utf8')
+
+    await f.runtime.back(task.id)
+    const view = await f.runtime.view(task)
+    assert.equal(view.snapshot.repo.currentBranch, 'main')
+    assert.match(await fs.readFile(join(f.repo, 'README.md'), 'utf8'), /dirty/)
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('back rejects a conflicting dirty file and can stash it', async () => {
+  const f = await fixture()
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'back-conflict', description: 'd' })
+    await commitFile(task.worktreePath, 'src/a.txt', 'a\n', 'feat: a')
+    await f.runtime.checkout(task.id)
+    await fs.writeFile(join(f.repo, 'src', 'a.txt'), 'local\n', 'utf8')
+
     await assert.rejects(
       () => f.runtime.back(task.id),
-      (e: any) => e instanceof TaskError && /主仓库有 1 处未提交改动/.test(e.message),
+      (e: any) => e instanceof TaskError && e.status === 409 && /会阻止切换/.test(e.message),
     )
+    const backed = await f.runtime.back(task.id, { strategy: 'stash' })
+    assert.ok(backed.reviewStash, 'records the stash message')
+    assert.equal((await f.runtime.view(backed)).snapshot.repo.currentBranch, 'main')
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('back still works when the task branch moved during detached review', async () => {
+  const f = await fixture()
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'review-move', description: 'd' })
+    await commitFile(task.worktreePath, 'src/a.txt', 'a\n', 'feat: a')
+    await f.runtime.checkout(task.id)
+    await commitFile(task.worktreePath, 'src/b.txt', 'b\n', 'feat: b')
+
+    await f.runtime.back(task.id)
+    const view = await f.runtime.view(task)
+    assert.equal(view.snapshot.repo.currentBranch, 'main')
+    assert.equal((await f.store.getTask(task.id))?.reviewSha, undefined)
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('back does not force a switch when the user moved the main repo during review', async () => {
+  const f = await fixture()
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'user-moved', description: 'd' })
+    await commitFile(task.worktreePath, 'src/a.txt', 'a\n', 'feat: a')
+    await f.runtime.checkout(task.id)
+    await git(f.repo, ['checkout', '-b', 'other'])
+
+    await f.runtime.back(task.id)
+    const view = await f.runtime.view(task)
+    assert.equal(view.snapshot.repo.currentBranch, 'other', 'keeps the user branch')
+    assert.equal((await f.store.getTask(task.id))?.reviewSha, undefined, 'clears the review record')
   } finally {
     await teardown(f)
   }

@@ -218,6 +218,24 @@ export function buildFirstPrompt(task: WorktreeTask, parent?: ParentPromptInfo):
   return lines.join('\n')
 }
 
+export interface SwitchObstacle {
+  path: string
+  kind: 'tracked' | 'untracked'
+}
+
+/** Result of pre-checking whether the main repo can switch to a target commit. */
+export interface SwitchPreflight {
+  currentRef: string | null
+  currentSha: string | null
+  targetRef: string
+  targetSha: string | null
+  dirty: boolean
+  safe: boolean
+  obstacles: SwitchObstacle[]
+}
+
+export type SwitchStrategy = 'abort' | 'stash' | 'discard'
+
 export class Runtime {
   private readonly store: Store
   private readonly config: WorktreeConfig
@@ -558,13 +576,15 @@ export class Runtime {
       snap.branchExists = repoIsRepo ? await gitx.branchExists(this.gitPath, task.repoPath, task.branch) : false
 
       if (repoIsRepo) {
-        const [cur, dirty] = await Promise.all([
+        const [cur, headSha, dirty] = await Promise.all([
           gitx.currentBranch(this.gitPath, task.repoPath),
+          gitx.revParse(this.gitPath, task.repoPath, 'HEAD'),
           // Untracked files in the main repo do not belong to the task branch and
           // must not block checkout or merge. Tracked edits still do.
           gitx.isDirty(this.gitPath, task.repoPath, false),
         ])
         snap.repo.currentBranch = cur
+        snap.repo.headSha = headSha
         snap.repo.dirtyCount = dirty
         snap.repo.inProgress = await gitx.inProgress(this.gitPath, task.repoPath)
         if (task.originalBranch) {
@@ -630,6 +650,9 @@ export class Runtime {
     if (task.cleanedAt) return 'cleaned'
     if (snap.error) return 'broken'
     if (snap.merged) return 'merged'
+    // Detached acceptance: HEAD equals the recorded review sha. The legacy
+    // branch check keeps old task rows (pre reviewSha) working.
+    if (task.reviewSha && snap.repo.headSha === task.reviewSha) return 'reviewing'
     if (snap.repo.currentBranch && snap.repo.currentBranch === task.branch) return 'reviewing'
     if (snap.worktree.exists && (snap.worktree.ahead > 0 || snap.worktree.dirtyCount > 0)) return 'review'
     if (task.sessionId) return 'developing'
@@ -738,14 +761,19 @@ export class Runtime {
     if (count > 0) throw new TaskError(`${what}有 ${count} 处未提交改动（${shown}），请先处理后再操作`)
   }
 
-  /** Another task of the same repo whose branch is currently checked out in the main repo. */
-  private otherReviewingTask(task: WorktreeTask, cur: string | null): WorktreeTask | null {
-    if (!cur || cur === task.branch) return null
+  /** Another task of the same repo currently occupying the main repo (branch or detached review). */
+  private otherReviewingTask(task: WorktreeTask, cur: string | null, headSha?: string | null): WorktreeTask | null {
     const norm = (p: string) => p.replace(/[\\/]+$/, '').toLowerCase()
     return (
       this.store
         .listTasks()
-        .find((t) => t.id !== task.id && !t.cleanedAt && norm(t.repoPath) === norm(task.repoPath) && t.branch === cur) || null
+        .find(
+          (t) =>
+            t.id !== task.id &&
+            !t.cleanedAt &&
+            norm(t.repoPath) === norm(task.repoPath) &&
+            ((!!cur && t.branch === cur) || (!!headSha && !!t.reviewSha && t.reviewSha === headSha)),
+        ) || null
     )
   }
 
@@ -781,20 +809,108 @@ export class Runtime {
     }
   }
 
-  async checkout(id: string): Promise<WorktreeTask> {
+  /**
+   * Which working-tree files would block `git checkout <targetSha>`?
+   * Refreshes the index first so CRLF/mtime-only noise does not count as dirty.
+   */
+  private async buildSwitchPreflight(repoPath: string, targetSha: string | null): Promise<SwitchPreflight> {
+    await gitx.updateIndexRefresh(this.gitPath, repoPath)
+    const [currentRef, currentSha] = await Promise.all([
+      gitx.currentBranch(this.gitPath, repoPath),
+      gitx.revParse(this.gitPath, repoPath, 'HEAD'),
+    ])
+    const entries = await gitx.statusEntries(this.gitPath, repoPath, true)
+    const changed = targetSha && currentSha ? new Set(await gitx.diffNameOnlyZ(this.gitPath, repoPath, currentSha, targetSha)) : new Set<string>()
+    const targetTree = targetSha ? await gitx.lsTreePaths(this.gitPath, repoPath, targetSha) : new Set<string>()
+    const obstacles: SwitchObstacle[] = []
+    for (const entry of entries) {
+      if (entry.untracked) {
+        if (targetTree.has(entry.path)) obstacles.push({ path: entry.path, kind: 'untracked' })
+      } else if (changed.has(entry.path)) {
+        obstacles.push({ path: entry.path, kind: 'tracked' })
+      }
+    }
+    return {
+      currentRef,
+      currentSha,
+      targetRef: '',
+      targetSha,
+      dirty: entries.length > 0,
+      safe: obstacles.length === 0,
+      obstacles,
+    }
+  }
+
+  /** Apply the user's choice when switching with dirty files; returns a stash message when stashed. */
+  private async applySwitchStrategy(task: WorktreeTask, repoPath: string, pre: SwitchPreflight, strategy?: SwitchStrategy): Promise<string | undefined> {
+    if (pre.safe) return undefined
+    const list = pre.obstacles.map((o) => o.path).slice(0, 12).join('、')
+    if (!strategy || strategy === 'abort') {
+      throw new TaskError(`主仓库有 ${pre.obstacles.length} 个改动会阻止切换：${list}。请选择「暂存后切换」或「放弃改动后切换」`, 409)
+    }
+    if (strategy === 'stash') {
+      const message = `dsh-wt:${id8(task.id)}:review`
+      await gitx.stashPush(this.gitPath, repoPath, message)
+      return message
+    }
+    // discard
+    const tracked = pre.obstacles.filter((o) => o.kind === 'tracked').map((o) => o.path)
+    if (tracked.length) await gitx.restorePaths(this.gitPath, repoPath, tracked)
+    for (const item of pre.obstacles.filter((o) => o.kind === 'untracked')) {
+      await fs.rm(join(repoPath, item.path), { recursive: true, force: true })
+    }
+    return undefined
+  }
+
+  /** Resolve where `back` should return to: original ref → original sha → base. */
+  private async resolveBackTarget(task: WorktreeTask): Promise<{ ref?: string; sha?: string }> {
+    if (task.reviewOriginalRef && (await gitx.branchExists(this.gitPath, task.repoPath, task.reviewOriginalRef))) {
+      return { ref: task.reviewOriginalRef }
+    }
+    if (task.reviewOriginalSha && (await gitx.revParse(this.gitPath, task.repoPath, task.reviewOriginalSha))) {
+      return { sha: task.reviewOriginalSha }
+    }
+    if (task.originalBranch && (await gitx.branchExists(this.gitPath, task.repoPath, task.originalBranch))) {
+      return { ref: task.originalBranch }
+    }
+    if (await gitx.branchExists(this.gitPath, task.repoPath, task.baseBranch)) return { ref: task.baseBranch }
+    return {}
+  }
+
+  async checkoutPreflight(id: string): Promise<SwitchPreflight> {
     const task = this.needTask(id)
+    if (task.cleanedAt) throw new TaskError('worktree 已清理，无法验收切换')
+    if (!(await gitx.branchExists(this.gitPath, task.repoPath, task.branch))) throw new TaskError(`任务分支不存在：${task.branch}`)
+    const targetSha = await gitx.revParse(this.gitPath, task.repoPath, task.branch)
+    if (!targetSha) throw new TaskError(`无法解析任务分支：${task.branch}`)
+    const pre = await this.buildSwitchPreflight(task.repoPath, targetSha)
+    pre.targetRef = task.branch
+    return pre
+  }
+
+  async backPreflight(id: string): Promise<SwitchPreflight> {
+    const task = this.needTask(id)
+    const target = await this.resolveBackTarget(task)
+    const targetSha = target.ref ? await gitx.revParse(this.gitPath, task.repoPath, target.ref) : target.sha || null
+    const pre = await this.buildSwitchPreflight(task.repoPath, targetSha)
+    pre.targetRef = target.ref || target.sha || ''
+    return pre
+  }
+
+  async checkout(id: string, opts: { strategy?: SwitchStrategy; expectedSha?: string } = {}): Promise<WorktreeTask> {
+    const task = this.needTask(id)
+    return this.withRepoLock(task.repoPath, '验收切换', () => this.checkoutLocked(task, opts))
+  }
+
+  private async checkoutLocked(task: WorktreeTask, opts: { strategy?: SwitchStrategy; expectedSha?: string } = {}): Promise<WorktreeTask> {
     if (task.cleanedAt) throw new TaskError('worktree 已清理，无法验收切换')
     const repoPath = task.repoPath
     await this.assertNoInProgress(repoPath)
-    await this.assertRepoClean(repoPath)
-    const cur = await gitx.currentBranch(this.gitPath, repoPath)
-    if (cur === task.branch) return task
-    // The main repo can only check out one task branch at a time.
-    const other = this.otherReviewingTask(task, cur)
-    if (other) throw new TaskError(`任务「${other.title}」正在验收，请先切回原分支`, 409)
     if (!(await gitx.branchExists(this.gitPath, repoPath, task.branch))) {
       throw new TaskError(`任务分支不存在：${task.branch}`)
     }
+    const headSha = await gitx.revParse(this.gitPath, repoPath, 'HEAD')
+    if (task.reviewSha && headSha === task.reviewSha) return task
     // Acceptance reviews committed work; uncommitted worktree edits would not be visible.
     const ahead = await gitx.countCommits(this.gitPath, repoPath, `${task.baseBranch}..${task.branch}`)
     if (ahead === 0) {
@@ -804,50 +920,122 @@ export class Runtime {
     }
     const wtDirty = await this.dirtySummary(task.worktreePath)
     if (wtDirty.count > 0) throw new TaskError(`worktree 有 ${wtDirty.count} 处未提交改动（${wtDirty.shown}），请先让 Agent 提交后再验收`)
-    task.originalBranch = cur ?? task.originalBranch
-    await gitx.switchBranch(this.gitPath, repoPath, task.branch)
+    const reviewSha = await gitx.revParse(this.gitPath, repoPath, task.branch)
+    if (!reviewSha) throw new TaskError(`无法解析任务分支：${task.branch}`)
+    if (opts.expectedSha && opts.expectedSha !== reviewSha) throw new TaskError('任务分支已变化，请重新预检', 409)
+    const originalRef = await gitx.currentBranch(this.gitPath, repoPath)
+    const other = this.otherReviewingTask(task, originalRef, headSha)
+    if (other) throw new TaskError(`任务「${other.title}」正在验收，请先切回原分支`, 409)
+    const pre = await this.buildSwitchPreflight(repoPath, reviewSha)
+    pre.targetRef = task.branch
+    const stash = await this.applySwitchStrategy(task, repoPath, pre, opts.strategy)
+    try {
+      // Detached checkout: the task branch stays owned by the worktree only.
+      await gitx.checkoutDetach(this.gitPath, repoPath, reviewSha)
+    } catch (error) {
+      // Git may have replaced some files before failing (Windows file locks).
+      // Trust the real HEAD: reaching the target counts as success.
+      const now = await gitx.revParse(this.gitPath, repoPath, 'HEAD')
+      if (now !== reviewSha) throw new TaskError(`切换到验收提交失败：${error instanceof Error ? error.message : String(error)}`, 409)
+    }
+    task.reviewSha = reviewSha
+    task.reviewOriginalRef = originalRef || undefined
+    task.reviewOriginalSha = headSha || undefined
+    if (originalRef) task.originalBranch = originalRef
+    if (stash) task.reviewStash = stash
     this.store.putTask(task)
     return task
   }
 
-  async back(id: string): Promise<WorktreeTask> {
+  async back(id: string, opts: { strategy?: SwitchStrategy; expectedSha?: string } = {}): Promise<WorktreeTask> {
     const task = this.needTask(id)
+    return this.withRepoLock(task.repoPath, '切回原分支', () => this.backLocked(task, opts))
+  }
+
+  private async backLocked(task: WorktreeTask, opts: { strategy?: SwitchStrategy; expectedSha?: string } = {}): Promise<WorktreeTask> {
     const repoPath = task.repoPath
     await this.assertNoInProgress(repoPath)
-    await this.assertRepoClean(repoPath)
-    const cur = await gitx.currentBranch(this.gitPath, repoPath)
-    let target: string | null = null
-    if (task.originalBranch && (await gitx.branchExists(this.gitPath, repoPath, task.originalBranch))) {
-      target = task.originalBranch
-    } else if (await gitx.branchExists(this.gitPath, repoPath, task.baseBranch)) {
-      // Escape hatch: the recorded branch is gone (or was never recorded) → use base.
-      target = task.baseBranch
+    const headSha = await gitx.revParse(this.gitPath, repoPath, 'HEAD')
+    const currentRef = await gitx.currentBranch(this.gitPath, repoPath)
+    // The user moved the main repo away during review: only clear the record,
+    // never force a switch over their own checkout. A branch at the same sha
+    // still counts as moved (review keeps the repo detached).
+    if (task.reviewSha && (headSha !== task.reviewSha || currentRef !== null)) {
+      task.reviewSha = undefined
+      task.reviewOriginalRef = undefined
+      task.reviewOriginalSha = undefined
+      this.store.putTask(task)
+      return task
     }
-    if (!target) throw new TaskError('原分支与基线分支都不存在，无法切回')
-    if (cur !== target) await gitx.switchBranch(this.gitPath, repoPath, target)
-    if (!task.originalBranch) {
-      task.originalBranch = target
+    const target = await this.resolveBackTarget(task)
+    const targetSha = target.ref ? await gitx.revParse(this.gitPath, repoPath, target.ref) : target.sha || null
+    if (!targetSha) throw new TaskError('原分支与基线分支都不存在，无法切回')
+    if (opts.expectedSha && opts.expectedSha !== targetSha) throw new TaskError('目标分支已变化，请重新预检', 409)
+    const pre = await this.buildSwitchPreflight(repoPath, targetSha)
+    pre.targetRef = target.ref || target.sha || ''
+    const stash = await this.applySwitchStrategy(task, repoPath, pre, opts.strategy)
+    try {
+      if (target.ref) await gitx.switchBranch(this.gitPath, repoPath, target.ref)
+      else await gitx.checkoutDetach(this.gitPath, repoPath, targetSha)
+    } catch (error) {
+      const nowSha = await gitx.revParse(this.gitPath, repoPath, 'HEAD')
+      const nowRef = await gitx.currentBranch(this.gitPath, repoPath)
+      const reached = target.ref ? nowRef === target.ref : nowSha === targetSha
+      if (!reached) {
+        throw new TaskError(`切回原分支失败：${error instanceof Error ? error.message : String(error)}（当前 ${nowRef || nowSha || '未知'}）`, 409)
+      }
+    }
+    task.reviewSha = undefined
+    task.reviewOriginalRef = undefined
+    task.reviewOriginalSha = undefined
+    if (stash) task.reviewStash = stash
+    if (!task.originalBranch && target.ref) task.originalBranch = target.ref
+    this.store.putTask(task)
+    return task
+  }
+
+  async applyReviewStash(id: string): Promise<WorktreeTask> {
+    const task = this.needTask(id)
+    if (!task.reviewStash) throw new TaskError('没有可恢复的验收暂存')
+    await gitx.stashApplyByMessage(this.gitPath, task.repoPath, task.reviewStash)
+    return task
+  }
+
+  async dropReviewStash(id: string): Promise<WorktreeTask> {
+    const task = this.needTask(id)
+    if (task.reviewStash) {
+      await gitx.stashDropByMessage(this.gitPath, task.repoPath, task.reviewStash)
+      task.reviewStash = undefined
       this.store.putTask(task)
     }
     return task
   }
 
-  async merge(id: string, opts: { switchToBase?: boolean; restoreTo?: boolean } = {}): Promise<WorktreeTask> {
+  async merge(id: string, opts: { switchToBase?: boolean; restoreTo?: boolean; expectedTip?: string; expectedBase?: string } = {}): Promise<WorktreeTask> {
     const task = this.needTask(id)
     return this.withRepoLock(task.repoPath, '合并', () => this.mergeLocked(task, opts))
   }
 
-  private async mergeLocked(task: WorktreeTask, opts: { switchToBase?: boolean; restoreTo?: boolean } = {}): Promise<WorktreeTask> {
+  private async mergeLocked(task: WorktreeTask, opts: { switchToBase?: boolean; restoreTo?: boolean; expectedTip?: string; expectedBase?: string } = {}): Promise<WorktreeTask> {
     if (task.cleanedAt) throw new TaskError('worktree 已清理，分支若仍在可手动合并')
     const repoPath = task.repoPath
     if (!(await gitx.branchExists(this.gitPath, repoPath, task.branch))) {
       throw new TaskError(`任务分支不存在：${task.branch}`)
+    }
+    if (opts.expectedTip) {
+      const tip = await gitx.revParse(this.gitPath, repoPath, task.branch)
+      if (tip !== opts.expectedTip) throw new TaskError('任务分支已变化，请重新预检后再合并', 409)
+    }
+    if (opts.expectedBase) {
+      const expectedBase = await gitx.revParse(this.gitPath, repoPath, task.baseBranch)
+      if (expectedBase !== opts.expectedBase) throw new TaskError('基线分支已变化，请重新预检后再合并', 409)
     }
     await this.assertNoInProgress(repoPath)
     await this.assertRepoClean(repoPath)
     // Never silently move the user's branch: merging happens on the base branch,
     // and only when the caller explicitly asked (switchToBase) do we check it out.
     const cur = await gitx.currentBranch(this.gitPath, repoPath)
+    const headSha = await gitx.revParse(this.gitPath, repoPath, 'HEAD')
     let restoreFrom: string | null = null
     if (cur !== task.baseBranch) {
       if (!opts.switchToBase) {
@@ -862,7 +1050,7 @@ export class Runtime {
       if (baseHeld) {
         throw new TaskError(`基线分支 ${task.baseBranch} 正被 worktree「${baseHeld.path}」检出，无法切换后合并`, 409)
       }
-      const other = this.otherReviewingTask(task, cur)
+      const other = this.otherReviewingTask(task, cur, headSha)
       if (other) throw new TaskError(`任务「${other.title}」正在验收，请先切回原分支再操作`, 409)
       restoreFrom = cur
       await gitx.switchBranch(this.gitPath, repoPath, task.baseBranch)
@@ -936,6 +1124,8 @@ export class Runtime {
     if (!(await gitx.branchExists(this.gitPath, task.repoPath, task.branch))) {
       return { ...base, reason: 'branch-missing' }
     }
+    base.expectedTip = await gitx.revParse(this.gitPath, task.repoPath, task.branch)
+    base.expectedBase = await gitx.revParse(this.gitPath, task.repoPath, task.baseBranch)
     const mergeBase = await gitx.mergeBase(this.gitPath, task.repoPath, task.baseBranch, task.branch)
     if (!mergeBase) return { ...base, applicable: true, reason: 'no-merge-base' }
 

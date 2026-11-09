@@ -311,6 +311,10 @@ export function TaskDetail(props: any) {
     const [mergeOpen, setMergeOpen] = React.useState(false)
     const [mergeSwitch, setMergeSwitch] = React.useState(false)
     const [mergeRestore, setMergeRestore] = React.useState(true)
+    const [switchOpen, setSwitchOpen] = React.useState(false)
+    const [switchAction, setSwitchAction] = React.useState('checkout' as 'checkout' | 'back')
+    const [switchPre, setSwitchPre] = React.useState(null as any)
+    const [switchBusy, setSwitchBusy] = React.useState('')
     const [cleanupOpen, setCleanupOpen] = React.useState(false)
     const [deleteOpen, setDeleteOpen] = React.useState(false)
     const [force, setForce] = React.useState(false)
@@ -405,6 +409,40 @@ export function TaskDetail(props: any) {
     }
     const actPost = (key: string, path: string, body: any, success: string) =>
       act(key, success, () => postLong(path, Object.assign({ id: task.id }, body)))
+
+    const executeSwitch = async (action: 'checkout' | 'back', strategy: string | undefined, pre: any): Promise<boolean> => {
+      const path = action === 'checkout' ? 'task/checkout' : 'task/back'
+      const ok = await act(action, action === 'checkout' ? t.checkout : t.back, () => postLong(path, {
+        id: task.id,
+        strategy,
+        expectedSha: pre && pre.targetSha ? pre.targetSha : undefined,
+      }))
+      if (ok) setSwitchOpen(false)
+      return ok
+    }
+
+    const runSwitch = async (action: 'checkout' | 'back') => {
+      if (actionRef.current || switchBusy) return
+      setSwitchBusy(action)
+      setErr('')
+      try {
+        const r = await post(action === 'checkout' ? 'task/checkout-preflight' : 'task/back-preflight', { id: task.id })
+        const pre = r && r.preflight
+        if (!pre) throw new Error(t.failed)
+        if (pre.safe) {
+          await executeSwitch(action, undefined, pre)
+        } else {
+          setSwitchAction(action)
+          setSwitchPre(pre)
+          setSwitchOpen(true)
+        }
+      } catch (e: any) {
+        setErr((e && e.message) || t.failed)
+        try { void Promise.resolve(props.onChanged()).catch(() => {}) } catch { /* noop */ }
+      } finally {
+        setSwitchBusy('')
+      }
+    }
     const busyLabel = (key: string, label: string, working: string) => (busy === key ? working : label)
 
     const syncBaseline = async () => {
@@ -610,14 +648,17 @@ export function TaskDetail(props: any) {
     // Every action mutates the main repo, so we gate on three things: the task
     // lifecycle, whether the main repo can safely switch/merge, and whether the
     // agent is still writing. The backend repeats every git-level check.
-    const onTaskBranch = !!branch && snap.repo.currentBranch === branch
+    const onTaskBranch = (!!task.reviewSha && !!snap.repo.headSha && task.reviewSha === snap.repo.headSha) || (!!branch && snap.repo.currentBranch === branch)
     const curOnBase = !!task.baseBranch && snap.repo.currentBranch === task.baseBranch
     const inProgress = snap.repo.inProgress || null
     const originalBranchExists = !!task.originalBranch && (snap.repo.originalBranchExists === undefined ? true : snap.repo.originalBranchExists)
     const siblings = Array.isArray(props.siblings) ? props.siblings : []
     const otherReviewing = onTaskBranch
       ? null
-      : siblings.find((v: any) => v.task && !v.task.cleanedAt && v.task.branch && v.task.branch === snap.repo.currentBranch) || null
+      : siblings.find((v: any) => v.task && !v.task.cleanedAt && (
+        (v.task.branch && v.task.branch === snap.repo.currentBranch) ||
+        (v.task.reviewSha && snap.repo.headSha && v.task.reviewSha === snap.repo.headSha)
+      )) || null
     const agentRunning = props.running === true
     const repoLockLabel = props.repoLockLabel || ''
     const conflictNow = !!(preview && preview.conflict)
@@ -650,7 +691,6 @@ export function TaskDetail(props: any) {
       else if (ahead === 0) checkoutReasons.push({ text: dirty > 0 ? String(t.acceptWorktreeDirtyCommit).replace('{n}', String(dirty)) : t.acceptNoCommits })
       else {
         if (dirty > 0) checkoutReasons.push({ text: String(t.acceptWorktreeDirtyCommit).replace('{n}', String(dirty)), key: 'wt-dirty' })
-        if (repoDirty > 0) checkoutReasons.push({ text: String(t.acceptanceHintRepoDirty).replace('{n}', String(repoDirty)) })
         if (inProgress) checkoutReasons.push({ text: t.acceptInProgress })
         if (otherReviewing) checkoutReasons.push({ text: String(t.acceptOtherReviewing).replace('{task}', otherReviewing.task.title), action: goOtherAction })
         if (agentRunning) checkoutReasons.push({ text: t.acceptAgentRunning })
@@ -661,7 +701,6 @@ export function TaskDetail(props: any) {
     const backReasons: AcceptReason[] = []
     if (showBack) {
       if (repoLockLabel) backReasons.push({ text: String(t.acceptBusy).replace('{action}', repoLockLabel) })
-      if (repoDirty > 0) backReasons.push({ text: String(t.acceptanceHintRepoDirty).replace('{n}', String(repoDirty)) })
       if (inProgress) backReasons.push({ text: t.acceptInProgress })
     }
     const backEnabled = showBack && backReasons.length === 0
@@ -739,6 +778,8 @@ export function TaskDetail(props: any) {
                 id: task.id,
                 switchToBase: mergeSwitch && !curOnBase,
                 restoreTo: mergeRestore,
+                expectedTip: preview && preview.expectedTip ? preview.expectedTip : undefined,
+                expectedBase: preview && preview.expectedBase ? preview.expectedBase : undefined,
               }))
                 .then((ok) => { if (ok) setMergeOpen(false) })
                 .finally(() => { props.onRepoBusy && props.onRepoBusy(false, '') })
@@ -789,6 +830,39 @@ export function TaskDetail(props: any) {
         dirty > 0
           ? h(Banner, { tone: 'warn', icon: 'alert', title: t.mergeDirtyTitle }, t.mergeDirtyHint)
           : null,
+        err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null)
+      : null
+
+    const switchModal = switchOpen && switchPre
+      ? h(Modal, {
+        t,
+        title: switchAction === 'checkout' ? t.checkout : t.back,
+        subtitle: t.switchConflictSub,
+        icon: 'alert',
+        tone: 'warn',
+        size: 'sm',
+        busy: busy === 'checkout' || busy === 'back',
+        onClose: () => { if (busy !== 'checkout' && busy !== 'back') setSwitchOpen(false) },
+        footer: [
+          h(Btn, { key: 'c', onClick: () => setSwitchOpen(false), disabled: busy === 'checkout' || busy === 'back', 'data-autofocus': true }, t.cancel),
+          h(Btn, {
+            key: 'stash',
+            variant: 'primary',
+            disabled: busy === 'checkout' || busy === 'back',
+            onClick: () => void executeSwitch(switchAction, 'stash', switchPre),
+          }, (busy === 'checkout' || busy === 'back') ? h(Spinner) : null, t.switchStash),
+          h(Btn, {
+            key: 'discard',
+            variant: 'danger',
+            disabled: busy === 'checkout' || busy === 'back',
+            onClick: () => void executeSwitch(switchAction, 'discard', switchPre),
+          }, t.switchDiscard),
+        ],
+      },
+        h('div', { className: 'dshw-switch-warn' }, String(t.switchConflictHint).replace('{n}', String((switchPre.obstacles || []).length))),
+        h('ul', { className: 'dshw-switch-files' }, (switchPre.obstacles || []).map((o: any, i: number) =>
+          h('li', { key: i }, h('span', { className: 'dshw-mono' }, o.path),
+            o.kind === 'untracked' ? h(Chip, { tone: 'warn', small: true }, t.switchUntracked) : null))),
         err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null)
       : null
 
@@ -911,6 +985,15 @@ export function TaskDetail(props: any) {
           h('li', { key: i }, h(Icon, { name: 'check' }), h('span', null, item)))))
       : null
 
+    const stashNode = task.reviewStash
+      ? h(Card, { className: 'dshw-stash-card' },
+        h(CardHead, { icon: 'archive', title: t.reviewStashTitle }),
+        h('div', { className: 'dshw-hint', style: { marginBottom: '8px' } }, String(t.reviewStashNotice).replace('{ref}', task.reviewStash)),
+        h('div', { className: 'dshw-action-grid' },
+          h(Btn, { icon: 'archiveRestore', disabled: busy !== '', onClick: () => void act('stash-apply', t.reviewStashApplied, () => post('task/stash', { id: task.id, action: 'apply' })) }, t.reviewStashApply),
+          h(Btn, { variant: 'danger', icon: 'trash', disabled: busy !== '', onClick: () => void act('stash-drop', t.reviewStashDropped, () => post('task/stash', { id: task.id, action: 'drop' })) }, t.reviewStashDrop)))
+      : null
+
     return h('div', { className: 'dshw-detail-inner' },
       h('article', { className: 'dshw-card dshw-hero' },
         h('div', { className: 'dshw-hero-top' },
@@ -938,6 +1021,7 @@ export function TaskDetail(props: any) {
             h('span', { className: 'dshw-hint' }, lastActivity))),
         err ? h('div', { className: 'dshw-err', role: 'alert', style: { marginTop: '12px' } }, h(Icon, { name: 'alert' }), h('span', null, err)) : null),
       acceptanceNode,
+      stashNode,
       notStartedNode,
       pendingNode,
       healthNode,
@@ -969,20 +1053,14 @@ export function TaskDetail(props: any) {
         h('div', { className: 'dshw-action-grid' },
           showCheckout ? h(Btn, {
             icon: 'branch',
-            disabled: !checkoutEnabled || busy !== '',
-            onClick: () => {
-              props.onRepoBusy && props.onRepoBusy(true, t.checkout)
-              void actPost('checkout', 'task/checkout', {}, t.checkout).finally(() => { props.onRepoBusy && props.onRepoBusy(false, '') })
-            },
-          }, busy === 'checkout' ? h(Spinner) : null, t.checkout) : null,
+            disabled: !checkoutEnabled || busy !== '' || switchBusy !== '',
+            onClick: () => { void runSwitch('checkout') },
+          }, (busy === 'checkout' || switchBusy === 'checkout') ? h(Spinner) : null, t.checkout) : null,
           showBack ? h(Btn, {
             icon: 'arrowLeft',
-            disabled: !backEnabled || busy !== '',
-            onClick: () => {
-              props.onRepoBusy && props.onRepoBusy(true, t.back)
-              void actPost('back', 'task/back', {}, t.back).finally(() => { props.onRepoBusy && props.onRepoBusy(false, '') })
-            },
-          }, busy === 'back' ? h(Spinner) : null, originalBranchExists ? t.back : t.switchToBase) : null,
+            disabled: !backEnabled || busy !== '' || switchBusy !== '',
+            onClick: () => { void runSwitch('back') },
+          }, (busy === 'back' || switchBusy === 'back') ? h(Spinner) : null, originalBranchExists ? t.back : t.switchToBase) : null,
           showMerge ? h(Btn, {
             icon: 'merge',
             disabled: !(curOnBase ? mergeEnabled : canSwitchToBase) || busy !== '',
@@ -1062,6 +1140,7 @@ export function TaskDetail(props: any) {
             disabled: busy !== '',
             onClick: () => setDeleteOpen(true),
           }, t.deleteRecord))),
+      switchModal,
       mergeModal,
       cleanupModal,
       deleteModal)

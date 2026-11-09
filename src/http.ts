@@ -261,6 +261,28 @@ export function registerHttp(app: App): () => void {
     }
   })
 
+  route('task/checkout-preflight', 'POST', async (req, res) => {
+    requireToken(req)
+    const body = await readJson(req)
+    try {
+      send(res, 200, { preflight: await app.runtime.checkoutPreflight(String(body.id || '')) })
+    } catch (error) {
+      if (error instanceof TaskError) return send(res, error.status, { error: error.message })
+      send(res, 500, { error: error instanceof Error ? error.message : String(error) })
+    }
+  })
+
+  route('task/back-preflight', 'POST', async (req, res) => {
+    requireToken(req)
+    const body = await readJson(req)
+    try {
+      send(res, 200, { preflight: await app.runtime.backPreflight(String(body.id || '')) })
+    } catch (error) {
+      if (error instanceof TaskError) return send(res, error.status, { error: error.message })
+      send(res, 500, { error: error instanceof Error ? error.message : String(error) })
+    }
+  })
+
   const act = (name: string, fn: (id: string, body: any) => Promise<unknown>) => {
     route(`task/${name}`, 'POST', async (req, res) => {
       requireToken(req)
@@ -278,9 +300,15 @@ export function registerHttp(app: App): () => void {
     })
   }
 
-  act('checkout', async (id) => app.runtime.checkout(id))
-  act('back', async (id) => app.runtime.back(id))
-  act('merge', async (id, body) => app.runtime.merge(id, { switchToBase: body.switchToBase === true, restoreTo: body.restoreTo !== false }))
+  act('checkout', async (id, body) => app.runtime.checkout(id, { strategy: body.strategy, expectedSha: body.expectedSha ? String(body.expectedSha) : undefined }))
+  act('back', async (id, body) => app.runtime.back(id, { strategy: body.strategy, expectedSha: body.expectedSha ? String(body.expectedSha) : undefined }))
+  act('stash', async (id, body) => (String(body.action || '') === 'drop' ? app.runtime.dropReviewStash(id) : app.runtime.applyReviewStash(id)))
+  act('merge', async (id, body) => app.runtime.merge(id, {
+    switchToBase: body.switchToBase === true,
+    restoreTo: body.restoreTo !== false,
+    expectedTip: body.expectedTip ? String(body.expectedTip) : undefined,
+    expectedBase: body.expectedBase ? String(body.expectedBase) : undefined,
+  }))
   act('cleanup', async (id, body) => app.runtime.cleanup(id, { force: !!body.force, deleteBranch: !!body.deleteBranch }))
   act('archive', async (id) => app.runtime.archive(id))
   act('unarchive', async (id) => app.runtime.unarchive(id))

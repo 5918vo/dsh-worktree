@@ -390,6 +390,10 @@ export const CSS = `
 .dshw-criteria-lib-row{display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--dshw-border);border-radius:8px;background:var(--dshw-surface-2);font-size:12.5px}
 .dshw-criteria-lib-row .dshw-ico{width:14px;height:14px;color:var(--dshw-success);flex:none}
 .dshw-criteria-lib-text{flex:1;min-width:0;overflow-wrap:anywhere}
+.dshw-switch-warn{font-size:12px;color:var(--dshw-text);line-height:1.6;margin-bottom:8px}
+.dshw-switch-files{display:flex;flex-direction:column;gap:5px;margin:0;padding:0;list-style:none;max-height:200px;overflow:auto}
+.dshw-switch-files li{display:flex;align-items:center;gap:8px;font-size:12px;padding:5px 8px;border:1px solid var(--dshw-border);border-radius:7px;background:var(--dshw-surface-2);overflow-wrap:anywhere}
+.dshw-stash-card .dshw-card-head{margin-bottom:8px}
 .dshw-check{display:flex;align-items:flex-start;gap:9px;font-size:12.5px;cursor:pointer;color:var(--dshw-text)}
 .dshw-check input{width:15px;height:15px;margin:1px 0 0;accent-color:var(--dshw-brand);flex:none;cursor:pointer}
 .dshw-check-copy{min-width:0}

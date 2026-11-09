@@ -64,6 +64,14 @@ export interface WorktreeTask {
   model?: ModelSelection
   /** Branch the main repo was on before switching to the task branch. */
   originalBranch?: string
+  /** Detached acceptance: the commit checked out in the main repo during review. */
+  reviewSha?: string
+  /** What the main repo had checked out before acceptance (branch name / tag / sha). */
+  reviewOriginalRef?: string
+  /** HEAD sha before acceptance; fallback when the original branch was deleted. */
+  reviewOriginalSha?: string
+  /** Stash message created when returning to the original branch with uncommitted work. */
+  reviewStash?: string
   /** Set when this task branch was merged through the workbench. */
   mergedAt?: number
   /** Merge commit (base HEAD after the merge); used to derive merged commits/files. */
@@ -94,6 +102,8 @@ export interface TaskSnapshot {
   repo: {
     exists: boolean
     currentBranch: string | null
+    /** HEAD sha of the main repo (works for detached review too). */
+    headSha?: string | null
     dirtyCount: number
     /** An unfinished merge/rebase/cherry-pick/revert in the main repo, if any. */
     inProgress?: 'merge' | 'rebase' | 'cherry-pick' | 'revert' | null
@@ -154,6 +164,9 @@ export interface MergePreview {
   applicable: boolean
   branch: string
   baseBranch: string
+  /** Exact tips the preview was computed from; merge must pass them back. */
+  expectedTip?: string | null
+  expectedBase?: string | null
   /** Commits on base since the merge base. */
   baseAhead: number
   /** Files changed on both sides since the merge base. */
