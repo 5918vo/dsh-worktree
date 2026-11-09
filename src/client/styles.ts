@@ -345,6 +345,26 @@ export const CSS = `
 .dshw-readonly-box .dshw-folder-tile{width:20px;height:20px}
 .dshw-select-loading{display:flex;align-items:center;gap:8px;min-height:36px;padding:8px 10px;border:1px solid var(--dshw-border-strong);border-radius:8px;background:var(--dshw-surface-2);font-size:12.5px;color:var(--dshw-text-3)}
 .dshw-select-loading .dshw-spinner{width:13px;height:13px;color:var(--dshw-text-3)}
+/* searchable branch combobox ------------------------------------------------ */
+.dshw-combo{position:relative;width:100%}
+.dshw-combo-trigger{display:flex;align-items:center;gap:8px;text-align:left;cursor:pointer;padding-right:34px;position:relative}
+.dshw-combo-value{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshw-combo-chevron{position:absolute;right:10px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--dshw-text-3);transition:transform .14s}
+.dshw-combo-trigger--open .dshw-combo-chevron{transform:translateY(-50%) rotate(180deg)}
+.dshw-combo-panel{margin-top:6px;border:1px solid var(--dshw-border-strong);border-radius:9px;background:var(--dshw-surface);box-shadow:var(--dshw-shadow-lg);padding:7px}
+.dshw-combo-search-wrap{position:relative;display:flex;align-items:center}
+.dshw-combo-search{padding-right:30px}
+.dshw-combo-clear{position:absolute;right:5px;width:22px;height:22px;display:grid;place-items:center;border:0;background:transparent;color:var(--dshw-text-3);border-radius:6px;padding:0}
+.dshw-combo-clear:hover{background:var(--dshw-surface-2);color:var(--dshw-text)}
+.dshw-combo-clear .dshw-ico{width:13px;height:13px}
+.dshw-combo-list{list-style:none;margin:7px 0 0;padding:0;max-height:210px;overflow:auto}
+.dshw-combo-option{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:7px;font-size:12.5px;color:var(--dshw-text);cursor:pointer}
+.dshw-combo-option-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshw-combo-option--active{background:var(--dshw-surface-2)}
+.dshw-combo-option--selected{color:var(--dshw-brand);font-weight:600}
+.dshw-combo-check{width:14px;height:14px;color:var(--dshw-brand);flex:none}
+.dshw-combo-tag{font-size:10.5px;color:var(--dshw-text-3);border:1px solid var(--dshw-border);border-radius:99px;padding:1px 6px;flex:none}
+.dshw-combo-empty{padding:12px 9px;text-align:center;font-size:11.5px;color:var(--dshw-text-3)}
 .dshw-check{display:flex;align-items:flex-start;gap:9px;font-size:12.5px;cursor:pointer;color:var(--dshw-text)}
 .dshw-check input{width:15px;height:15px;margin:1px 0 0;accent-color:var(--dshw-brand);flex:none;cursor:pointer}
 .dshw-check-copy{min-width:0}

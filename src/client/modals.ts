@@ -1,5 +1,5 @@
 import { React, h } from './ui'
-import { Btn, Field, Icon, Modal, Spinner, branchSelect } from './primitives'
+import { Btn, Field, Icon, Modal, Spinner, branchSelect, BranchCombobox } from './primitives'
 import { useBranchInfo } from './hooks'
 import { appCtx, bindSession, post, withTimeout } from './context'
 import { baseName, cx } from './format'
@@ -315,7 +315,7 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
         ? h('span', null, t.loadBranchesFailed, ' ', h('button', { type: 'button', className: 'dshw-link-btn', onClick: branches.retry }, t.retry))
         : null
     const branchControl = branches.data
-      ? branchSelect(t, baseBranch, setBaseBranch, branches.data, { id: 'dshw-publish-base' })
+      ? h(BranchCombobox, { t, value: baseBranch, onChange: setBaseBranch, branchInfo: branches.data, id: 'dshw-publish-base' })
       : h('input', { id: 'dshw-publish-base', className: 'dshw-input', value: baseBranch, onChange: (e: any) => setBaseBranch(e.target.value), placeholder: t.baseBranch })
 
     const footer = [

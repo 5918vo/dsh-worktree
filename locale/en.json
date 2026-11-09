@@ -6,6 +6,8 @@
   "browse": "Browse…",
   "pickingDirectory": "Choosing…",
   "baseBranch": "Base branch",
+  "filterBranches": "Filter branches…",
+  "noBranchMatch": "No matching branches",
   "chooseDirFirst": "Choose a directory to load branches",
   "loadingBranches": "Loading branches…",
   "branchName": "Task branch",

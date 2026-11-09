@@ -6,6 +6,8 @@
   "browse": "浏览…",
   "pickingDirectory": "选择中…",
   "baseBranch": "基线分支",
+  "filterBranches": "筛选分支…",
+  "noBranchMatch": "没有匹配的分支",
   "chooseDirFirst": "选择目录后加载分支",
   "loadingBranches": "正在加载分支…",
   "branchName": "任务分支",
