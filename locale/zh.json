@@ -442,5 +442,12 @@
   "moreStates": "更多状态",
   "quickRecover": "继续恢复",
   "quickHandle": "去处理",
-  "quickReview": "查看验收"
+  "quickReview": "查看验收",
+  "attentionSummaryRecovery": "有 {n} 个任务尚未切回原分支，请先处理恢复。",
+  "attentionSummaryPending": "有 {n} 个任务等待你处理。",
+  "attentionSummaryBroken": "有 {n} 个任务异常，请检查。",
+  "attentionViewRecovery": "查看恢复任务",
+  "attentionViewPending": "查看待处理",
+  "attentionViewBroken": "查看异常任务",
+  "attentionStale": "状态可能已过期 · 最近更新于 {time}"
 }

@@ -7,6 +7,7 @@ import { TaskRow } from './task-row'
 import { ProjectDetail } from './project-detail'
 import { upsertPublishedTask, visibleProjectViews } from './board-data'
 import { AttentionFilter } from './attention-filter'
+import { AttentionSummaryBar } from './attention-summary'
 import { RECOVERY_UI_READY, computeFilterCounts, deriveTaskAttention } from './task-attention'
 import { appCtx, bindSession, getJson, post, postLong } from './context'
 import { uuid } from './format'
@@ -892,7 +893,21 @@ export function BoardPage(props: any) {
         : null,
     ]
 
-    return h('div', { className: 'dshw-scope dshw-shell', ref: shellRef },
+    return h('div', { className: 'dshw-scope dshw-shell' + (showDetail ? ' dshw-shell--detail' : ''), ref: shellRef },
+      h(AttentionSummaryBar, {
+        t,
+        counts: filterCounts,
+        total: filterCounts.total,
+        stale: attentionStale,
+        lastOkAt,
+        onView: (category: string) => {
+          setAttentionFilter(category)
+          window.requestAnimationFrame(() => {
+            const el: any = listTitleRef.current
+            if (el) el.focus()
+          })
+        },
+      }),
       h('div', { className: 'dshw-app' + (showDetail ? ' dshw-app--detail' : '') }, treeNode, detailNode, modalNode),
       h(Toast, { toast, onClose: dismiss }))
   }

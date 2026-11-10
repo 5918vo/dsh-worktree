@@ -442,5 +442,12 @@
   "moreStates": "More status",
   "quickRecover": "Continue recovery",
   "quickHandle": "Respond",
-  "quickReview": "View review"
+  "quickReview": "View review",
+  "attentionSummaryRecovery": "{n} task(s) have not switched back; resolve the recovery first.",
+  "attentionSummaryPending": "{n} task(s) are waiting for you.",
+  "attentionSummaryBroken": "{n} task(s) are broken; please check.",
+  "attentionViewRecovery": "View recovery tasks",
+  "attentionViewPending": "View pending",
+  "attentionViewBroken": "View broken tasks",
+  "attentionStale": "Status may be out of date · last updated at {time}"
 }

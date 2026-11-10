@@ -26,8 +26,20 @@ export const CSS = `
 .dshw-ico{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none;display:block}
 
 /* shell ------------------------------------------------------------------ */
-.dshw-shell{position:relative;height:100%;min-height:0;container-type:inline-size;container-name:dshw;background:var(--dshw-bg);color:var(--dshw-text);overflow:hidden}
-.dshw-app{display:grid;grid-template-columns:320px minmax(0,1fr);height:100%;min-height:0;background:var(--dshw-bg)}
+.dshw-shell{position:relative;height:100%;min-height:0;container-type:inline-size;container-name:dshw;background:var(--dshw-bg);color:var(--dshw-text);overflow:hidden;display:flex;flex-direction:column}
+.dshw-app{display:grid;grid-template-columns:320px minmax(0,1fr);flex:1;min-height:0;background:var(--dshw-bg)}
+.dshw-attention-bar{flex:none;display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:7px 12px;border-bottom:1px solid var(--dshw-border);font-size:12px}
+.dshw-attention-bar--warn{background:var(--dshw-warn-soft);border-bottom-color:var(--dshw-warn-border)}
+.dshw-attention-bar--error{background:var(--dshw-danger-soft);border-bottom-color:var(--dshw-danger-border)}
+.dshw-attention-bar--neutral{background:var(--dshw-surface-2);color:var(--dshw-text-2)}
+.dshw-attention-bar__icon{display:inline-flex;flex:none;color:inherit}
+.dshw-attention-bar__icon .dshw-ico{width:15px;height:15px}
+.dshw-attention-bar--error .dshw-attention-bar__icon{color:var(--dshw-danger)}
+.dshw-attention-bar__text{color:var(--dshw-text);min-width:0}
+.dshw-attention-bar__links{display:flex;flex-wrap:wrap;gap:10px;margin-left:auto}
+.dshw-attention-bar__collapse{flex:none;border:0;background:transparent;color:var(--dshw-text-3);font-size:11.5px;cursor:pointer;padding:2px 5px;border-radius:6px}
+.dshw-attention-bar__collapse:hover{color:var(--dshw-text)}
+@container dshw (max-width:620px){.dshw-shell--detail .dshw-attention-bar{display:none}}
 
 /* tree ------------------------------------------------------------------- */
 .dshw-sidebar{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--dshw-tree-bg);border-right:1px solid var(--dshw-border)}
