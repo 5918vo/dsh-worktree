@@ -350,6 +350,17 @@ export function TaskDetail(props: any) {
     const [mergeDirtyStrategy, setMergeDirtyStrategy] = React.useState('refuse' as 'refuse' | 'stash')
     const [partialRestore, setPartialRestore] = React.useState(null as any)
     const [stashDropSha, setStashDropSha] = React.useState('')
+    // Focus a detail section when the board navigates from a row quick action.
+    // Navigation only — never triggers a Git operation.
+    React.useEffect(() => {
+      if (!props.focusSection) return
+      const id = props.focusSection === 'recovery' ? 'dshw-recovery-section' : 'dshw-acceptance-section'
+      const el = typeof document !== 'undefined' ? document.getElementById(id) : null
+      if (el) {
+        try { (el as any).focus({ preventScroll: false }) } catch { /* noop */ }
+        try { (el as any).scrollIntoView({ block: 'nearest' }) } catch { /* noop */ }
+      }
+    }, [props.focusToken])
     // One preview controller per task instance. It serialises requests so at most
     // one is in flight, letting an older background poll never overwrite a fresh
     // check requested by the merge dialog.
@@ -1219,7 +1230,7 @@ export function TaskDetail(props: any) {
       : (task.reviewStash ? [{ sha: '', source: 'review', ref: task.reviewStash, files: [], unverified: true }] : [])
 
     const stashNode = stashes.length
-      ? h(Card, { className: 'dshw-stash-card' },
+      ? h(Card, { className: 'dshw-stash-card', id: 'dshw-recovery-section', tabIndex: -1 },
         h(CardHead, { icon: 'archive', title: t.reviewStashTitle }),
         stashes.map((s: any, i: number) => h('div', { key: s.sha || s.ref || i, className: 'dshw-stash-entry', style: i ? { marginTop: '12px' } : null },
           h('div', { className: 'dshw-hint', style: { marginBottom: '8px' } },
@@ -1276,7 +1287,7 @@ export function TaskDetail(props: any) {
     // job while a task waits for review), and session/worktree details collapse
     // into one read-only "technical info" card.
     const acceptanceActionsCard = hasAcceptActions
-      ? h(Card, null,
+      ? h(Card, { id: 'dshw-acceptance-section', tabIndex: -1 },
         h(CardHead, {
           icon: 'checkCircle',
           title: t.acceptance,

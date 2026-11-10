@@ -437,5 +437,10 @@
   "attentionEmptyHint": "当前筛选下没有任务。",
   "clearFilter": "清除筛选",
   "resetSearchFilter": "重置搜索与筛选",
-  "currentTaskFilteredOut": "当前任务已不符合筛选条件"
+  "currentTaskFilteredOut": "当前任务已不符合筛选条件",
+  "changedFilesCount": "{n} 个改动文件",
+  "moreStates": "更多状态",
+  "quickRecover": "继续恢复",
+  "quickHandle": "去处理",
+  "quickReview": "查看验收"
 }

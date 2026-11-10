@@ -437,5 +437,10 @@
   "attentionEmptyHint": "No tasks match the current filter.",
   "clearFilter": "Clear filter",
   "resetSearchFilter": "Reset search and filter",
-  "currentTaskFilteredOut": "The open task no longer matches the filter"
+  "currentTaskFilteredOut": "The open task no longer matches the filter",
+  "changedFilesCount": "{n} changed file(s)",
+  "moreStates": "More status",
+  "quickRecover": "Continue recovery",
+  "quickHandle": "Respond",
+  "quickReview": "View review"
 }

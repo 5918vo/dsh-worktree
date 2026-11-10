@@ -3,6 +3,7 @@ import { Btn, Banner, Chip, Dot, Empty, Icon, IconBtn, Modal, Spinner, Toast } f
 import { AddProjectModal, PublishModal } from './modals'
 import { useToast } from './hooks'
 import { TaskDetail } from './task-detail'
+import { TaskRow } from './task-row'
 import { ProjectDetail } from './project-detail'
 import { upsertPublishedTask, visibleProjectViews } from './board-data'
 import { AttentionFilter } from './attention-filter'
@@ -29,6 +30,7 @@ export function BoardPage(props: any) {
     const [showArchived, setShowArchived] = React.useState(false)
     const [selectedProjectId, setSelectedProjectId] = React.useState('')
     const [selectedTaskId, setSelectedTaskId] = React.useState('')
+    const [detailFocus, setDetailFocus] = React.useState(null as any)
     const [showDetail, setShowDetail] = React.useState(false)
     const [collapsed, setCollapsed] = React.useState({})
     const [publishFor, setPublishFor] = React.useState(null)
@@ -527,8 +529,20 @@ export function BoardPage(props: any) {
       })
     }
 
-    const projectColor = (id: string) => {
-      let n = 0
+    // Row quick action: navigation only. "去处理/打开会话" opens the native
+    // session; "查看验收/继续恢复" selects the task and focuses a detail section.
+    const handleQuick = (action: string, view: any, projectId: string) => {
+      if (action === 'handle' || action === 'open-session') {
+        if (view.task.sessionId && !openTaskSession(view.task.sessionId)) notify(t.openSessionFailed, 'error')
+        return
+      }
+      if (action === 'review' || action === 'recover') {
+        selectTask(view.task.id, projectId)
+        setDetailFocus({ section: action === 'recover' ? 'recovery' : 'acceptance', token: Date.now() })
+      }
+    }
+
+    const projectColor = (id: string) => {      let n = 0
       for (let i = 0; i < id.length; i += 1) n = (n * 31 + id.charCodeAt(i)) | 0
       return ['blue', 'purple', 'green', 'orange'][Math.abs(n) % 4]
     }
@@ -594,56 +608,19 @@ export function BoardPage(props: any) {
             ? h('div', { className: 'dshw-task-list', role: 'list' }, item.tasks.map((v: any) => {
               const pendingKind = v.task.sessionId ? pendingMap[v.task.sessionId] : null
               const running = runningOf(v.task)
-              const active = selectedTaskId === v.task.id
-              // A running session is still in progress even after it has committed;
-              // show the status the Git snapshot alone cannot see.
-              const effectiveStatus = resolveStatus(v.snapshot.status, running)
-              const meta = statusMeta(t, effectiveStatus, pendingKind)
               const health = v.task.sessionId ? sessionHealth[v.task.sessionId] : null
-              const healthActive = !!health && !running
-              const dotTone = meta.pending && !meta.note ? 'warn' : healthActive ? (health.kind === 'error' ? 'error' : 'warn') : STATUS_TONE[effectiveStatus] || 'neutral'
-              const bound = !!v.task.sessionId
-              const terminal = effectiveStatus === 'merged' || effectiveStatus === 'cleaned'
-              // Cap the row at two visible labels; the rest collapse into +N so a
-              // 268px sidebar never overflows. Full detail lives in the tooltip.
-              const metaChips: Array<{ label: string; node: any }> = []
-              metaChips.push({ label: meta.label, node: h(Chip, { tone: meta.tone, small: true }, meta.label) })
-              if (meta.note) metaChips.push({ label: meta.note, node: h(Chip, { tone: 'warn', small: true }, meta.note) })
-              if (v.task.archivedAt) metaChips.push({ label: t.archived, node: h(Chip, { tone: 'neutral', small: true }, t.archived) })
-              if (v.snapshot.postMergeAhead > 0) metaChips.push({ label: postMergeLabel(t, v.snapshot.postMergeAhead), node: h(Chip, { tone: 'warn', small: true }, postMergeLabel(t, v.snapshot.postMergeAhead)) })
-              if (healthActive) {
-                const lbl = health.kind === 'error' ? t.sessionError : t.sessionInterrupted
-                metaChips.push({ label: lbl, node: h(Chip, { tone: health.kind === 'error' ? 'error' : 'warn', small: true }, lbl) })
-              }
-              if (v.snapshot.worktree.ahead > 0) metaChips.push({ label: v.snapshot.worktree.ahead + ' ' + t.commitsAhead, node: h('span', { className: 'dshw-task-count', title: v.snapshot.worktree.ahead + ' ' + t.commitsAhead }, h(Icon, { name: 'arrowUp' }), v.snapshot.worktree.ahead) })
-              if (v.snapshot.worktree.dirtyCount > 0) metaChips.push({ label: v.snapshot.worktree.dirtyCount + ' ' + t.dirty, node: h('span', { className: 'dshw-task-count', title: v.snapshot.worktree.dirtyCount + ' ' + t.dirty }, '±' + v.snapshot.worktree.dirtyCount) })
-              const MAX_META = 2
-              const visibleMeta = metaChips.slice(0, MAX_META)
-              const hiddenMeta = metaChips.slice(MAX_META)
-              return h('div', { key: v.task.id, role: 'listitem', className: 'dshw-task' + (active ? ' dshw-task--on' : '') },
-                h('button', {
-                  className: 'dshw-task-select',
-                  type: 'button',
-                  onClick: () => selectTask(v.task.id, pv.project.id),
-                  title: v.task.title,
-                  'aria-current': active ? 'true' : undefined,
-                },
-                  h(Dot, { tone: dotTone, pulse: meta.pending }),
-                  h('span', { className: 'dshw-task-main' },
-                    h('span', { className: 'dshw-task-title' }, v.task.title),
-                    h('span', { className: 'dshw-task-meta' },
-                      visibleMeta.map((chip) => chip.node),
-                      hiddenMeta.length
-                        ? h(Chip, { tone: 'neutral', small: true, title: hiddenMeta.map((chip) => chip.label).join('、') }, String(t.moreItems).replace('{n}', String(hiddenMeta.length)))
-                        : null))),
-                h('button', {
-                  className: 'dshw-task-open',
-                  type: 'button',
-                  title: bound ? t.openSessionBtn : t.noSession,
-                  'aria-label': (bound ? t.openSessionBtn : t.noSession) + ': ' + v.task.title,
-                  disabled: !bound,
-                  onClick: () => { if (bound && !openTaskSession(v.task.sessionId)) notify(t.openSessionFailed, 'error') },
-                }, h(Icon, { name: 'external' })))
+              return h(TaskRow, {
+                key: v.task.id,
+                t,
+                view: v,
+                attention: attnOf(v),
+                active: selectedTaskId === v.task.id,
+                running,
+                pendingKind,
+                health,
+                onSelect: (view: any) => selectTask(view.task.id, pv.project.id),
+                onQuick: (action: string, view: any) => handleQuick(action, view, pv.project.id),
+              })
             }))
             : h('div', { className: 'dshw-tree-inline-empty' },
               h('span', null, t.noTasks),
@@ -781,6 +758,8 @@ export function BoardPage(props: any) {
         followUps: allTasks.filter((v: any) => v.task.parentId === selectedTask.task.id),
         siblings: allTasks.filter((v: any) => v.task.id !== selectedTask.task.id && String(v.task.repoPath).toLowerCase() === String(selectedTask.task.repoPath).toLowerCase()),
         repoLockLabel: repoBusy[selectedTask.task.repoPath] || '',
+        focusSection: detailFocus ? detailFocus.section : undefined,
+        focusToken: detailFocus ? detailFocus.token : undefined,
         onRepoBusy: (active: boolean, label: string) => repoActionBusy(selectedTask.task.repoPath, active, label),
         onContinue: () => openContinue(selectedTask),
         onSelectTask: (id: string) => selectTask(id),

@@ -43,12 +43,18 @@ test('review: commits ahead or post-merge patches, never only dirty, never while
   assert.equal(deriveTaskAttention({ task: {}, snapshot: snap({ status: 'reviewing', worktree: { ahead: 2 } }) }).categories.has('review'), false)
 })
 
-test('recovery stays hidden while RECOVERY_UI_READY is false', () => {
-  assert.equal(RECOVERY_UI_READY, false)
-  const withOp = view('t', snap(), { pendingOp: { recoveryStatus: 'needs-manual' }, pendingStashes: [{ conflict: true }] })
-  const a = deriveTaskAttention({ task: withOp.task, snapshot: withOp.snapshot })
-  assert.equal(a.categories.has('recovery'), false)
-  assert.equal(a.quickAction !== 'recover', true)
+test('recovery: pendingOp journal triggers it; a plain stash reminder does not', () => {
+  assert.equal(RECOVERY_UI_READY, true)
+  const op = view('t', snap(), { pendingOp: { recoveryStatus: 'needs-manual' }, sessionId: 's' })
+  const a = deriveTaskAttention({ task: op.task, snapshot: op.snapshot })
+  assert.ok(a.categories.has('recovery'))
+  assert.equal(a.primaryAlert, 'recovery')
+  assert.equal(a.quickAction, 'recover')
+  // In-flight merge (repo locked) is not a stuck recovery.
+  assert.equal(deriveTaskAttention({ task: op.task, snapshot: op.snapshot, repoLockLabel: '合并' }).categories.has('recovery'), false)
+  // A normal saved stash is only a reminder, not a recovery category.
+  const st = view('s', snap(), { pendingStashes: [{ sha: 'x', ref: 'msg' }], sessionId: 's' })
+  assert.equal(deriveTaskAttention({ task: st.task, snapshot: st.snapshot }).categories.has('recovery'), false)
 })
 
 test('broken covers read failure / missing branch / status broken but not stale', () => {

@@ -62,7 +62,8 @@ export function KV(props: any) {
   }
 
 export function Card(props: any) {
-    return h('section', { className: cx('dshw-card', props.danger && 'dshw-card--danger', props.className) }, props.children)
+    const { danger, className, children, ...rest } = props
+    return h('section', Object.assign({ className: cx('dshw-card', danger && 'dshw-card--danger', className) }, rest), children)
   }
 
 export function CardHead(props: any) {

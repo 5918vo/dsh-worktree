@@ -35,20 +35,21 @@ export interface AttentionInput {
 }
 
 /**
- * The recovery backend (pendingOp / pendingStashes) is not populated by the
- * runtime and not exposed in the snapshot yet. Until it is, every recovery-
- * related surface stays hidden so we never show a permanently-zero category.
- * Flip this once the backend writes those fields and the snapshot exposes them.
+ * Recovery is backed by the durable merge journal (`task.pendingOp`) and the
+ * pending-stash list, both populated by the runtime and exposed on the task, so
+ * the recovery surfaces are enabled. Ordinary saved stashes are reminders only.
  */
-export const RECOVERY_UI_READY = false
+export const RECOVERY_UI_READY = true
 
 const ALERT_PRIORITY: AlertKind[] = ['recovery', 'pending', 'broken', 'post-merge', 'session']
 
-function isRecovery(task: any): boolean {
+function isRecovery(task: any, repoLockLabel?: string): boolean {
+  // While a Git action holds the repo the journal is "in flight", not stuck.
+  if (repoLockLabel) return false
   const op = task && task.pendingOp
-  if (op && op.recoveryStatus && op.recoveryStatus !== 'recovered') return true
-  const stashes: any[] = Array.isArray(task && task.pendingStashes) ? task.pendingStashes : []
-  return stashes.some((s) => s && (s.conflict === true || s.state === 'conflict'))
+  if (!op) return false
+  if (op.recoveryStatus === 'recovered') return false
+  return true
 }
 
 export function deriveTaskAttention(input: AttentionInput): TaskAttention {
@@ -71,8 +72,8 @@ export function deriveTaskAttention(input: AttentionInput): TaskAttention {
     if (postMerge > 0) alerts.push('post-merge')
   }
 
-  // recovery: gated behind the backend readiness switch.
-  if (RECOVERY_UI_READY && isRecovery(task)) {
+  // recovery: a stuck/incomplete merge journal (stashes alone are reminders).
+  if (RECOVERY_UI_READY && isRecovery(task, input.repoLockLabel)) {
     categories.add('recovery')
     alerts.push('recovery')
   }
