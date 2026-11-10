@@ -77,6 +77,12 @@ export const CSS = `
 .dshw-attention-option__check{width:13px;height:13px;color:var(--dshw-brand)}
 .dshw-tree-notice{display:flex;align-items:center;gap:6px;margin:2px 0 6px;padding:6px 8px;border:1px solid var(--dshw-warn-border);background:var(--dshw-warn-soft);border-radius:8px;font-size:11.5px;color:var(--dshw-warn)}
 .dshw-tree-notice .dshw-ico{width:13px;height:13px;flex:none}
+.dshw-pick-list{display:flex;flex-direction:column;gap:4px;margin-top:10px;max-height:320px;overflow:auto}
+.dshw-pick-item{display:flex;align-items:center;gap:9px;padding:8px;border:1px solid var(--dshw-border);border-radius:8px;background:var(--dshw-surface);text-align:left;cursor:pointer}
+.dshw-pick-item:hover,.dshw-pick-item:focus-visible{border-color:var(--dshw-brand-border);background:var(--dshw-brand-soft);outline:none}
+.dshw-pick-main{display:flex;flex-direction:column;min-width:0}
+.dshw-pick-name{font-size:12.5px;font-weight:600;color:var(--dshw-text)}
+.dshw-pick-path{font-size:11px;color:var(--dshw-text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* project row ------------------------------------------------------------ */
 .dshw-project{display:flex;align-items:center;gap:1px;margin-top:5px;padding:2px 1px;border-radius:8px;transition:background .12s}

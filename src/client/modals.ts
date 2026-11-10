@@ -1,5 +1,5 @@
 import { React, h } from './ui'
-import { Btn, Field, Icon, Modal, Spinner, BranchCombobox } from './primitives'
+import { Banner, Btn, Field, Icon, Modal, Spinner, BranchCombobox } from './primitives'
 import { ModelCombobox } from './model-picker'
 import { useBranchInfo } from './hooks'
 import { appCtx, bindSession, getJson, post, postLong, withTimeout } from './context'
@@ -213,31 +213,50 @@ export function AddProjectModal(props: { t: any; onClose: () => void; onAdded: (
       err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null))
   }
 
-export function PublishModal(props: { t: any; project: any; cfg: any; parentView?: any; onClose: () => void; onRefresh: () => void; onError: (message: string) => void; onPublished: (task: any, project: any, warning?: string, continued?: boolean) => void }) {
+export function PublishModal(props: { t: any; project: any; cfg: any; parentView?: any; draft?: any; onDraft?: (draft: any) => void; onBackToProject?: () => void; onCheckPublished?: (info: any) => Promise<any>; onClose: () => void; onRefresh: () => void; onError: (message: string) => void; onPublished: (task: any, project: any, warning?: string, continued?: boolean) => void }) {
     const t = props.t
     const remotes = appCtx && appCtx.remote
     const project = props.project
     const cfg = props.cfg || {}
     const parentTask = props.parentView && props.parentView.task ? props.parentView.task : null
     const parentAhead = (props.parentView && props.parentView.snapshot && props.parentView.snapshot.postMergeAhead) || 0
+    const draft = props.draft || {}
     const branches = useBranchInfo(project.repoPath)
     // Continue tasks default to the predecessor's actual merge target, never the
     // project default (which may have moved since the merge).
     const [baseBranch, setBaseBranch] = React.useState(parentTask ? (parentTask.baseBranch || project.baseBranch || '') : (project.baseBranch || ''))
-    const [branchName, setBranchName] = React.useState('')
-    const [title, setTitle] = React.useState(parentTask ? String(parentTask.title) + String(t.continueTitleSuffix) : '')
-    const [description, setDescription] = React.useState('')
+    const [branchName, setBranchName] = React.useState(String(draft.branchName || ''))
+    const [title, setTitle] = React.useState(draft.title !== undefined ? String(draft.title) : (parentTask ? String(parentTask.title) + String(t.continueTitleSuffix) : ''))
+    const [description, setDescription] = React.useState(String(draft.description || ''))
     const [carryLeftover, setCarryLeftover] = React.useState(false)
     const [asPlain, setAsPlain] = React.useState(false)
     const [start, setStart] = React.useState(true)
     const [criteriaLibrary, setCriteriaLibrary] = React.useState([] as string[])
-    const [pickedCriteria, setPickedCriteria] = React.useState([] as string[])
-    const [manualCriteria, setManualCriteria] = React.useState('')
+    const [pickedCriteria, setPickedCriteria] = React.useState(Array.isArray(draft.pickedCriteria) ? draft.pickedCriteria : [])
+    const [manualCriteria, setManualCriteria] = React.useState(String(draft.manualCriteria || ''))
     const [busy, setBusy] = React.useState(false)
     const [err, setErr] = React.useState('')
+    const [unknown, setUnknown] = React.useState(false)
+    const [closeConfirm, setCloseConfirm] = React.useState(false)
     const [fieldErrors, setFieldErrors] = React.useState({} as any)
     const advancedRef = React.useRef(null)
     const submitRef = React.useRef(false)
+    const initialRef = React.useRef({ title, description, manualCriteria, pickedCriteria: pickedCriteria.slice(), branchName })
+    const dirty = title !== initialRef.current.title
+      || description !== initialRef.current.description
+      || manualCriteria !== initialRef.current.manualCriteria
+      || branchName !== initialRef.current.branchName
+      || pickedCriteria.join('|') !== initialRef.current.pickedCriteria.join('|')
+    React.useEffect(() => {
+      if (props.onDraft) props.onDraft({ title, description, manualCriteria, pickedCriteria, branchName })
+    }, [title, description, manualCriteria, pickedCriteria.join('|'), branchName])
+    const handleClose = () => {
+      if (busy) return
+      if (dirty) { setCloseConfirm(true); return }
+      props.onClose()
+    }
+    const keepDraftAndClose = () => { if (props.onDraft) props.onDraft({ title, description, manualCriteria, pickedCriteria, branchName }); props.onClose() }
+    const discardAndClose = () => { if (props.onDraft) props.onDraft(null); props.onClose() }
     const [modelCatalog, setModelCatalog] = React.useState(null as any)
     const [modelChoice, setModelChoice] = React.useState(null as any)
     const [modelLoading, setModelLoading] = React.useState(true)
@@ -337,16 +356,33 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
         props.onPublished(publishedTask, project, undefined, !!(parentTask && !asPlain))
       } catch (e: any) {
         if (e && (e as any).timeout) {
-          // The request may have reached the server; reconcile the board instead of trapping the user.
+          // Unknown result: never auto-resubmit; offer a manual reconcile.
+          setUnknown(true)
+          setErr((e && e.message) || t.publishTimeout)
           props.onRefresh()
-          props.onError((e && e.message) || t.failed)
-          props.onClose()
         } else {
           setErr((e && e.message) || t.failed)
           props.onRefresh()
         }
       } finally {
         submitRef.current = false
+        setBusy(false)
+      }
+    }
+
+    const checkResult = async () => {
+      if (busy) return
+      setBusy(true)
+      setErr('')
+      try {
+        const found = props.onCheckPublished
+          ? await props.onCheckPublished({ projectId: project.id, branchName: branchName.trim(), title: title.trim() })
+          : null
+        if (found) props.onPublished(found, project)
+        else setErr(t.publishResultNotFound)
+      } catch (e: any) {
+        setErr((e && e.message) || t.failed)
+      } finally {
         setBusy(false)
       }
     }
@@ -361,15 +397,18 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
       : h('input', { id: 'dshw-publish-base', className: 'dshw-input', value: baseBranch, onChange: (e: any) => setBaseBranch(e.target.value), placeholder: t.baseBranch })
 
     const footer = [
-      h(Btn, { key: 'cancel', onClick: props.onClose, disabled: busy }, t.cancel),
-      h(Btn, {
-        key: 'submit',
-        variant: 'primary',
-        type: 'submit',
-        form: 'dshw-publish-form',
-        disabled: busy,
-        'aria-busy': busy ? 'true' : undefined,
-      }, busy ? h(Spinner) : null, busy ? t.publishing : t.publish),
+      props.onBackToProject && !parentTask ? h(Btn, { key: 'back', disabled: busy, onClick: () => props.onBackToProject && props.onBackToProject() }, t.backToProject) : null,
+      h(Btn, { key: 'cancel', onClick: handleClose, disabled: busy }, t.cancel),
+      unknown
+        ? h(Btn, { key: 'check', variant: 'primary', disabled: busy, onClick: () => void checkResult() }, busy ? h(Spinner) : null, t.refreshConfirm)
+        : h(Btn, {
+          key: 'submit',
+          variant: 'primary',
+          type: 'submit',
+          form: 'dshw-publish-form',
+          disabled: busy,
+          'aria-busy': busy ? 'true' : undefined,
+        }, busy ? h(Spinner) : null, busy ? t.publishing : t.publish),
     ]
 
     return h(Modal, {
@@ -378,9 +417,16 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
       icon: 'play',
       size: 'lg',
       busy,
-      onClose: props.onClose,
-      footer,
+      onClose: handleClose,
+      footer: footer.filter(Boolean),
     },
+      closeConfirm
+        ? h(Banner, { tone: 'warn', icon: 'alert', title: t.draftConfirmTitle },
+          h('div', null, t.draftConfirmHint),
+          h('div', { className: 'dshw-inline', style: { gap: '8px', marginTop: '8px' } },
+            h(Btn, { size: 'sm', onClick: keepDraftAndClose }, t.draftKeep),
+            h(Btn, { size: 'sm', variant: 'danger', onClick: discardAndClose }, t.draftDiscard)))
+        : null,
       h('form', {
         id: 'dshw-publish-form',
         onSubmit: (e: any) => { e.preventDefault(); void submit() },
@@ -388,9 +434,11 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
       h('div', { className: 'dshw-form-rows' },
         h('div', { className: 'dshw-form-row' },
           h('label', null, t.projects),
-          h('div', { className: 'dshw-readonly-box' },
-            h('span', { className: 'dshw-folder-tile dshw-folder-tile--blue' }, h(Icon, { name: 'folder' })),
-            h('span', { className: 'dshw-nowrap' }, project.name))),
+          h('div', null,
+            h('div', { className: 'dshw-readonly-box' },
+              h('span', { className: 'dshw-folder-tile dshw-folder-tile--blue' }, h(Icon, { name: 'folder' })),
+              h('span', { className: 'dshw-nowrap' }, project.name)),
+            h('div', { className: 'dshw-hint', style: { marginTop: '4px' } }, project.repoPath))),
         parentTask
           ? h('div', { className: 'dshw-form-row' },
             h('label', null, t.parentTask),

@@ -449,5 +449,19 @@
   "attentionViewRecovery": "View recovery tasks",
   "attentionViewPending": "View pending",
   "attentionViewBroken": "View broken tasks",
-  "attentionStale": "Status may be out of date · last updated at {time}"
+  "attentionStale": "Status may be out of date · last updated at {time}",
+  "selectProjectTitle": "Choose a project",
+  "selectProjectHint": "Choose the project to publish the task to.",
+  "selectProjectSearch": "Search projects…",
+  "selectProjectEmpty": "No matching projects",
+  "selectProjectNoProjectHint": "No projects yet. Add a Git repository project first.",
+  "backToProject": "Back to project picker",
+  "draftConfirmTitle": "Discard unpublished changes?",
+  "draftConfirmHint": "Keep the draft (for this workbench session only) or discard the changes.",
+  "draftKeep": "Keep draft",
+  "draftDiscard": "Discard changes",
+  "publishResultUnknown": "Publish result unknown: the request timed out — the task may have been created.",
+  "publishResultNotFound": "Task still not found. Refresh again later; do not resubmit.",
+  "refreshConfirm": "Refresh & confirm",
+  "publishPartialTitle": "Partially succeeded"
 }

@@ -449,5 +449,19 @@
   "attentionViewRecovery": "查看恢复任务",
   "attentionViewPending": "查看待处理",
   "attentionViewBroken": "查看异常任务",
-  "attentionStale": "状态可能已过期 · 最近更新于 {time}"
+  "attentionStale": "状态可能已过期 · 最近更新于 {time}",
+  "selectProjectTitle": "选择发布项目",
+  "selectProjectHint": "选择要发布任务的项目。",
+  "selectProjectSearch": "搜索项目…",
+  "selectProjectEmpty": "没有匹配的项目",
+  "selectProjectNoProjectHint": "还没有项目，请先新增一个 Git 仓库项目。",
+  "backToProject": "返回项目选择",
+  "draftConfirmTitle": "放弃未发布的修改？",
+  "draftConfirmHint": "可以保留草稿（仅当前工作台会话内有效），或直接放弃。",
+  "draftKeep": "保留草稿",
+  "draftDiscard": "放弃修改",
+  "publishResultUnknown": "发布结果待确认：请求超时，任务可能已创建。",
+  "publishResultNotFound": "仍未找到该任务，请稍后刷新确认，不要重复提交。",
+  "refreshConfirm": "刷新确认",
+  "publishPartialTitle": "部分成功"
 }

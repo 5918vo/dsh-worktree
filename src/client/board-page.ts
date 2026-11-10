@@ -1,6 +1,7 @@
 import { React, h, useStyles } from './ui'
 import { Btn, Banner, Chip, Dot, Empty, Icon, IconBtn, Modal, Spinner, Toast } from './primitives'
 import { AddProjectModal, PublishModal } from './modals'
+import { PublishTargetModal, findPublishedTask, resolvePublishEntry } from './publish-flow'
 import { useToast } from './hooks'
 import { TaskDetail } from './task-detail'
 import { TaskRow } from './task-row'
@@ -36,6 +37,10 @@ export function BoardPage(props: any) {
     const [collapsed, setCollapsed] = React.useState({})
     const [publishFor, setPublishFor] = React.useState(null)
     const [publishParent, setPublishParent] = React.useState(null)
+    const [publishEntryOpen, setPublishEntryOpen] = React.useState(false)
+    const [publishEntryPending, setPublishEntryPending] = React.useState(false)
+    const [publishDraft, setPublishDraft] = React.useState(null)
+    const [partialNotice, setPartialNotice] = React.useState(null as any)
     const [cleanupPredecessor, setCleanupPredecessor] = React.useState(null)
     const [repoBusy, setRepoBusy] = React.useState({} as Record<string, string>)
     const [taskBusy, setTaskBusy] = React.useState({} as Record<string, string>)
@@ -530,6 +535,24 @@ export function BoardPage(props: any) {
       })
     }
 
+    // Text "publish" entry: use the selected task/project; otherwise ask which
+    // project (never guess). With no projects, guide to adding one first.
+    const openPublishEntry = () => {
+      const action = resolvePublishEntry(selectedProject && selectedProject.project, projectViews.length)
+      if (action === 'form') { setPublishParent(null); setPublishFor((selectedProject as any).project); return }
+      if (action === 'add') { setPublishEntryPending(true); setProjectModalOpen(true); return }
+      setPublishEntryOpen(true)
+    }
+    /** Reconcile an unknown-result publish by looking for the task after refresh. */
+    const checkPublished = async (info: any) => {
+      const d: any = await getJson('projects?includeArchived=1')
+      const list: any[] = (d && d.projects) || []
+      setProjectViews(list)
+      const pv = list.find((p: any) => p.project.id === info.projectId)
+      if (!pv) return null
+      return findPublishedTask(pv.tasks.map((v: any) => v.task), info)
+    }
+
     // Row quick action: navigation only. "去处理/打开会话" opens the native
     // session; "查看验收/继续恢复" selects the task and focuses a detail section.
     const handleQuick = (action: string, view: any, projectId: string) => {
@@ -689,6 +712,7 @@ export function BoardPage(props: any) {
             counts: filterCounts,
             onChange: (next: string) => setAttentionFilter(next),
           }),
+          h(Btn, { variant: 'primary', size: 'sm', icon: 'plus', onClick: () => openPublishEntry() }, t.publish),
           h(IconBtn, {
             icon: 'refresh',
             label: t.refresh,
@@ -788,9 +812,22 @@ export function BoardPage(props: any) {
       detailBody = h(Empty, { title: t.selectTask, icon: 'file', className: 'dshw-detail-empty' })
     }
 
+    const partialBanner = partialNotice && selectedTask && partialNotice.taskId === selectedTask.task.id
+      ? h(Banner, {
+        tone: 'warn',
+        icon: 'alert',
+        title: t.publishPartialTitle,
+        actions: h('div', { className: 'dshw-inline', style: { gap: '8px' } },
+          !selectedTask.task.sessionId
+            ? h(Btn, { size: 'sm', onClick: () => { void createTaskSession(selectedTask) } }, t.createSession)
+            : null,
+          h(Btn, { size: 'sm', onClick: () => setPartialNotice(null) }, t.close)),
+      }, partialNotice.message)
+      : null
+
     const detailNode = h('main', { className: 'dshw-detail' },
       h('div', { className: 'dshw-detail-scroll', ref: detailRef },
-        h('div', { className: 'dshw-detail-inner' }, mobileBar),
+        h('div', { className: 'dshw-detail-inner' }, mobileBar, partialBanner),
         detailBody))
 
     const runPredecessorCleanup = async () => {
@@ -818,6 +855,10 @@ export function BoardPage(props: any) {
           project: publishFor,
           cfg,
           parentView: publishParent ? publishParent.view : undefined,
+          draft: publishDraft,
+          onDraft: (draft: any) => setPublishDraft(draft),
+          onBackToProject: () => { setPublishFor(null); setPublishParent(null); setPublishEntryOpen(true) },
+          onCheckPublished: checkPublished,
           onClose: () => { setPublishFor(null); setPublishParent(null) },
           onRefresh: () => { void refresh() },
           onError: (message: string) => notify(message, 'error'),
@@ -825,6 +866,7 @@ export function BoardPage(props: any) {
             const predecessor = continued && publishParent ? publishParent.view : null
             setPublishFor(null)
             setPublishParent(null)
+            setPublishDraft(null)
             if (project && project.id) setSelectedProjectId(project.id)
             if (task && task.id) setSelectedTaskId(task.id)
             setShowDetail(true)
@@ -843,7 +885,19 @@ export function BoardPage(props: any) {
               setCleanupPredecessor(predecessor)
             }
             notify(warning || String(t.published).replace('{branch}', task && task.branch ? task.branch : ''), warning ? 'error' : 'ok')
+            if (warning && task && task.id) setPartialNotice({ taskId: task.id, message: warning })
+            else setPartialNotice(null)
           },
+        })
+        : null,
+      publishEntryOpen
+        ? h(PublishTargetModal, {
+          key: 'pick',
+          t,
+          projects: projectViews.map((pv: any) => pv.project),
+          onPick: (project: any) => { setPublishEntryOpen(false); setPublishFor(project) },
+          onAddProject: () => { setPublishEntryPending(true); setProjectModalOpen(true) },
+          onClose: () => { setPublishEntryOpen(false); setPublishEntryPending(false) },
         })
         : null,
       projectModalOpen
@@ -858,6 +912,11 @@ export function BoardPage(props: any) {
               setSelectedTaskId('')
               setShowDetail(true)
               notify(String(t.projectAdded).replace('{name}', project.name))
+            }
+            if (publishEntryPending && project && project.id) {
+              setPublishEntryPending(false)
+              setPublishEntryOpen(false)
+              setPublishFor(project)
             }
             void refresh()
           },
