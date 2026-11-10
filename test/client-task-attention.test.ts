@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   RECOVERY_UI_READY,
   categoryKey,
+  computeFilterCounts,
   deriveTaskAttention,
   filterViewsByAttention,
   quickActionKey,
@@ -108,4 +109,24 @@ test('locale keys are stable', () => {
   assert.equal(categoryKey('recovery'), 'attentionRecovery')
   assert.equal(quickActionKey('review'), 'quickReview')
   assert.equal(quickActionKey('open-session'), 'openSessionBtn')
+})
+
+test('computeFilterCounts: recovery counts archived tasks only when ready', () => {
+  const archived = { task: { id: 'a' }, snapshot: {} }
+  const visible = { task: { id: 'v' }, snapshot: {} }
+  const get = (v: any): any => ({
+    categories: new Set(v === archived ? ['recovery'] : ['review']),
+    primaryAlert: null,
+    extraAlerts: [],
+    quickAction: null,
+    stale: false,
+  })
+  const off = computeFilterCounts([visible], [archived, visible], get, false)
+  assert.equal(off.recovery, 0)
+  assert.equal(off.review, 1)
+  assert.equal(off.all, 1)
+  assert.equal(off.total, 1)
+  const on = computeFilterCounts([visible], [archived, visible], get, true)
+  assert.equal(on.recovery, 1)
+  assert.equal(on.total, 2)
 })

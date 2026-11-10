@@ -5,6 +5,8 @@ import { useToast } from './hooks'
 import { TaskDetail } from './task-detail'
 import { ProjectDetail } from './project-detail'
 import { upsertPublishedTask, visibleProjectViews } from './board-data'
+import { AttentionFilter } from './attention-filter'
+import { RECOVERY_UI_READY, computeFilterCounts, deriveTaskAttention } from './task-attention'
 import { appCtx, bindSession, getJson, post, postLong } from './context'
 import { uuid } from './format'
 import { STATUS_TONE, pendingLabel, postMergeLabel, resolveStatus, statusMeta } from './status'
@@ -20,6 +22,8 @@ export function BoardPage(props: any) {
     const [refreshing, setRefreshing] = React.useState(false)
     const [err, setErr] = React.useState('')
     const [query, setQuery] = React.useState('')
+    const [attentionFilter, setAttentionFilter] = React.useState('all')
+    const [lastOkAt, setLastOkAt] = React.useState(0)
     // Archived tasks are hidden from the sidebar by default; this toggle reveals
     // them so they can be reviewed or restored.
     const [showArchived, setShowArchived] = React.useState(false)
@@ -42,6 +46,7 @@ export function BoardPage(props: any) {
     const bindingRef = React.useRef(new Set<string>())
     const searchRef = React.useRef(null)
     const detailRef = React.useRef(null)
+    const listTitleRef = React.useRef(null)
     const shellRef = React.useRef(null)
     const failuresRef = React.useRef(0)
     const onlineRef = React.useRef(true)
@@ -69,6 +74,7 @@ export function BoardPage(props: any) {
         })
         failuresRef.current = 0
         onlineRef.current = true
+        setLastOkAt(Date.now())
         setErr('')
       } catch (e: any) {
         if (seq !== refreshSeqRef.current) return
@@ -264,9 +270,26 @@ export function BoardPage(props: any) {
     }
 
     const allTasks = projectViews.flatMap((pv: any) => pv.tasks)
+    // Unified attention derivation — the single source for filter counts, the
+    // summary bar and each task row (so the three can never drift).
+    const attentionStale = !!err
+    const attentionMap = new Map<string, any>()
+    for (const v of allTasks) {
+      attentionMap.set(v.task.id, deriveTaskAttention({
+        task: v.task,
+        snapshot: v.snapshot,
+        pendingKind: v.task.sessionId ? pendingMap[v.task.sessionId] : null,
+        running: v.task.sessionId ? !!sessionMap[v.task.sessionId] : null,
+        health: v.task.sessionId ? sessionHealth[v.task.sessionId] : null,
+        stale: attentionStale,
+      }))
+    }
+    const attnOf = (v: any) => attentionMap.get(v.task.id)
     // Sidebar/detail rows with archived tasks hidden unless the toggle is on.
     const shownViews: any[] = visibleProjectViews(projectViews, showArchived)
     const archivedCount = allTasks.filter((v: any) => !!v.task.archivedAt).length
+    const visibleTasks = shownViews.flatMap((pv: any) => pv.tasks)
+    const filterCounts = computeFilterCounts(visibleTasks, allTasks, attnOf, RECOVERY_UI_READY)
     // Look up the selected project from the visible rows so its overview counts
     // match the sidebar; fall back to the full list for an archived-only project.
     const selectedProject =
@@ -511,24 +534,33 @@ export function BoardPage(props: any) {
     }
 
     const q = query.trim().toLowerCase()
-    const filtered = shownViews.map((pv: any) => {
+    const filterActive = attentionFilter !== 'all'
+    // The recovery view also shows archived affected tasks (per spec).
+    const baseViews = attentionFilter === 'recovery' ? visibleProjectViews(projectViews, true) : shownViews
+    const filtered = baseViews.map((pv: any) => {
+      const catTasks = filterActive
+        ? pv.tasks.filter((v: any) => { const a = attnOf(v); return !!a && a.categories.has(attentionFilter as any) })
+        : pv.tasks
       const nameHit = !q || pv.project.name.toLowerCase().includes(q) || pv.project.repoPath.toLowerCase().includes(q)
-      const tasks = nameHit
-        ? pv.tasks
-        : pv.tasks.filter((v: any) => {
-          const pending = v.task.sessionId && pendingMap[v.task.sessionId]
-          return String(v.task.title).toLowerCase().includes(q)
-            || String(v.task.branch || '').toLowerCase().includes(q)
-            || String(pendingLabel(t, pending) || '').toLowerCase().includes(q)
-        })
+      const tasks = !q ? catTasks : catTasks.filter((v: any) => {
+        const pending = v.task.sessionId && pendingMap[v.task.sessionId]
+        return nameHit
+          || String(v.task.title).toLowerCase().includes(q)
+          || String(v.task.branch || '').toLowerCase().includes(q)
+          || String(pendingLabel(t, pending) || '').toLowerCase().includes(q)
+      })
       return { pv, nameHit, tasks }
-    }).filter((item: any) => !q || item.nameHit || item.tasks.length > 0)
+    }).filter((item: any) => item.tasks.length > 0 || (!q && !filterActive))
 
     const totalTasks = shownViews.reduce((sum: number, pv: any) => sum + pv.tasks.length, 0)
+    const selectedHidden = !!(selectedTask && filterActive && (() => {
+      const a = selectedTask ? attnOf(selectedTask) : null
+      return !a || !a.categories.has(attentionFilter as any)
+    })())
 
     const projectRow = (item: any) => {
       const pv = item.pv
-      const isOpen = q ? true : !collapsed[pv.project.id]
+      const isOpen = filterActive || q ? true : !collapsed[pv.project.id]
       const activeProject = selectedProjectId === pv.project.id && !selectedTaskId
       const color = projectColor(pv.project.id)
       return h('div', { key: pv.project.id, role: 'listitem' },
@@ -638,11 +670,19 @@ export function BoardPage(props: any) {
             h('h3', null, t.noProjects),
             h('p', null, t.noProjectsHint),
             h(Btn, { variant: 'primary', size: 'sm', icon: 'plus', onClick: () => setProjectModalOpen(true) }, t.addProject))
-          : h('div', { className: 'dshw-tree-empty' },
-            h('div', { className: 'dshw-empty-icon' }, h(Icon, { name: 'search' })),
-            h('h3', null, t.noMatch),
-            h('p', null, t.noMatchHint),
-            h(Btn, { size: 'sm', onClick: () => setQuery('') }, t.clearSearch))
+          : filterActive
+            ? h('div', { className: 'dshw-tree-empty' },
+              h('div', { className: 'dshw-empty-icon' }, h(Icon, { name: 'alert' })),
+              h('h3', null, t.attentionEmptyTitle),
+              h('p', null, t.attentionEmptyHint),
+              h('div', { className: 'dshw-inline', style: { gap: '8px' } },
+                h(Btn, { size: 'sm', onClick: () => setAttentionFilter('all') }, t.clearFilter),
+                q ? h(Btn, { size: 'sm', onClick: () => { setAttentionFilter('all'); setQuery('') } }, t.resetSearchFilter) : null))
+            : h('div', { className: 'dshw-tree-empty' },
+              h('div', { className: 'dshw-empty-icon' }, h(Icon, { name: 'search' })),
+              h('h3', null, t.noMatch),
+              h('p', null, t.noMatchHint),
+              h(Btn, { size: 'sm', onClick: () => setQuery('') }, t.clearSearch))
         : h('div', { role: 'list', 'aria-label': t.projects }, filtered.map(projectRow))
 
     const treeNode = h('section', { className: 'dshw-sidebar', 'aria-label': t.projects },
@@ -664,23 +704,30 @@ export function BoardPage(props: any) {
             'aria-label': t.search,
             onChange: (e: any) => setQuery(e.target.value),
           })),
-        h(IconBtn, {
-          icon: 'refresh',
-          label: t.refresh,
-          disabled: refreshing,
-          onClick: () => { void refresh(true).then(() => notify(t.refreshed)) },
-        }, refreshing ? h(Spinner) : null),
-        archivedCount > 0
-          ? h(IconBtn, {
-            icon: 'archive',
-            label: showArchived ? t.hideArchived : t.showArchived,
-            title: String(t.archiveToggleTitle).replace('{n}', String(archivedCount)),
-            'aria-pressed': showArchived ? 'true' : 'false',
-            className: showArchived ? 'dshw-icon-btn--on' : undefined,
-            onClick: () => setShowArchived((value: boolean) => !value),
-          })
-          : null,
-        h(IconBtn, { icon: 'plus', label: t.addProject, onClick: () => setProjectModalOpen(true) })),
+        h('div', { className: 'dshw-tree-tools' },
+          h(AttentionFilter, {
+            t,
+            value: attentionFilter,
+            counts: filterCounts,
+            onChange: (next: string) => setAttentionFilter(next),
+          }),
+          h(IconBtn, {
+            icon: 'refresh',
+            label: t.refresh,
+            disabled: refreshing,
+            onClick: () => { void refresh(true).then(() => notify(t.refreshed)) },
+          }, refreshing ? h(Spinner) : null),
+          archivedCount > 0
+            ? h(IconBtn, {
+              icon: 'archive',
+              label: showArchived ? t.hideArchived : t.showArchived,
+              title: String(t.archiveToggleTitle).replace('{n}', String(archivedCount)),
+              'aria-pressed': showArchived ? 'true' : 'false',
+              className: showArchived ? 'dshw-icon-btn--on' : undefined,
+              onClick: () => setShowArchived((value: boolean) => !value),
+            })
+            : null,
+          h(IconBtn, { icon: 'plus', label: t.addProject, onClick: () => setProjectModalOpen(true) }))),
       err
         ? projectViews.length
           ? h('div', { className: 'dshw-tree-status', role: 'status' },
@@ -695,7 +742,15 @@ export function BoardPage(props: any) {
                 h('button', { type: 'button', className: 'dshw-link-btn', onClick: () => void refresh(true) }, t.retry),
                 h('button', { type: 'button', className: 'dshw-link-btn', onClick: () => window.location.reload() }, t.reload))))
         : null,
-      h('div', { className: 'dshw-tree-scroll' }, treeBody),
+      h('div', { className: 'dshw-tree-scroll' },
+        h('h2', { ref: listTitleRef, tabIndex: -1, className: 'dshw-sr-only', id: 'dshw-task-list-title' }, t.projects),
+        selectedHidden
+          ? h('div', { className: 'dshw-tree-notice', role: 'status' },
+            h(Icon, { name: 'alert' }),
+            h('span', null, t.currentTaskFilteredOut),
+            h('button', { type: 'button', className: 'dshw-link-btn', onClick: () => setAttentionFilter('all') }, t.clearFilter))
+          : null,
+        treeBody),
       h('footer', { className: 'dshw-tree-foot' },
         h('span', null, projectViews.length + ' ' + t.projectUnit + ' · ' + totalTasks + ' ' + t.taskUnit),
         h('span', { className: 'dshw-tree-tag' }, 'worktree')))

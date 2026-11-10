@@ -169,3 +169,42 @@ export function filterViewsByAttention(views: any[], get: (v: any) => TaskAttent
     return !!attention && attention.categories.has(category)
   })
 }
+
+/**
+ * Counts for the filter panel + the filter-button badge. `visibleViews` drive
+ * every ordinary list; `allViews` additionally feed the recovery count so
+ * archived affected tasks are still counted there when the backend is ready.
+ */
+export function computeFilterCounts(
+  visibleViews: any[],
+  allViews: any[],
+  get: (v: any) => TaskAttention,
+  recoveryReady: boolean = RECOVERY_UI_READY,
+): Record<string, number> {
+  const visible = summarizeAttention(visibleViews, get)
+  const all = summarizeAttention(allViews, get)
+  const counts: Record<string, number> = {
+    all: (visibleViews || []).length,
+    pending: visible.counts.pending,
+    review: visible.counts.review,
+    broken: visible.counts.broken,
+    recovery: recoveryReady ? all.counts.recovery : 0,
+    total: 0,
+  }
+  const ids = new Set<string>()
+  for (const view of visibleViews || []) {
+    const attention = get(view)
+    if (attention && (attention.categories.has('pending') || attention.categories.has('review') || attention.categories.has('broken'))) {
+      if (view && view.task && view.task.id) ids.add(String(view.task.id))
+    }
+  }
+  if (recoveryReady) {
+    for (const view of allViews || []) {
+      const attention = get(view)
+      if (attention && attention.categories.has('recovery') && view && view.task && view.task.id) ids.add(String(view.task.id))
+    }
+  }
+  counts.total = ids.size
+  return counts
+}
+

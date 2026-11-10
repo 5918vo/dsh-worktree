@@ -426,5 +426,16 @@
   "criteriaSave": "Save",
   "criteriaEditPlaceholder": "Edit acceptance criterion",
   "longPathsTitle": "Windows long paths are disabled",
-  "longPathsHint": "Run `git config --global core.longpaths true`; otherwise worktrees with deep paths may fail."
+  "longPathsHint": "Run `git config --global core.longpaths true`; otherwise worktrees with deep paths may fail.",
+  "attentionAll": "All tasks",
+  "attentionPending": "Needs my action",
+  "attentionReview": "Ready for review",
+  "attentionRecovery": "Needs recovery",
+  "attentionBroken": "Broken tasks",
+  "attentionFilterTitle": "Filter by attention",
+  "attentionEmptyTitle": "No matching tasks",
+  "attentionEmptyHint": "No tasks match the current filter.",
+  "clearFilter": "Clear filter",
+  "resetSearchFilter": "Reset search and filter",
+  "currentTaskFilteredOut": "The open task no longer matches the filter"
 }
