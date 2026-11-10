@@ -289,6 +289,7 @@ export function BoardPage(props: any) {
         pendingKind: v.task.sessionId ? pendingMap[v.task.sessionId] : null,
         running: v.task.sessionId ? !!sessionMap[v.task.sessionId] : null,
         health: v.task.sessionId ? sessionHealth[v.task.sessionId] : null,
+        repoLockLabel: repoBusy[v.task.repoPath] || '',
         stale: attentionStale,
       }))
     }
