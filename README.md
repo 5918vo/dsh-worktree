@@ -1,6 +1,6 @@
 # DeepSeek Worktree 任务插件
 
-`@5318vo/dsh-worktree` · v1.4.0 · 最后更新：2026-11-08
+`@5318vo/dsh-worktree` · v1.7.0 · 最后更新：2026-11-15
 
 每个任务对应一个真实的 DSH 会话。发布任务时创建独立的 Git worktree 和任务分支，会话以 worktree 为工作目录出现在左侧工作区。任务对话、审批、追问、中止和继续均使用 DSH 原生能力，工作台负责发布、查看状态和验收。
 
@@ -20,6 +20,7 @@
 - **安全的危险操作**：清理和合并会展示确认信息；删除分支、强制清理只在对应操作可用时出现。
 - **响应式工作台**：宽屏双栏，窄屏单列查看详情，并提供返回项目列表按钮。
 - **可访问表单**：字段标签关联、必填校验、加载/失败/重试状态、弹窗焦点圈定和 Escape 关闭。
+- **统一控件**：按钮、标签、状态点、输入框、复选框、弹窗和 Toast 直接复用宿主共享的 UI 原语，与 DSH 其余界面保持同一套外观与交互。
 
 ## 使用流程
 
@@ -168,6 +169,7 @@ Git 状态与会话状态分开显示：`review` 只表示 worktree 有待验收
 - 更换配色只需修改这两个对象，其他样式不得写死颜色。
 - 宿主明暗主题通过 `dshw-dark` 类自动切换对应色板。
 - 状态色、终端面板、Toast、阴影和焦点环同样来自配色表。
+- 控件自身的配色由共享原语的 `--dsw-*` token 提供；`--dshw-*` 只负责看板自有布局、状态色和回落控件。
 
 ## 代码结构
 
@@ -185,7 +187,7 @@ src/client/
 ├─ format.ts                  # 时间、路径、文本、diff、复制
 ├─ timeline.ts                # 会话时间线与稳定 key
 ├─ status.ts                  # 状态到 tone / 文案的映射
-├─ primitives.ts              # Btn / Card / Chip / Modal / Field / Toast 等
+├─ primitives.ts              # 原语适配器（Button/Tag/StateDot/Input/Checkbox/Modal/Toast）
 ├─ hooks.ts                   # useBranchInfo、useToast
 ├─ modals.ts                  # 新增项目、发布任务
 ├─ task-detail.ts             # LiveCard、TaskDetail
@@ -201,6 +203,7 @@ src/client/
 - 新文案同时加入 `locale/en.json` 和 `locale/zh.json`，`src/client/i18n.ts` 不再维护第二份字典。
 - 新请求统一走 `src/client/context.ts` 的 `getJson` / `post`，它们带 token 刷新和 12s 超时。
 - 操作结果统一使用 `useToast` + `Toast`，不再在页面里复制计时器。
+- 控件统一走 `src/client/primitives.ts`：它转调宿主共享的 `@deepseek-ai/dsh-client-ui-primitives`，不要新增自绘控件。该模块在浏览器构建里保持 external，由 `factory(require)` 注入；宿主缺少它时自动回落到本地实现。
 
 ## HTTP API
 

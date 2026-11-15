@@ -2,6 +2,26 @@
 
 本文件记录 `@5318vo/dsh-worktree` 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.7.0] - 2026-11-15
+
+### 变更
+
+- 控件层改为复用宿主共享的 `@deepseek-ai/dsh-client-ui-primitives`：按钮、标签、状态点、输入框、复选框、弹窗、Toast 和图标全部转调包内原子组件，看板不再自绘这些控件。
+- 弹窗改用原语的 Modal（`headless` 保留原有版式）：焦点陷阱、Escape 关闭、遮罩点击、焦点归还和滚动锁由原语统一处理；`busy` 时弹窗拒绝关闭，Escape 与遮罩点击同时失效。
+- 弹窗自动聚焦改用原语的 `data-modal-autofocus` 标记。
+- Toast 的停留与淡出改由原语计时（`holdMs` + `onDone`），`useToast` 只负责发消息；同一条消息连续出现也会重新计时。
+- 图标改为映射到原语的 `Icon*OutlineRegular`，未映射的图标继续使用本地 sprite。
+- 样式收敛：`.dshw-ico` 拆出 `.dshw-ico-sprite` 承载本地 sprite 的描边，`.dshw-btn` / `.dshw-chip` / `.dshw-dot` / `.dshw-toast` 只保留作为回落样式。
+
+### 兼容
+
+- 浏览器构建把该原语模块保持为 external，不打进 `dist/client.js`；由 `factory(require)` 从宿主静态模块表注入。
+- 宿主缺少该模块或缺少必需导出时，控件自动回落到原有实现，并在控制台给出一次提示。
+
+### 测试
+
+- `npm run typecheck`、`npm run build`、`npm test`（165 项）通过。
+
 ## [1.6.0] - 2026-11-09
 
 ### 新增
