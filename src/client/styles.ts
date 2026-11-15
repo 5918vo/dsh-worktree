@@ -23,7 +23,9 @@ export const CSS = `
 .dshw-scope ::-webkit-scrollbar-thumb{background:var(--dshw-border-strong);border-radius:99px;border:3px solid transparent;background-clip:content-box}
 .dshw-scope ::-webkit-scrollbar-thumb:hover{background:var(--dshw-text-3);background-clip:content-box}
 
-.dshw-ico{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none;display:block}
+.dshw-ico{width:18px;height:18px;flex:none;display:block}
+/* The local sprite is stroke-drawn; shared icons ship their own paint. */
+.dshw-ico-sprite{stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
 
 /* shell ------------------------------------------------------------------ */
 .dshw-shell{position:relative;height:100%;min-height:0;container-type:inline-size;container-name:dshw;background:var(--dshw-bg);color:var(--dshw-text);overflow:hidden;display:flex;flex-direction:column}
@@ -228,6 +230,9 @@ export const CSS = `
 .dshw-btn--lg .dshw-ico{width:16px;height:16px}
 .dshw-btn--sm{height:28px;padding:0 9px;font-size:12px;border-radius:7px}
 .dshw-btn--sm .dshw-ico{width:13px;height:13px}
+/* Danger keeps the board's red outline on top of the shared outline button. */
+.dshw-btn-danger{color:var(--dshw-danger);border-color:color-mix(in srgb,var(--dshw-danger) 38%,var(--dshw-border))}
+.dshw-btn-danger:hover{background:var(--dshw-danger-soft);border-color:var(--dshw-danger);color:var(--dshw-danger)}
 .dshw-btn--ghost{border-color:transparent;background:transparent;color:var(--dshw-text-2)}
 .dshw-btn--ghost:hover{background:var(--dshw-surface-2);border-color:var(--dshw-border)}
 .dshw-icon-btn{width:32px;height:32px;flex:none;display:grid;place-items:center;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--dshw-text-2);transition:background .14s,color .14s,border-color .14s;padding:0}
@@ -236,10 +241,13 @@ export const CSS = `
 .dshw-icon-btn--sm{width:27px;height:27px;border-radius:7px}
 .dshw-icon-btn--sm .dshw-ico{width:14px;height:14px}
 .dshw-icon-btn--on{background:var(--dshw-brand-soft);color:var(--dshw-brand-strong);border-color:var(--dshw-brand-border)}
-.dshw-spinner{width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:dshw-spin .7s linear infinite;flex:none;display:inline-block}
+.dshw-spinner{flex:none;display:inline-block}
+.dshw-spinner--ring{width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:dshw-spin .7s linear infinite}
 @keyframes dshw-spin{to{transform:rotate(360deg)}}
 
 /* chips & dots ----------------------------------------------------------- */
+/* Fallback styling only: the shared Tag/StateDot own these when present. */
+.dshw-tag--sm{padding:0 6px;font-size:11px}
 .dshw-chip{display:inline-flex;align-items:center;gap:5px;height:21px;padding:0 8px;border-radius:999px;border:1px solid transparent;font-size:11px;font-weight:600;line-height:1;white-space:nowrap}
 .dshw-chip--brand{color:var(--dshw-brand-strong);background:var(--dshw-brand-soft);border-color:var(--dshw-brand-border)}
 .dshw-chip--warn{color:var(--dshw-warn);background:var(--dshw-warn-soft);border-color:var(--dshw-warn-border)}

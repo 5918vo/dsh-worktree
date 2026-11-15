@@ -19,7 +19,9 @@ await build({
   format: 'iife',
   target: ['chrome110', 'safari16', 'firefox115'],
   outfile: 'dist/client.js',
-  external: ['react', 'react-dom'],
+  // The host serves React and the shared UI primitives as static modules, so
+  // they must stay out of the bundle and be resolved through factory(require).
+  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
 })
 
 console.log('built dist/index.js and dist/client.js')

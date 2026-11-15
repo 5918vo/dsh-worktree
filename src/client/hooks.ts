@@ -39,20 +39,13 @@ export function useBranchInfo(repoPath: string, delay = 0) {
 
 export function useToast() {
   const [toast, setToast] = React.useState(null)
-  const timer = React.useRef(null)
+  const seq = React.useRef(0)
+  // The toast component owns its hold/fade timer; a new seq restarts it even when
+  // the same message is reported twice in a row.
   const notify = (message: string, kind?: string) => {
-    setToast({ message, kind: kind || 'ok' })
-    if (timer.current) window.clearTimeout(timer.current)
-    // Errors stay longer than success toasts (accessibility: enough time to read).
-    const ttl = kind === 'error' ? 6500 : 2800
-    timer.current = window.setTimeout(() => setToast(null), ttl)
+    seq.current += 1
+    setToast({ message, kind: kind || 'ok', seq: seq.current })
   }
-  React.useEffect(() => () => {
-    if (timer.current) window.clearTimeout(timer.current)
-  }, [])
-  const dismiss = () => {
-    if (timer.current) window.clearTimeout(timer.current)
-    setToast(null)
-  }
+  const dismiss = () => setToast(null)
   return { toast, notify, dismiss }
 }

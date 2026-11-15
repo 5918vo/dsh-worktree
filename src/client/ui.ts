@@ -14,6 +14,62 @@ export function initReact(react: any) {
   hostReact = react
 }
 
+export const PRIMITIVES_MODULE = '@deepseek-ai/dsh-client-ui-primitives'
+
+/** Exports the board relies on; a host that lacks any of them keeps the legacy atoms. */
+const REQUIRED_PRIMITIVES = [
+  'Button',
+  'Checkbox',
+  'DisclosureRow',
+  'Input',
+  'Modal',
+  'PathLabel',
+  'Pill',
+  'SegmentedControl',
+  'SegmentedTabs',
+  'StateDot',
+  'Switch',
+  'Tag',
+  'Toast',
+  'Tooltip',
+]
+
+let hostPrim: any = null
+
+/**
+ * The host registers its shared UI primitives as a static module, so this is a
+ * synchronous require. Everything optional is probed at call time through
+ * `prim()`; only the atoms the board cannot live without gate the whole switch.
+ */
+export function initPrimitives(require: (id: string) => any) {
+  let mod: any
+  try {
+    mod = require(PRIMITIVES_MODULE)
+  } catch (error) {
+    console.warn('[dsh-worktree] UI primitives unavailable, using built-in controls', error)
+    hostPrim = null
+    return
+  }
+  const missing = REQUIRED_PRIMITIVES.filter((name) => mod == null || typeof mod[name] !== 'function')
+  if (missing.length > 0) {
+    console.warn('[dsh-worktree] UI primitives incomplete, using built-in controls; missing:', missing.join(', '))
+    hostPrim = null
+    return
+  }
+  hostPrim = mod
+}
+
+/** The host primitives module, or null when this host predates it. */
+export function prim(): any {
+  return hostPrim
+}
+
+/** One primitive export, or undefined so callers can fall back per component. */
+export function primOf(name: string): any {
+  const value = hostPrim ? hostPrim[name] : undefined
+  return typeof value === 'function' ? value : undefined
+}
+
 export function h(type: any, props?: any, ...children: any[]): any {
   if (!hostReact) throw new Error('React is not initialized')
   return hostReact.createElement(type, props, ...children)

@@ -1,4 +1,4 @@
-import { initReact, React, h } from './client/ui'
+import { initPrimitives, initReact, React, h } from './client/ui'
 import { setAppCtx } from './client/context'
 import { FALLBACK, pickDict } from './client/i18n'
 import { BoardIcon, BoardPage } from './client/board-page'
@@ -11,6 +11,7 @@ type Req = (m: string) => any
 /** factory(require) is called by window.__ModuleLoader__ with a module resolver. */
 export function factory(require: Req) {
   initReact(require('react'))
+  initPrimitives(require)
 
   return {
     inject: ['slots', 'locale', 'remote', 'remote.session', 'remote.directoryPicker', 'remote.workspace', 'uiSession'],
