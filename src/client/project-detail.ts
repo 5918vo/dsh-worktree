@@ -1,5 +1,5 @@
 import { React, h } from './ui'
-import { Banner, Btn, Card, CardHead, CopyBtn, Icon, KV, MenuItem, Modal, Spinner, Stat, BranchCombobox } from './primitives'
+import { Banner, Btn, Card, CardHead, Checkbox, CopyBtn, Icon, KV, MenuItem, Modal, Spinner, Stat, BranchCombobox, TextInput } from './primitives'
 import { useBranchInfo } from './hooks'
 import { post } from './context'
 import { copyText, cx } from './format'
@@ -102,7 +102,7 @@ export function ProjectDetail(props: any) {
         : null
     const branchControl = branches.data
       ? h(BranchCombobox, { t, value: baseBranch, onChange: setBaseBranch, branchInfo: branches.data, id: 'dshw-project-base' })
-      : h('input', { id: 'dshw-project-base', className: 'dshw-input', value: baseBranch, onChange: (e: any) => setBaseBranch(e.target.value), placeholder: t.baseBranch })
+      : h(TextInput, { id: 'dshw-project-base', value: baseBranch, onChange: (e: any) => setBaseBranch(e.target.value), placeholder: t.baseBranch })
 
     const deleteModal = deleteOpen
       ? h(Modal, {
@@ -115,7 +115,7 @@ export function ProjectDetail(props: any) {
         busy: busy === 'del',
         onClose: () => { if (busy !== 'del') setDeleteOpen(false) },
         footer: [
-          h(Btn, { key: 'c', onClick: () => setDeleteOpen(false), disabled: busy === 'del', 'data-autofocus': true }, t.cancel),
+          h(Btn, { key: 'c', onClick: () => setDeleteOpen(false), disabled: busy === 'del', 'data-modal-autofocus': true }, t.cancel),
           h(Btn, {
             key: 'ok',
             variant: 'danger',
@@ -135,21 +135,21 @@ export function ProjectDetail(props: any) {
           h(KV, { label: t.deleteProjectRecords }, counts.total + ' ' + t.taskUnit),
           h(KV, { label: t.deleteProjectBase }, h('span', { className: 'dshw-mono' }, project.baseBranch))),
         counts.total > 0
-          ? h('label', { className: 'dshw-check' },
-            h('input', { type: 'checkbox', checked: withTasks, onChange: (e: any) => setWithTasks(e.target.checked) }),
-            h('span', { className: 'dshw-check-copy' }, t.withTasks))
+          ? h(Checkbox, {
+            className: 'dshw-check',
+            checked: withTasks,
+            onChange: (next: boolean) => setWithTasks(next),
+            label: h('span', { className: 'dshw-check-copy' }, t.withTasks),
+          })
           : null,
         counts.total > 0
-          ? h('label', { className: 'dshw-check' },
-            h('input', {
-              type: 'checkbox',
-              checked: withWorktrees,
-              disabled: !withTasks,
-              'aria-label': t.withWorktrees,
-              'aria-describedby': 'dshw-delete-worktrees-hint',
-              onChange: (e: any) => setWithWorktrees(e.target.checked),
-            }),
-            h('span', { className: 'dshw-check-copy' }, t.withWorktrees, h('small', { id: 'dshw-delete-worktrees-hint' }, t.withWorktreesHint)))
+          ? h(Checkbox, {
+            className: 'dshw-check',
+            checked: withWorktrees,
+            disabled: !withTasks,
+            onChange: (next: boolean) => setWithWorktrees(next),
+            label: h('span', { className: 'dshw-check-copy' }, t.withWorktrees, h('small', { id: 'dshw-delete-worktrees-hint' }, t.withWorktreesHint)),
+          })
           : null,
         err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null)
       : null

@@ -1,5 +1,5 @@
 import { React, h } from './ui'
-import { Banner, Btn, Field, Icon, Modal, Spinner, BranchCombobox } from './primitives'
+import { Banner, Btn, Checkbox, Field, Icon, Modal, Spinner, BranchCombobox, TextInput } from './primitives'
 import { ModelCombobox } from './model-picker'
 import { useBranchInfo } from './hooks'
 import { appCtx, bindSession, getJson, post, postLong, withTimeout } from './context'
@@ -107,8 +107,8 @@ export function AddProjectModal(props: { t: any; onClose: () => void; onAdded: (
       branchControl = h('div', { className: 'dshw-select-loading' }, h(Spinner), h('span', null, t.loadingBranches))
       branchHint = null
     } else if (branches.status === 'error') {
-      branchControl = h('input', {
-        className: 'dshw-input',
+      branchControl = h(TextInput, {
+
         id: 'dshw-add-base',
         value: baseBranch,
         placeholder: t.baseBranch,
@@ -194,8 +194,8 @@ export function AddProjectModal(props: { t: any; onClose: () => void; onAdded: (
           ? h('div', { className: 'dshw-err', id: 'dshw-add-repo-error', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, fieldErrors.repoPath))
           : null),
       h(Field, { id: 'dshw-add-name', label: t.projectName, hint: t.projectNameHint },
-        h('input', {
-          className: 'dshw-input',
+        h(TextInput, {
+
           value: name,
           placeholder: baseName(repoPath) || t.projectName,
           autoComplete: 'off',
@@ -394,7 +394,7 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
         : null
     const branchControl = branches.data
       ? h(BranchCombobox, { t, value: baseBranch, onChange: setBaseBranch, branchInfo: branches.data, id: 'dshw-publish-base' })
-      : h('input', { id: 'dshw-publish-base', className: 'dshw-input', value: baseBranch, onChange: (e: any) => setBaseBranch(e.target.value), placeholder: t.baseBranch })
+      : h(TextInput, { id: 'dshw-publish-base', value: baseBranch, onChange: (e: any) => setBaseBranch(e.target.value), placeholder: t.baseBranch })
 
     const footer = [
       props.onBackToProject && !parentTask ? h(Btn, { key: 'back', disabled: busy, onClick: () => props.onBackToProject && props.onBackToProject() }, t.backToProject) : null,
@@ -447,9 +447,12 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
                 h('span', { className: 'dshw-folder-tile dshw-folder-tile--purple' }, h(Icon, { name: 'branch' })),
                 h('span', { className: 'dshw-nowrap' }, parentTask.title)),
               h('div', { className: 'dshw-hint' }, String(t.parentTaskMerged).replace('{base}', parentTask.baseBranch || '—')),
-              h('label', { className: 'dshw-check' },
-                h('input', { type: 'checkbox', checked: asPlain, onChange: (e: any) => setAsPlain(e.target.checked) }),
-                h('span', { className: 'dshw-check-copy' }, t.publishAsPlain)),
+              h(Checkbox, {
+                className: 'dshw-check',
+                checked: asPlain,
+                onChange: (next: boolean) => setAsPlain(next),
+                label: h('span', { className: 'dshw-check-copy' }, t.publishAsPlain),
+              }),
               parentAhead > 0 && !asPlain
                 ? h('div', null,
                   h('div', { className: 'dshw-choice-group', role: 'radiogroup', style: { marginTop: '6px' } },
@@ -504,9 +507,13 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
             criteriaLibrary.length
               ? h('div', { className: 'dshw-criteria-pick' },
                 h('div', { className: 'dshw-criteria-pick-title' }, t.criteriaPickHint),
-                criteriaLibrary.map((item: string) => h('label', { key: item, className: 'dshw-check dshw-criteria-check' },
-                  h('input', { type: 'checkbox', checked: pickedCriteria.includes(item), onChange: () => toggleCriterion(item) }),
-                  h('span', { className: 'dshw-check-copy' }, item))))
+                criteriaLibrary.map((item: string) => h(Checkbox, {
+                  key: item,
+                  className: 'dshw-check dshw-criteria-check',
+                  checked: pickedCriteria.includes(item),
+                  onChange: () => toggleCriterion(item),
+                  label: h('span', { className: 'dshw-check-copy' }, item),
+                })))
               : null,
             h('textarea', {
               id: 'dshw-publish-criteria',

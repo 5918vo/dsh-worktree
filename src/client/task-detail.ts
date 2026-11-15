@@ -1,5 +1,5 @@
 import { React, h } from './ui'
-import { Banner, Btn, Card, CardHead, Chip, CopyBtn, Dot, Icon, IconBtn, KV, Modal, Spinner } from './primitives'
+import { Banner, Btn, Card, CardHead, Checkbox, Chip, CopyBtn, Dot, Icon, IconBtn, KV, Modal, Spinner } from './primitives'
 import { appCtx, getJson, post, postLong } from './context'
 import { clipText, cx, firstLine, fmtDuration, fmtK, jp, pad2, relTime, uuid } from './format'
 import { pendingLabel, resolveStatus, statusMeta } from './status'
@@ -903,7 +903,7 @@ export function TaskDetail(props: any) {
         busy: busy === 'merge',
         onClose: () => { if (busy !== 'merge') setMergeOpen(false) },
         footer: [
-          h(Btn, { key: 'c', onClick: () => setMergeOpen(false), disabled: busy === 'merge', 'data-autofocus': true }, t.cancel),
+          h(Btn, { key: 'c', onClick: () => setMergeOpen(false), disabled: busy === 'merge', 'data-modal-autofocus': true }, t.cancel),
           h(Btn, {
             key: 'ok',
             variant: 'primary',
@@ -938,9 +938,12 @@ export function TaskDetail(props: any) {
           })
           : null,
         mergeSwitch && !curOnBase
-          ? h('label', { className: 'dshw-check', style: { marginTop: '10px' } },
-            h('input', { type: 'checkbox', checked: mergeRestore, onChange: (e: any) => setMergeRestore(e.target.checked) }),
-            h('span', { className: 'dshw-check-copy' }, String(t.mergeRestoreAfter).replace('{branch}', snap.repo.currentBranch || '—')))
+          ? h(Checkbox, {
+            className: 'dshw-check dshw-check-gap',
+            checked: mergeRestore,
+            onChange: (next: boolean) => setMergeRestore(next),
+            label: h('span', { className: 'dshw-check-copy' }, String(t.mergeRestoreAfter).replace('{branch}', snap.repo.currentBranch || '—')),
+          })
           : null,
         acceptanceItems.length
           ? h('div', { className: 'dshw-merge-criteria' },
@@ -992,7 +995,7 @@ export function TaskDetail(props: any) {
         busy: false,
         onClose: () => setMergeDirtyOpen(false),
         footer: [
-          h(Btn, { key: 'c', onClick: () => setMergeDirtyOpen(false), 'data-autofocus': true }, t.cancel),
+          h(Btn, { key: 'c', onClick: () => setMergeDirtyOpen(false), 'data-modal-autofocus': true }, t.cancel),
           h(Btn, { key: 'ok', variant: 'primary', onClick: () => stashAndContinueMerge() }, t.mergeStashAndContinue),
         ],
       },
@@ -1030,7 +1033,7 @@ export function TaskDetail(props: any) {
         busy: busy === 'checkout' || busy === 'back',
         onClose: () => { if (busy !== 'checkout' && busy !== 'back') { setSwitchOpen(false); setDiscardConfirm(false) } },
         footer: [
-          h(Btn, { key: 'c', onClick: () => { setSwitchOpen(false); setDiscardConfirm(false) }, disabled: busy === 'checkout' || busy === 'back', 'data-autofocus': true }, t.cancel),
+          h(Btn, { key: 'c', onClick: () => { setSwitchOpen(false); setDiscardConfirm(false) }, disabled: busy === 'checkout' || busy === 'back', 'data-modal-autofocus': true }, t.cancel),
           h(Btn, {
             key: 'stash',
             variant: 'primary',
@@ -1050,10 +1053,13 @@ export function TaskDetail(props: any) {
         h('ul', { className: 'dshw-switch-files' }, (switchPre.obstacles || []).map((o: any, i: number) =>
           h('li', { key: i }, h('span', { className: 'dshw-mono' }, o.path),
             o.kind === 'untracked' ? h(Chip, { tone: 'warn', small: true }, t.switchUntracked) : null))),
-        h('label', { className: 'dshw-check', style: { marginTop: '10px' } },
-          h('input', { type: 'checkbox', checked: discardConfirm, onChange: (e: any) => setDiscardConfirm(e.target.checked) }),
-          h('span', { className: 'dshw-check-copy' }, String(t.switchDiscardConfirm).replace('{n}', String((switchPre.obstacles || []).length)),
-            h('small', null, t.switchDiscardConfirmHint))),
+        h(Checkbox, {
+          className: 'dshw-check dshw-check-gap',
+          checked: discardConfirm,
+          onChange: (next: boolean) => setDiscardConfirm(next),
+          label: h('span', { className: 'dshw-check-copy' }, String(t.switchDiscardConfirm).replace('{n}', String((switchPre.obstacles || []).length)),
+            h('small', null, t.switchDiscardConfirmHint)),
+        }),
         err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null)
       : null
 
@@ -1068,7 +1074,7 @@ export function TaskDetail(props: any) {
         busy: busy === 'cleanup',
         onClose: () => { if (busy !== 'cleanup') setCleanupOpen(false) },
         footer: [
-          h(Btn, { key: 'c', onClick: () => setCleanupOpen(false), disabled: busy === 'cleanup', 'data-autofocus': true }, t.cancel),
+          h(Btn, { key: 'c', onClick: () => setCleanupOpen(false), disabled: busy === 'cleanup', 'data-modal-autofocus': true }, t.cancel),
           h(Btn, {
             key: 'ok',
             variant: 'danger',
@@ -1130,7 +1136,7 @@ export function TaskDetail(props: any) {
         busy: busy === 'delete',
         onClose: () => { if (busy !== 'delete') setDeleteOpen(false) },
         footer: [
-          h(Btn, { key: 'c', onClick: () => setDeleteOpen(false), disabled: busy === 'delete', 'data-autofocus': true }, t.cancel),
+          h(Btn, { key: 'c', onClick: () => setDeleteOpen(false), disabled: busy === 'delete', 'data-modal-autofocus': true }, t.cancel),
           h(Btn, {
             key: 'ok',
             variant: 'danger',
@@ -1256,7 +1262,7 @@ export function TaskDetail(props: any) {
         size: 'lg',
         busy: false,
         onClose: () => setStashOpen(false),
-        footer: [h(Btn, { key: 'c', onClick: () => setStashOpen(false), 'data-autofocus': true }, t.close)],
+        footer: [h(Btn, { key: 'c', onClick: () => setStashOpen(false), 'data-modal-autofocus': true }, t.close)],
       },
         stashLoading
           ? h('div', { className: 'dshw-diff-status' }, h(Spinner), h('span', null, t.loading))
@@ -1275,7 +1281,7 @@ export function TaskDetail(props: any) {
         busy: syncBusy,
         onClose: () => { if (!syncBusy) setSyncConfirm(false) },
         footer: [
-          h(Btn, { key: 'c', onClick: () => setSyncConfirm(false), disabled: syncBusy, 'data-autofocus': true }, t.cancel),
+          h(Btn, { key: 'c', onClick: () => setSyncConfirm(false), disabled: syncBusy, 'data-modal-autofocus': true }, t.cancel),
           h(Btn, { key: 'ok', variant: 'primary', disabled: syncBusy, onClick: () => { setSyncConfirm(false); void syncBaseline() } }, syncBusy ? h(Spinner) : null, t.send),
         ],
       },

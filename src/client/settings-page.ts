@@ -1,5 +1,5 @@
 import { React, h, useStyles } from './ui'
-import { Btn, Card, CardHead, Icon, IconBtn, KV, Modal, Spinner, Toast } from './primitives'
+import { Btn, Card, CardHead, Icon, IconBtn, KV, Modal, Spinner, TextInput, Toast } from './primitives'
 import { useToast } from './hooks'
 import { getJson, post } from './context'
 import { copyText } from './format'
@@ -116,7 +116,7 @@ export function SettingsPage(props: any) {
         busy: clearing,
         onClose: () => { if (!clearing) setClearOpen(false) },
         footer: [
-          h(Btn, { key: 'c', onClick: () => setClearOpen(false), disabled: clearing, 'data-autofocus': true }, t.cancel),
+          h(Btn, { key: 'c', onClick: () => setClearOpen(false), disabled: clearing, 'data-modal-autofocus': true }, t.cancel),
           h(Btn, { key: 'ok', variant: 'danger', disabled: clearing, onClick: () => void clearRecents() },
             clearing ? h(Spinner) : null, clearing ? t.deleting : t.clearRecents),
         ],
@@ -140,8 +140,8 @@ export function SettingsPage(props: any) {
           h(CardHead, { icon: 'checkCircle', title: t.acceptanceLibrary }),
           h('p', { className: 'dshw-card-sub' }, t.acceptanceLibraryHint),
           h('div', { className: 'dshw-criteria-add' },
-            h('input', {
-              className: 'dshw-input',
+            h(TextInput, {
+
               value: newCriterion,
               placeholder: t.criterionInputPlaceholder,
               onChange: (e: any) => setNewCriterion(e.target.value),
@@ -150,8 +150,8 @@ export function SettingsPage(props: any) {
             h(Btn, { variant: 'primary', disabled: !newCriterion.trim() || criteriaBusy, onClick: () => void addCriterion() },
               criteriaBusy ? h(Spinner) : null, t.addCriterion)),
           criteria.length
-            ? h('input', {
-              className: 'dshw-input',
+            ? h(TextInput, {
+
               value: criteriaSearch,
               placeholder: t.criteriaSearch,
               style: { marginTop: '8px' },
@@ -164,8 +164,8 @@ export function SettingsPage(props: any) {
               .map((item: string) => h('div', { key: item, className: 'dshw-criteria-lib-row' },
                 h(Icon, { name: 'check' }),
                 editingText === item
-                  ? h('input', {
-                    className: 'dshw-input',
+                  ? h(TextInput, {
+
                     value: editingValue,
                     placeholder: t.criteriaEditPlaceholder,
                     onChange: (e: any) => setEditingValue(e.target.value),

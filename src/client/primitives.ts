@@ -113,6 +113,17 @@ export function IconBtn(props: any) {
   )
 }
 
+/**
+ * Single-line text field. The shared Input wraps its native input in a span that
+ * carries the className, so board styling stays on the wrapper.
+ */
+export function TextInput(props: any) {
+  const { className, ...rest } = props
+  const Input = primOf('Input')
+  if (Input) return h(Input, Object.assign({ className: 'dshw-input-field' }, rest))
+  return h('input', Object.assign({ className: cx('dshw-input', className) }, rest))
+}
+
 const TAG_TONE: Record<string, string> = {
   brand: 'info',
   neutral: 'neutral',
@@ -127,6 +138,32 @@ export function Chip(props: any) {
   const extra = cx(props.small && 'dshw-tag--sm', props.className)
   if (Tag) return h(Tag, { tone: TAG_TONE[props.tone || 'neutral'] || 'neutral', className: extra || undefined }, props.children)
   return h('span', { className: cx('dshw-chip', 'dshw-chip--' + (props.tone || 'neutral'), props.small && 'dshw-chip--sm', props.className) }, props.children)
+}
+
+/**
+ * Checkbox row. The shared control owns the native input and the label pairing;
+ * `label` is the rich content the board puts beside the box.
+ */
+export function Checkbox(props: any) {
+  const CheckboxShell = primOf('Checkbox')
+  if (CheckboxShell) {
+    return h(CheckboxShell, {
+      className: props.className,
+      checked: !!props.checked,
+      disabled: !!props.disabled,
+      title: props.title,
+      label: props.label,
+      onChange: props.onChange,
+    })
+  }
+  return h('label', { className: cx('dshw-check', props.className), title: props.title },
+    h('input', {
+      type: 'checkbox',
+      checked: !!props.checked,
+      disabled: !!props.disabled,
+      onChange: (e: any) => props.onChange(e.target.checked),
+    }),
+    props.label)
 }
 
 const DOT_STATE: Record<string, string> = {

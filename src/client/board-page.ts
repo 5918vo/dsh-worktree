@@ -1,5 +1,5 @@
 import { React, h, useStyles } from './ui'
-import { Btn, Banner, Chip, Dot, Empty, Icon, IconBtn, Modal, Spinner, Toast } from './primitives'
+import { Btn, Banner, Checkbox, Chip, Dot, Empty, Icon, IconBtn, Modal, Spinner, Toast } from './primitives'
 import { AddProjectModal, PublishModal } from './modals'
 import { PublishTargetModal, findPublishedTask, resolvePublishEntry } from './publish-flow'
 import { useToast } from './hooks'
@@ -935,7 +935,7 @@ export function BoardPage(props: any) {
           busy: predecessorBusy,
           onClose: () => { if (!predecessorBusy) { setCleanupPredecessor(null); setPredecessorForce(false); setPredecessorErr('') } },
           footer: [
-            h(Btn, { key: 'c', onClick: () => { setCleanupPredecessor(null); setPredecessorForce(false); setPredecessorErr('') }, disabled: predecessorBusy, 'data-autofocus': true }, t.keepWorktree),
+            h(Btn, { key: 'c', onClick: () => { setCleanupPredecessor(null); setPredecessorForce(false); setPredecessorErr('') }, disabled: predecessorBusy, 'data-modal-autofocus': true }, t.keepWorktree),
             h(Btn, { key: 'ok', variant: 'danger', disabled: predecessorBusy, onClick: () => void runPredecessorCleanup() }, predecessorBusy ? h(Spinner) : null, predecessorBusy ? t.cleaning : t.cleanup),
           ],
         },
@@ -944,10 +944,13 @@ export function BoardPage(props: any) {
             h('div', { className: 'dshw-danger-item' }, h(Icon, { name: 'folder' }), h('span', null, cleanupPredecessor.task.worktreePath))),
           h('div', { className: 'dshw-hint' }, t.cleanupPredecessorHint),
           (cleanupPredecessor.snapshot.worktree.dirtyCount || 0) > 0
-            ? h('label', { className: 'dshw-check' },
-              h('input', { type: 'checkbox', checked: predecessorForce, onChange: (e: any) => setPredecessorForce(e.target.checked) }),
-              h('span', { className: 'dshw-check-copy' }, t.cleanupPredecessorForce,
-                h('small', null, String(t.cleanupPredecessorDirty).replace('{n}', String(cleanupPredecessor.snapshot.worktree.dirtyCount || 0)))))
+            ? h(Checkbox, {
+              className: 'dshw-check',
+              checked: predecessorForce,
+              onChange: (next: boolean) => setPredecessorForce(next),
+              label: h('span', { className: 'dshw-check-copy' }, t.cleanupPredecessorForce,
+                h('small', null, String(t.cleanupPredecessorDirty).replace('{n}', String(cleanupPredecessor.snapshot.worktree.dirtyCount || 0)))),
+            })
             : null,
           predecessorErr ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, predecessorErr)) : null)
         : null,

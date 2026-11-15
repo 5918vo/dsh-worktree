@@ -1,5 +1,5 @@
 import { React, h } from './ui'
-import { Btn, Icon, Modal } from './primitives'
+import { Btn, Icon, Modal, TextInput } from './primitives'
 
 /** Decide what the text publish entry should do next. */
 export function resolvePublishEntry(selectedProject: any, projectCount: number): 'form' | 'picker' | 'add' {
@@ -42,17 +42,17 @@ export function PublishTargetModal(props: any) {
       projects.length
         ? h(Btn, { key: 'add', icon: 'plus', onClick: () => props.onAddProject && props.onAddProject() }, t.addProject)
         : h(Btn, { key: 'add', variant: 'primary', icon: 'plus', onClick: () => props.onAddProject && props.onAddProject() }, t.addProject),
-      h(Btn, { key: 'cancel', onClick: props.onClose, 'data-autofocus': true }, t.cancel),
+      h(Btn, { key: 'cancel', onClick: props.onClose, 'data-modal-autofocus': true }, t.cancel),
     ],
   },
     projects.length
       ? h('div', null,
-        h('input', {
-          className: 'dshw-input',
+        h(TextInput, {
+
           value: query,
           placeholder: t.selectProjectSearch,
           autoComplete: 'off',
-          'data-autofocus': true,
+          'data-modal-autofocus': true,
           onChange: (e: any) => setQuery(e.target.value),
         }),
         filtered.length

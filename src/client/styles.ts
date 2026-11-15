@@ -394,6 +394,8 @@ export const CSS = `
 .dshw-field-label{display:block;font-size:12px;font-weight:600;color:var(--dshw-text-2);margin-bottom:6px}
 .dshw-req{color:var(--dshw-danger);margin-left:3px}
 .dshw-input, .dshw-scope select.dshw-input, .dshw-scope textarea.dshw-input{width:100%;min-height:36px;border:1px solid var(--dshw-border-strong);border-radius:8px;background:var(--dshw-surface);padding:8px 10px;font-size:12.5px;color:var(--dshw-text);transition:border-color .14s,box-shadow .14s,background .14s}
+.dshw-input-field{display:block;width:100%;min-width:0}
+.dshw-input-field>input{width:100%}
 .dshw-input::placeholder{color:var(--dshw-text-3)}
 .dshw-input:hover{border-color:var(--dshw-text-3)}
 .dshw-input:focus{outline:none;border-color:var(--dshw-brand);box-shadow:var(--dshw-focus-ring)}
@@ -465,6 +467,7 @@ export const CSS = `
 .dshw-check{display:flex;align-items:flex-start;gap:9px;font-size:12.5px;cursor:pointer;color:var(--dshw-text)}
 .dshw-check input{width:15px;height:15px;margin:1px 0 0;accent-color:var(--dshw-brand);flex:none;cursor:pointer}
 .dshw-check-copy{min-width:0}
+.dshw-check-gap{margin-top:10px}
 .dshw-check small{display:block;font-size:11px;color:var(--dshw-text-3);margin-top:2px;line-height:1.5}
 .dshw-check+.dshw-check{margin-top:10px}
 .dshw-check:has(input:disabled){opacity:.55}
