@@ -13,25 +13,16 @@ import {
 } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
-import type { Project, WorktreeTask } from './models.js'
+import { Project, WorktreeTask } from './models.js'
 
-const SLEEP_ARRAY = new Int32Array(new SharedArrayBuffer(4))
-
+/**
+ * One global task store for every DSH process on this machine.
+ *
+ * Deliberately independent of the DSH profile and the web port: a task
+ * published from `dsh web --port 3080` must be visible from `--port 3090`.
+ */
 export function stateDir(): string {
   return join(homedir(), '.dsh', 'worktree-tasks')
-}
-
-function sleepQuiet(ms: number): void {
-  try {
-    Atomics.wait(SLEEP_ARRAY, 0, 0, ms)
-  } catch {
-    const end = Date.now() + ms
-    while (Date.now() < end) { /* fallback */ }
-  }
-}
-
-function normPath(p: string): string {
-  return p.replace(/[\\/]+$/, '').toLowerCase()
 }
 
 function readJsonSync<T>(file: string, fallback: T): T {
@@ -42,7 +33,7 @@ function readJsonSync<T>(file: string, fallback: T): T {
   }
 }
 
-function writeJsonAtomic(file: string, value: unknown): void {
+function writeJsonSync(file: string, value: unknown): void {
   mkdirSync(dirname(file), { recursive: true })
   const text = JSON.stringify(value, null, 2)
   const tmp = `${file}.${process.pid}.${Date.now()}.tmp`
@@ -51,32 +42,35 @@ function writeJsonAtomic(file: string, value: unknown): void {
     renameSync(tmp, file)
     return
   } catch {
-    /* Windows 偶发文件占用，降级直写 */
+    /* Windows may briefly hold the destination; fall through */
   }
   try {
     writeFileSync(file, text, { encoding: 'utf8' })
   } catch {
-    /* 写入失败不中断宿主进程 */
+    /* a failed save must never take the host down; the next save retries */
   }
   try {
     rmSync(tmp, { force: true })
-  } catch { /* noop */ }
-}
-
-function syncRecordMap<T extends object>(currentMap: Map<string, T>, disk: Record<string, T>): Map<string, T> {
-  const next = new Map<string, T>()
-  for (const [id, item] of Object.entries(disk)) {
-    const existing = currentMap.get(id)
-    if (existing) {
-      Object.assign(existing, item)
-      next.set(id, existing)
-    } else {
-      next.set(id, item)
-    }
+  } catch {
+    /* noop */
   }
-  return next
 }
 
+function sleepSync(ms: number): void {
+  const end = Date.now() + ms
+  while (Date.now() < end) {
+    /* short critical section */
+  }
+}
+
+/**
+ * Durable store for projects, task records and recent target directories.
+ *
+ * All reads and writes go through the files under `dir`, so multiple DSH
+ * processes share the same state even when they were started from different
+ * profiles or ports. Mutations take a small cross-process lock and are
+ * read-modify-write, which keeps one process from overwriting another's task.
+ */
 export class Store {
   private readonly dir: string
   private readonly migrateLegacy: boolean
@@ -90,38 +84,81 @@ export class Store {
     this.migrateLegacy = dir === stateDir()
   }
 
-  directory(): string {
-    return this.dir
-  }
-
   private file(name: string): string {
     return join(this.dir, name)
   }
 
+  private readProjects(): Record<string, Project> {
+    return readJsonSync<Record<string, Project>>(this.file('projects.json'), {})
+  }
+
+  private readTasks(): Record<string, WorktreeTask> {
+    return readJsonSync<Record<string, WorktreeTask>>(this.file('tasks.json'), {})
+  }
+
+  private readRecents(): string[] {
+    const value = readJsonSync<any>(this.file('recents.json'), [])
+    return Array.isArray(value) ? value.filter((item) => typeof item === 'string') : []
+  }
+
+  private readCriteria(): string[] {
+    const value = readJsonSync<any>(this.file('acceptance-criteria.json'), [])
+    return Array.isArray(value) ? value.filter((item) => typeof item === 'string' && item.trim()).map((item) => item.trim()) : []
+  }
+
   private refreshProjects(): void {
-    this.projects = syncRecordMap(this.projects, readJsonSync<Record<string, Project>>(this.file('projects.json'), {}))
+    const disk = this.readProjects()
+    const next = new Map<string, Project>()
+    for (const [id, project] of Object.entries(disk)) {
+      const current = this.projects.get(id)
+      if (current) {
+        Object.assign(current, project)
+        next.set(id, current)
+      } else {
+        next.set(id, project)
+      }
+    }
+    this.projects = next
   }
 
   private refreshTasks(): void {
-    this.tasks = syncRecordMap(this.tasks, readJsonSync<Record<string, WorktreeTask>>(this.file('tasks.json'), {}))
+    const disk = this.readTasks()
+    const next = new Map<string, WorktreeTask>()
+    for (const [id, task] of Object.entries(disk)) {
+      const current = this.tasks.get(id)
+      if (current) {
+        Object.assign(current, task)
+        next.set(id, current)
+      } else {
+        next.set(id, task)
+      }
+    }
+    this.tasks = next
   }
 
   private refreshRecents(): void {
-    const raw = readJsonSync<unknown>(this.file('recents.json'), [])
-    this.recents = Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : []
+    this.recents = this.readRecents()
   }
 
   private refreshCriteria(): void {
-    const raw = readJsonSync<unknown>(this.file('acceptance-criteria.json'), [])
-    this.criteria = Array.isArray(raw)
-      ? raw.filter((x): x is string => typeof x === 'string' && x.trim().length > 0).map((x) => x.trim())
-      : []
+    this.criteria = this.readCriteria()
   }
 
-  private saveProjects(): void { writeJsonAtomic(this.file('projects.json'), Object.fromEntries(this.projects)) }
-  private saveTasks(): void { writeJsonAtomic(this.file('tasks.json'), Object.fromEntries(this.tasks)) }
-  private saveRecents(): void { writeJsonAtomic(this.file('recents.json'), this.recents) }
-  private saveCriteria(): void { writeJsonAtomic(this.file('acceptance-criteria.json'), this.criteria) }
+  private saveProjects(): void {
+    writeJsonSync(this.file('projects.json'), Object.fromEntries(this.projects))
+  }
+
+  private saveTasks(): void {
+    writeJsonSync(this.file('tasks.json'), Object.fromEntries(this.tasks))
+  }
+
+  private saveRecents(): void {
+    writeJsonSync(this.file('recents.json'), this.recents)
+  }
+
+  private saveCriteria(): void {
+    writeJsonSync(this.file('acceptance-criteria.json'), this.criteria)
+  }
 
   private saveAll(): void {
     this.saveProjects()
@@ -133,26 +170,38 @@ export class Store {
   private withLock<T>(fn: () => T): T {
     mkdirSync(this.dir, { recursive: true })
     const lock = this.file('.store.lock')
-    const deadline = Date.now() + 3000
+    const start = Date.now()
     let fd: number | null = null
-
     while (fd === null) {
       try {
         fd = openSync(lock, 'wx')
       } catch {
         try {
-          if (Date.now() - statSync(lock).mtimeMs > 5000) unlinkSync(lock)
-        } catch { /* 锁已被释放 */ }
-        if (Date.now() > deadline) return fn()
-        sleepQuiet(5)
+          const info = statSync(lock)
+          if (Date.now() - info.mtimeMs > 5000) unlinkSync(lock)
+        } catch {
+          /* lock disappeared between open and stat */
+        }
+        if (Date.now() - start > 3000) {
+          // Never take the host down over a stale lock; the write is still atomic.
+          return fn()
+        }
+        sleepSync(5)
       }
     }
-
     try {
       return fn()
     } finally {
-      try { closeSync(fd) } catch { /* noop */ }
-      try { unlinkSync(lock) } catch { /* noop */ }
+      try {
+        closeSync(fd)
+      } catch {
+        /* noop */
+      }
+      try {
+        unlinkSync(lock)
+      } catch {
+        /* noop */
+      }
     }
   }
 
@@ -162,78 +211,98 @@ export class Store {
     this.refreshRecents()
     this.refreshCriteria()
     if (!this.migrateLegacy) return
-
     const marker = this.file('.migrated-v2')
     this.withLock(() => {
       if (!existsSync(marker)) {
         this.migrateFromLegacyDirs()
-        try { writeFileSync(marker, new Date().toISOString(), 'utf8') } catch { /* retry next boot */ }
+        try {
+          writeFileSync(marker, new Date().toISOString(), { encoding: 'utf8' })
+        } catch {
+          /* retry on the next boot */
+        }
       }
       this.dedupeProjects()
     })
   }
 
+  /**
+   * One repository must have one project row. Older builds could create a
+   * second row when two servers had separate stores; fold those tasks into the
+   * project that has the most task history.
+   */
   private dedupeProjects(): void {
     const groups = new Map<string, Project[]>()
-    for (const p of this.projects.values()) {
-      const key = normPath(p.repoPath)
+    for (const project of this.projects.values()) {
+      const key = project.repoPath.replace(/[\\/]+$/, '').toLowerCase()
       const list = groups.get(key)
-      if (list) list.push(p)
-      else groups.set(key, [p])
+      if (list) list.push(project)
+      else groups.set(key, [project])
     }
-
     let changed = false
     for (const list of groups.values()) {
       if (list.length < 2) continue
-      const countOf = (id: string) => {
-        let n = 0
-        for (const t of this.tasks.values()) if (t.projectId === id) n += 1
-        return n
+      const taskCount = (project: Project) => {
+        let count = 0
+        for (const task of this.tasks.values()) if (task.projectId === project.id) count += 1
+        return count
       }
-      list.sort((a, b) => countOf(b.id) - countOf(a.id) || a.createdAt - b.createdAt)
+      list.sort((a, b) => taskCount(b) - taskCount(a) || a.createdAt - b.createdAt)
       const canonical = list[0]
-      for (const dup of list.slice(1)) {
-        for (const t of this.tasks.values()) {
-          if (t.projectId === dup.id) {
-            t.projectId = canonical.id
+      for (const duplicate of list.slice(1)) {
+        for (const task of this.tasks.values()) {
+          if (task.projectId === duplicate.id) {
+            task.projectId = canonical.id
             changed = true
           }
         }
-        this.projects.delete(dup.id)
+        this.projects.delete(duplicate.id)
         changed = true
       }
     }
-
-    if (changed) {
-      this.saveProjects()
-      this.saveTasks()
-    }
+    if (!changed) return
+    this.saveProjects()
+    this.saveTasks()
   }
 
+  /**
+   * Pull tasks out of stores created by older builds (profile directories or
+   * a custom DSH_WORKTREE_STATE_DIR). The old files are left in place.
+   */
   private migrateFromLegacyDirs(): void {
     const candidates = new Set<string>()
-    if (process.env.DSH_WORKTREE_STATE_DIR) candidates.add(process.env.DSH_WORKTREE_STATE_DIR)
-    if (process.env.DSH_PROFILE_DIR) candidates.add(join(process.env.DSH_PROFILE_DIR, 'deepseek-worktree'))
+    const explicit = process.env.DSH_WORKTREE_STATE_DIR
+    if (explicit) candidates.add(explicit)
+    const profile = process.env.DSH_PROFILE_DIR
+    if (profile) candidates.add(join(profile, 'deepseek-worktree'))
     candidates.add(join(homedir(), '.dsh', 'worktree-web'))
+    const profilesDir = join(homedir(), '.dsh', 'profiles')
     try {
-      for (const name of readdirSync(join(homedir(), '.dsh', 'profiles'))) {
-        candidates.add(join(homedir(), '.dsh', 'profiles', name, 'deepseek-worktree'))
+      for (const name of readdirSync(profilesDir)) {
+        candidates.add(join(profilesDir, name, 'deepseek-worktree'))
       }
-    } catch { /* noop */ }
+    } catch {
+      /* no profiles directory */
+    }
     candidates.delete(this.dir)
 
     let changed = false
     for (const dir of candidates) {
       const projects = readJsonSync<Record<string, Project>>(join(dir, 'projects.json'), {})
       const tasks = readJsonSync<Record<string, WorktreeTask>>(join(dir, 'tasks.json'), {})
-      const recents = readJsonSync<unknown>(join(dir, 'recents.json'), [])
+      const recents = readJsonSync<any>(join(dir, 'recents.json'), [])
 
-      for (const [id, p] of Object.entries(projects)) {
-        if (!this.projects.has(id)) { this.projects.set(id, p); changed = true }
+      for (const [id, project] of Object.entries(projects)) {
+        if (!this.projects.has(id)) {
+          this.projects.set(id, project)
+          changed = true
+        }
       }
-      for (const [id, t] of Object.entries(tasks)) {
-        const cur = this.tasks.get(id)
-        if (!cur || (t.updatedAt || 0) > (cur.updatedAt || 0)) { this.tasks.set(id, t); changed = true }
+      for (const [id, task] of Object.entries(tasks)) {
+        const current = this.tasks.get(id)
+        if (!current || (task.updatedAt || 0) > (current.updatedAt || 0)) {
+          this.tasks.set(id, task)
+          changed = true
+        }
       }
       if (Array.isArray(recents)) {
         for (const item of recents) {
@@ -244,12 +313,16 @@ export class Store {
         }
       }
     }
-
-    if (changed) {
-      this.recents = this.recents.slice(0, 10)
-      this.saveAll()
-    }
+    if (!changed) return
+    this.recents = this.recents.slice(0, 10)
+    this.saveAll()
   }
+
+  directory(): string {
+    return this.dir
+  }
+
+  // ---- projects ----
 
   listProjects(): Project[] {
     this.refreshProjects()
@@ -263,8 +336,8 @@ export class Store {
 
   findProjectByRepo(repoPath: string): Project | undefined {
     this.refreshProjects()
-    const key = normPath(repoPath)
-    return [...this.projects.values()].find((p) => normPath(p.repoPath) === key)
+    const norm = repoPath.replace(/[\\/]+$/, '').toLowerCase()
+    return [...this.projects.values()].find((p) => p.repoPath.replace(/[\\/]+$/, '').toLowerCase() === norm)
   }
 
   putProject(project: Project): void {
@@ -286,6 +359,8 @@ export class Store {
     })
   }
 
+  // ---- tasks ----
+
   listTasks(): WorktreeTask[] {
     this.refreshTasks()
     return [...this.tasks.values()].sort((a, b) => b.createdAt - a.createdAt)
@@ -302,6 +377,8 @@ export class Store {
 
   putTask(task: WorktreeTask): void {
     task.updatedAt = Date.now()
+    // Snapshot after the caller's mutation: refreshing from disk below may
+    // update this same object, and must not erase fields like sessionId.
     const next = { ...task }
     this.withLock(() => {
       this.refreshTasks()
@@ -319,6 +396,8 @@ export class Store {
       return ok
     })
   }
+
+  // ---- misc ----
 
   listRecents(): string[] {
     this.refreshRecents()
@@ -342,11 +421,14 @@ export class Store {
     })
   }
 
+  // ---- global acceptance-criteria library ----
+
   listCriteria(): string[] {
     this.refreshCriteria()
     return [...this.criteria]
   }
 
+  /** Append one or more criteria; blanks and duplicates are ignored. */
   addCriteria(values: string[]): string[] {
     const incoming = values.map((v) => String(v || '').trim()).filter(Boolean)
     if (!incoming.length) return this.listCriteria()
@@ -370,11 +452,12 @@ export class Store {
     })
   }
 
+  /** Replace the whole library (used by edit/reorder; blanks and duplicates dropped). */
   setCriteria(values: string[]): string[] {
-    const seen = new Set<string>()
     const out: string[] = []
-    for (const v of Array.isArray(values) ? values : []) {
-      const text = String(v ?? '').trim()
+    const seen = new Set<string>()
+    for (const value of Array.isArray(values) ? values : []) {
+      const text = String(value == null ? '' : value).trim()
       if (!text || seen.has(text)) continue
       seen.add(text)
       out.push(text)
@@ -387,10 +470,18 @@ export class Store {
   }
 
   async flush(): Promise<void> {
-    this.withLock(() => this.saveAll())
+    this.withLock(() => {
+      this.saveAll()
+    })
   }
 
   dispose(): void {
-    try { this.withLock(() => this.saveAll()) } catch { /* noop */ }
+    try {
+      this.withLock(() => {
+        this.saveAll()
+      })
+    } catch {
+      /* shutdown must never throw */
+    }
   }
 }

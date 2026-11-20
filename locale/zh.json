@@ -463,20 +463,5 @@
   "publishResultUnknown": "发布结果待确认：请求超时，任务可能已创建。",
   "publishResultNotFound": "仍未找到该任务，请稍后刷新确认，不要重复提交。",
   "refreshConfirm": "刷新确认",
-  "publishPartialTitle": "部分成功",
-  "tasks": "任务列表",
-  "delete": "删除",
-  "deleted": "项目已删除",
-  "deleteWithTasks": "同时删除项目下所有任务",
-  "deleteWithWorktrees": "一并清理磁盘上的 Worktree 目录",
-  "statusDeveloping": "开发中",
-  "statusReview": "待验收",
-  "statusMerged": "已合并",
-  "worktreeDir": "Worktree 目录名",
-  "changes": "代码变更",
-  "noChanges": "暂无代码变更",
-  "openSession": "打开会话",
-  "backDone": "已切回原分支",
-  "checkoutDone": "已切换到验收提交",
-  "mergedDone": "已合并到基线分支"
+  "publishPartialTitle": "部分成功"
 }

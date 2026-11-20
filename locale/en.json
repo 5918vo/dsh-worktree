@@ -463,20 +463,5 @@
   "publishResultUnknown": "Publish result unknown: the request timed out — the task may have been created.",
   "publishResultNotFound": "Task still not found. Refresh again later; do not resubmit.",
   "refreshConfirm": "Refresh & confirm",
-  "publishPartialTitle": "Partially succeeded",
-  "tasks": "Tasks",
-  "delete": "Delete",
-  "deleted": "Project deleted",
-  "deleteWithTasks": "Also delete all tasks in this project",
-  "deleteWithWorktrees": "Also remove the worktree folders on disk",
-  "statusDeveloping": "In progress",
-  "statusReview": "Ready for review",
-  "statusMerged": "Merged",
-  "worktreeDir": "Worktree directory name",
-  "changes": "Changes",
-  "noChanges": "No changes yet",
-  "openSession": "Open session",
-  "backDone": "Switched back to the original branch",
-  "checkoutDone": "Switched to the review commit",
-  "mergedDone": "Merged into the base branch"
+  "publishPartialTitle": "Partially succeeded"
 }

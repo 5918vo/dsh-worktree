@@ -1,280 +1,606 @@
 import { React, h } from './ui'
-import { Btn, Checkbox, Field, Icon, Modal, Spinner, BranchCombobox, TextInput } from './primitives'
+import { Banner, Btn, Checkbox, Field, Icon, Modal, Spinner, BranchCombobox, TextInput } from './primitives'
 import { ModelCombobox } from './model-picker'
 import { useBranchInfo } from './hooks'
 import { appCtx, bindSession, getJson, post, postLong, withTimeout } from './context'
 import { baseName, cx } from './format'
 import { normalizeCriteria, parseCriteriaText } from '../criteria'
 
-function isValidBranchName(value: string): boolean {
-  if (!value) return true
-  const ok = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/.test(value)
-  return ok && !value.includes('..') && !value.includes('@{') && !value.endsWith('/') && !value.endsWith('.') && !value.endsWith('.lock')
-}
-
-function usePublishSubmit(opts: {
-  t: any
-  project: any
-  onRefresh: () => void
-  onCheckPublished?: (info: any) => Promise<any>
-  onPublished: (task: any, project: any, warning?: string, continued?: boolean) => void
-}) {
-  const { t, project } = opts
-  const remotes = appCtx?.remote
-  const [busy, setBusy] = React.useState(false)
-  const [err, setErr] = React.useState('')
-  const [unknown, setUnknown] = React.useState(false)
-  const lockRef = React.useRef(false)
-
-  const submit = async (payload: any, start: boolean, continued: boolean) => {
-    if (lockRef.current || busy) return
-    lockRef.current = true
-    setBusy(true)
-    setErr('')
-    try {
-      const r = await withTimeout(postLong('publish', payload), 30_000, t.publishTimeout)
-      let publishedTask = r.task
-      if (start && remotes?.session) {
-        try {
-          const sessionId = await withTimeout(bindSession(remotes, r.task, project.name, start), 60_000, t.bindTimeout)
-          if (sessionId) publishedTask = { ...r.task, sessionId }
-        } catch (e: any) {
-          opts.onPublished(r.task, project, e?.message || t.failed, continued)
-          return
-        }
-      }
-      opts.onPublished(publishedTask, project, undefined, continued)
-    } catch (e: any) {
-      if (e?.timeout) setUnknown(true)
-      setErr(e?.message || (e?.timeout ? t.publishTimeout : t.failed))
-      opts.onRefresh()
-    } finally {
-      lockRef.current = false
-      setBusy(false)
-    }
-  }
-
-  const reconcile = async (info: { projectId: string; branchName: string; title: string }) => {
-    if (busy) return
-    setBusy(true)
-    setErr('')
-    try {
-      const found = opts.onCheckPublished ? await opts.onCheckPublished(info) : null
-      if (found) opts.onPublished(found, project)
-      else setErr(t.publishResultNotFound)
-    } catch (e: any) {
-      setErr(e?.message || t.failed)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return { busy, err, unknown, submit, reconcile }
-}
-
 export function AddProjectModal(props: { t: any; onClose: () => void; onAdded: (project: any) => void }) {
-  const t = props.t
-  const remotes = appCtx?.remote
-  const [repoPath, setRepoPath] = React.useState('')
-  const [name, setName] = React.useState('')
-  const [baseBranch, setBaseBranch] = React.useState('')
-  const [picking, setPicking] = React.useState(false)
-  const [busy, setBusy] = React.useState(false)
-  const [err, setErr] = React.useState('')
-  const branches = useBranchInfo(repoPath, 150)
+    const t = props.t
+    const remotes = appCtx && appCtx.remote
+    const [repoPath, setRepoPath] = React.useState('')
+    const [name, setName] = React.useState('')
+    const [baseBranch, setBaseBranch] = React.useState('')
+    const branches = useBranchInfo(repoPath, 150)
+    const [picking, setPicking] = React.useState(false)
+    const pickingRef = React.useRef(false)
+    const [busy, setBusy] = React.useState(false)
+    const [err, setErr] = React.useState('')
+    const [fieldErrors, setFieldErrors] = React.useState({} as any)
+    const submitRef = React.useRef(false)
 
-  React.useEffect(() => {
-    if (!branches.data) return
-    const d = branches.data
-    setBaseBranch(d.current || d.default || d.branches?.[0]?.name || '')
-  }, [branches.data])
-
-  const browse = async () => {
-    if (picking || !remotes?.directoryPicker) return
-    setPicking(true)
-    setErr('')
-    try {
-      const r = await remotes.directoryPicker.pick()
-      if (r?.ok && r.value) {
-        setRepoPath(String(r.value))
-        setBaseBranch('')
+    const browse = async () => {
+      if (pickingRef.current) return
+      setErr('')
+      if (!remotes || !remotes.directoryPicker) {
+        setErr(t.failed)
+        return
       }
-    } catch (e: any) {
-      setErr(e?.message || t.failed)
-    } finally {
-      setPicking(false)
+      pickingRef.current = true
+      setPicking(true)
+      try {
+        const r = await remotes.directoryPicker.pick()
+        if (r && r.ok && r.value) {
+          setRepoPath(String(r.value))
+          setBaseBranch('')
+          setFieldErrors((prev: any) => Object.assign({}, prev, { repoPath: '', baseBranch: '' }))
+        } else if (r && r.ok === false) {
+          setErr(r.error && (r.error.message || r.error.code) ? String(r.error.message || r.error.code) : t.failed)
+        }
+      } catch (e: any) {
+        setErr((e && e.message) || t.failed)
+      } finally {
+        pickingRef.current = false
+        setPicking(false)
+      }
     }
-  }
+    const browseFromPointer = (e: any) => {
+      if (e.button !== 0) return
+      e.preventDefault()
+      void browse()
+    }
 
-  const submit = async (e: any) => {
-    e.preventDefault()
-    if (busy || !repoPath.trim() || !baseBranch.trim()) return
-    setBusy(true)
-    setErr('')
-    try {
-      const r = await post('projects/add', {
-        repoPath: repoPath.trim(),
-        name: name.trim() || undefined,
-        baseBranch: baseBranch.trim(),
+    React.useEffect(() => {
+      setBaseBranch('')
+      setFieldErrors((prev: any) => (prev.baseBranch ? Object.assign({}, prev, { baseBranch: '' }) : prev))
+    }, [repoPath])
+
+    React.useEffect(() => {
+      const d = branches.data
+      if (!d) return
+      setBaseBranch(d.current || d.default || (d.branches && d.branches[0] && d.branches[0].name) || '')
+      setFieldErrors((prev: any) => (prev.baseBranch ? Object.assign({}, prev, { baseBranch: '' }) : prev))
+    }, [branches.data])
+
+    const chooseBase = (value: string) => {
+      setBaseBranch(value)
+      setFieldErrors((prev: any) => (prev.baseBranch ? Object.assign({}, prev, { baseBranch: '' }) : prev))
+    }
+
+    const submit = async () => {
+      if (submitRef.current || busy || branches.status === 'loading') return
+      setErr('')
+      const next: any = {}
+      if (!repoPath.trim()) next.repoPath = t.requiredField
+      if (!baseBranch.trim()) next.baseBranch = t.requiredField
+      setFieldErrors(next)
+      if (Object.keys(next).length) {
+        const id = next.repoPath ? 'dshw-add-repo' : 'dshw-add-base'
+        window.requestAnimationFrame(() => document.getElementById(id)?.focus())
+        return
+      }
+      submitRef.current = true
+      setBusy(true)
+      try {
+        const r = await post('projects/add', {
+          repoPath: repoPath.trim(),
+          name: name.trim() || undefined,
+          baseBranch: baseBranch.trim(),
+        })
+        props.onAdded(r.project)
+      } catch (e: any) {
+        setErr((e && e.message) || t.failed)
+      } finally {
+        submitRef.current = false
+        setBusy(false)
+      }
+    }
+
+    let branchControl: any
+    let branchHint: any = null
+    let branchError: any = fieldErrors.baseBranch
+    if (!repoPath.trim()) {
+      branchControl = h('div', { className: 'dshw-select-loading' }, h('span', null, t.chooseDirFirst))
+      branchHint = null
+    } else if (branches.status === 'loading') {
+      branchControl = h('div', { className: 'dshw-select-loading' }, h(Spinner), h('span', null, t.loadingBranches))
+      branchHint = null
+    } else if (branches.status === 'error') {
+      branchControl = h(TextInput, {
+
+        id: 'dshw-add-base',
+        value: baseBranch,
+        placeholder: t.baseBranch,
+        autoComplete: 'off',
+        'aria-required': 'true',
+        'aria-invalid': fieldErrors.baseBranch ? 'true' : 'false',
+        'aria-describedby': fieldErrors.baseBranch ? 'dshw-add-base-error' : undefined,
+        onChange: (e: any) => chooseBase(e.target.value),
       })
-      props.onAdded(r.project)
-    } catch (error: any) {
-      setErr(error?.message || t.failed)
-    } finally {
-      setBusy(false)
+      branchHint = h('span', null, t.loadBranchesFailed, ' ',
+        h('button', { type: 'button', className: 'dshw-link-btn', onClick: branches.retry }, t.retry))
+    } else {
+      branchControl = h(BranchCombobox, {
+        t,
+        value: baseBranch,
+        onChange: chooseBase,
+        branchInfo: branches.data,
+        id: 'dshw-add-base',
+        'aria-required': 'true',
+        'aria-invalid': fieldErrors.baseBranch ? 'true' : 'false',
+        'aria-describedby': fieldErrors.baseBranch ? 'dshw-add-base-error' : undefined,
+      })
+      branchHint = null
     }
-  }
 
-  return h(Modal, {
-    t,
-    title: t.addProject,
-    subtitle: t.addProjectSub,
-    icon: 'folder',
-    size: 'lg',
-    busy,
-    onClose: props.onClose,
-    footer: [
+    const cannotSubmit = busy || !repoPath.trim() || !baseBranch.trim() || branches.status === 'loading'
+
+    const footer = [
       h(Btn, { key: 'cancel', onClick: props.onClose, disabled: busy }, t.cancel),
-      h(Btn, { key: 'ok', variant: 'primary', type: 'submit', form: 'dshw-add-project-form', disabled: busy || !repoPath.trim() || !baseBranch.trim() },
-        busy ? h(Spinner) : null, t.addProject),
-    ],
-  },
-    h('form', { id: 'dshw-add-project-form', onSubmit: submit },
-      h('div', { className: 'dshw-form-section' },
-        h(Field, { id: 'dshw-add-repo', label: t.repoPath },
-          h('div', { className: 'dshw-field-inline' },
-            h(TextInput, { value: repoPath, placeholder: t.repoPathHint, autoFocus: true, onChange: (e: any) => { setRepoPath(e.target.value); setBaseBranch('') } }),
-            h(Btn, { icon: 'folder', disabled: picking, onClick: browse }, picking ? t.pickingDirectory : t.browse))),
-        h(Field, { id: 'dshw-add-name', label: t.projectName, hint: t.projectNameHint },
-          h(TextInput, { value: name, placeholder: baseName(repoPath) || t.projectName, onChange: (e: any) => setName(e.target.value) })),
-        h(Field, { id: 'dshw-add-base', label: t.defaultBase },
-          branches.status === 'loading'
-            ? h('div', { className: 'dshw-select-loading' }, h(Spinner), h('span', null, t.loadingBranches))
-            : branches.data
-              ? h(BranchCombobox, { t, value: baseBranch, onChange: setBaseBranch, branchInfo: branches.data, id: 'dshw-add-base' })
-              : h(TextInput, { value: baseBranch, placeholder: t.baseBranch, onChange: (e: any) => setBaseBranch(e.target.value) }))),
-      err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null))
-}
+      h(Btn, {
+        key: 'submit',
+        variant: 'primary',
+        type: 'submit',
+        form: 'dshw-add-project-form',
+        disabled: cannotSubmit,
+        'aria-busy': busy ? 'true' : undefined,
+      }, busy ? h(Spinner) : null, t.addProject),
+    ]
 
-export function PublishModal(props: any) {
-  const { t, project, cfg = {}, parentView, draft = {} } = props
-  const parentTask = parentView?.task || null
-  const branches = useBranchInfo(project.repoPath)
-
-  const [title, setTitle] = React.useState(draft.title ?? (parentTask ? `${parentTask.title}${t.continueTitleSuffix}` : ''))
-  const [description, setDescription] = React.useState(draft.description ?? '')
-  const [baseBranch, setBaseBranch] = React.useState(parentTask?.baseBranch || project.baseBranch || '')
-  const [branchName, setBranchName] = React.useState(draft.branchName ?? '')
-  const [start, setStart] = React.useState(true)
-  const [asPlain, setAsPlain] = React.useState(false)
-  const [carryLeftover] = React.useState(false)
-  const [manualCriteria, setManualCriteria] = React.useState(draft.manualCriteria ?? '')
-  const [pickedCriteria, setPickedCriteria] = React.useState(Array.isArray(draft.pickedCriteria) ? draft.pickedCriteria : [])
-  const [criteriaLibrary, setCriteriaLibrary] = React.useState([] as string[])
-  const [modelCatalog, setModelCatalog] = React.useState(null as any)
-  const [modelChoice, setModelChoice] = React.useState(null as any)
-  const [fieldErrors, setFieldErrors] = React.useState({} as Record<string, string>)
-
-  const { busy, err, unknown, submit, reconcile } = usePublishSubmit(props)
-
-  React.useEffect(() => {
-    props.onDraft?.({ title, description, manualCriteria, pickedCriteria, branchName })
-  }, [title, description, manualCriteria, pickedCriteria.join('|'), branchName])
-
-  React.useEffect(() => {
-    getJson('acceptance-criteria').then((d: any) => setCriteriaLibrary(Array.isArray(d.items) ? d.items : [])).catch(() => {})
-    appCtx?.remote?.session?.modelCatalog?.().then((r: any) => { if (r?.ok && r.value) setModelCatalog(r.value) }).catch(() => {})
-  }, [])
-
-  React.useEffect(() => {
-    if (branches.data && !baseBranch) {
-      setBaseBranch(branches.data.current || branches.data.default || branches.data.branches?.[0]?.name || '')
-    }
-  }, [branches.data])
-
-  const handleSubmit = (e: any) => {
-    e.preventDefault()
-    const nextErr: Record<string, string> = {}
-    if (!title.trim()) nextErr.title = t.requiredField
-    if (!description.trim()) nextErr.description = t.requiredField
-    if (!isValidBranchName(branchName.trim())) nextErr.branchName = t.branchInvalid
-    setFieldErrors(nextErr)
-    if (Object.keys(nextErr).length) return
-
-    void submit({
-      projectId: project.id,
-      baseBranch: baseBranch || undefined,
-      title: title.trim(),
-      description,
-      branchName: branchName.trim() || undefined,
-      model: modelChoice || undefined,
-      acceptanceCriteria: normalizeCriteria([...pickedCriteria, ...parseCriteriaText(manualCriteria)]),
-      ...(parentTask && !asPlain ? { parentId: parentTask.id, carryLeftover } : {}),
-      start,
-    }, start, !!(parentTask && !asPlain))
-  }
-
-  return h(Modal, {
-    t,
-    title: parentTask && !asPlain ? t.continueTask : t.publish,
-    icon: 'play',
-    size: 'lg',
-    busy,
-    onClose: props.onClose,
-    footer: [
-      props.onBackToProject && !parentTask ? h(Btn, { key: 'back', disabled: busy, onClick: props.onBackToProject }, t.backToProject) : null,
-      h(Btn, { key: 'cancel', onClick: props.onClose, disabled: busy }, t.cancel),
-      unknown
-        ? h(Btn, { key: 'check', variant: 'primary', disabled: busy, onClick: () => void reconcile({ projectId: project.id, branchName: branchName.trim(), title: title.trim() }) }, t.refreshConfirm)
-        : h(Btn, { key: 'ok', variant: 'primary', type: 'submit', form: 'dshw-publish-form', disabled: busy }, busy ? h(Spinner) : null, busy ? t.publishing : t.publish),
-    ].filter(Boolean),
-  },
-    h('form', { id: 'dshw-publish-form', onSubmit: handleSubmit },
-      h('div', { className: 'dshw-form-section' },
-        h('div', { className: 'dshw-form-section__title' }, project.name),
-        h(Field, { id: 'dshw-publish-title', label: t.taskTitle, error: fieldErrors.title },
+    return h(Modal, {
+      t,
+      title: t.addProject,
+      subtitle: t.addProjectSub,
+      icon: 'folder',
+      size: 'lg',
+      busy,
+      onClose: props.onClose,
+      footer,
+    },
+      h('form', {
+        id: 'dshw-add-project-form',
+        onSubmit: (e: any) => { e.preventDefault(); void submit() },
+      },
+      h('div', { className: 'dshw-field' },
+        h('label', { className: 'dshw-field-label', htmlFor: 'dshw-add-repo' },
+          t.repoPath,
+          h('span', { className: 'dshw-req', 'aria-hidden': 'true' }, '*')),
+        h('div', { className: 'dshw-field-inline' },
           h('input', {
-            id: 'dshw-publish-title',
-            className: cx('dshw-input', fieldErrors.title && 'dshw-invalid'),
-            value: title,
-            placeholder: t.taskTitle,
-            onChange: (e: any) => setTitle(e.target.value),
-          })),
-        h(Field, { id: 'dshw-publish-desc', label: t.taskDescription, error: fieldErrors.description },
-          h('textarea', {
-            id: 'dshw-publish-desc',
-            className: cx('dshw-textarea', fieldErrors.description && 'dshw-invalid'),
-            rows: 5,
-            value: description,
-            placeholder: t.taskDescription,
-            onChange: (e: any) => setDescription(e.target.value),
-          })),
-        parentTask
-          ? h(Checkbox, { checked: asPlain, onChange: setAsPlain, label: t.publishAsPlain })
+            id: 'dshw-add-repo',
+            className: cx('dshw-input', fieldErrors.repoPath && 'dshw-invalid'),
+            value: repoPath,
+            placeholder: t.repoPathHint,
+            autoFocus: true,
+            autoComplete: 'off',
+            'aria-required': 'true',
+            'aria-invalid': fieldErrors.repoPath ? 'true' : 'false',
+            'aria-describedby': fieldErrors.repoPath ? 'dshw-add-repo-error' : undefined,
+            onChange: (e: any) => {
+              setRepoPath(e.target.value)
+              setBaseBranch('')
+              if (fieldErrors.repoPath) setFieldErrors({})
+            },
+          }),
+          h(Btn, {
+            icon: 'folder',
+            disabled: picking,
+            'aria-busy': picking ? 'true' : undefined,
+            onPointerDown: browseFromPointer,
+            onClick: (e: any) => { if (e.detail === 0) void browse() },
+          }, picking ? t.pickingDirectory : t.browse)),
+        fieldErrors.repoPath
+          ? h('div', { className: 'dshw-err', id: 'dshw-add-repo-error', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, fieldErrors.repoPath))
           : null),
-      h('div', { className: 'dshw-form-section' },
-        h('div', { className: 'dshw-form-section__title' }, t.advanced || '高级配置'),
-        h(Field, { id: 'dshw-publish-base', label: t.baseBranch },
-          branches.data
-            ? h(BranchCombobox, { t, value: baseBranch, onChange: setBaseBranch, branchInfo: branches.data, id: 'dshw-publish-base' })
-            : h(TextInput, { value: baseBranch, onChange: (e: any) => setBaseBranch(e.target.value) })),
-        h(Field, { id: 'dshw-publish-branch', label: t.branchName, error: fieldErrors.branchName },
-          h(TextInput, { value: branchName, placeholder: `${project.branchPrefix || cfg.branchPrefix || 'dsh-wt/'}<id8>`, onChange: (e: any) => setBranchName(e.target.value) })),
-        modelCatalog
-          ? h(Field, { id: 'dshw-publish-model', label: t.model || '模型' },
-            h(ModelCombobox, { t, catalog: modelCatalog, value: modelChoice, onChange: setModelChoice }))
-          : null,
-        criteriaLibrary.length
-          ? h('div', { className: 'dshw-criteria-picks' }, criteriaLibrary.map((item: string) =>
-            h(Checkbox, {
-              key: item,
-              checked: pickedCriteria.includes(item),
-              onChange: () => setPickedCriteria((prev: string[]) => prev.includes(item) ? prev.filter((x) => x !== item) : [...prev, item]),
-              label: item,
-            })))
-          : null,
-        h(Field, { id: 'dshw-publish-criteria', label: t.acceptanceCriteria || '验收标准' },
-          h('textarea', { className: 'dshw-textarea', rows: 2, value: manualCriteria, onChange: (e: any) => setManualCriteria(e.target.value) })),
-        h(Checkbox, { checked: start, onChange: setStart, label: t.startNow || '发布后立即启动会话' })),
+      h(Field, { id: 'dshw-add-name', label: t.projectName, hint: t.projectNameHint },
+        h(TextInput, {
+
+          value: name,
+          placeholder: baseName(repoPath) || t.projectName,
+          autoComplete: 'off',
+          onChange: (e: any) => setName(e.target.value),
+        })),
+      h('div', { className: 'dshw-field' },
+        h('label', { className: 'dshw-field-label', htmlFor: 'dshw-add-base' },
+          t.defaultBase,
+          h('span', { className: 'dshw-req', 'aria-hidden': 'true' }, '*')),
+        branchControl,
+        branchHint ? h('div', { className: 'dshw-hint' }, branchHint) : null,
+        branchError
+          ? h('div', { className: 'dshw-err', id: 'dshw-add-base-error', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, branchError))
+          : null),
       err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null))
-}
+  }
+
+export function PublishModal(props: { t: any; project: any; cfg: any; parentView?: any; draft?: any; onDraft?: (draft: any) => void; onBackToProject?: () => void; onCheckPublished?: (info: any) => Promise<any>; onClose: () => void; onRefresh: () => void; onError: (message: string) => void; onPublished: (task: any, project: any, warning?: string, continued?: boolean) => void }) {
+    const t = props.t
+    const remotes = appCtx && appCtx.remote
+    const project = props.project
+    const cfg = props.cfg || {}
+    const parentTask = props.parentView && props.parentView.task ? props.parentView.task : null
+    const parentAhead = (props.parentView && props.parentView.snapshot && props.parentView.snapshot.postMergeAhead) || 0
+    const draft = props.draft || {}
+    const branches = useBranchInfo(project.repoPath)
+    // Continue tasks default to the predecessor's actual merge target, never the
+    // project default (which may have moved since the merge).
+    const [baseBranch, setBaseBranch] = React.useState(parentTask ? (parentTask.baseBranch || project.baseBranch || '') : (project.baseBranch || ''))
+    const [branchName, setBranchName] = React.useState(String(draft.branchName || ''))
+    const [title, setTitle] = React.useState(draft.title !== undefined ? String(draft.title) : (parentTask ? String(parentTask.title) + String(t.continueTitleSuffix) : ''))
+    const [description, setDescription] = React.useState(String(draft.description || ''))
+    const [carryLeftover, setCarryLeftover] = React.useState(false)
+    const [asPlain, setAsPlain] = React.useState(false)
+    const [start, setStart] = React.useState(true)
+    const [criteriaLibrary, setCriteriaLibrary] = React.useState([] as string[])
+    const [pickedCriteria, setPickedCriteria] = React.useState(Array.isArray(draft.pickedCriteria) ? draft.pickedCriteria : [])
+    const [manualCriteria, setManualCriteria] = React.useState(String(draft.manualCriteria || ''))
+    const [busy, setBusy] = React.useState(false)
+    const [err, setErr] = React.useState('')
+    const [unknown, setUnknown] = React.useState(false)
+    const [closeConfirm, setCloseConfirm] = React.useState(false)
+    const [fieldErrors, setFieldErrors] = React.useState({} as any)
+    const advancedRef = React.useRef(null)
+    const submitRef = React.useRef(false)
+    const initialRef = React.useRef({ title, description, manualCriteria, pickedCriteria: pickedCriteria.slice(), branchName })
+    const dirty = title !== initialRef.current.title
+      || description !== initialRef.current.description
+      || manualCriteria !== initialRef.current.manualCriteria
+      || branchName !== initialRef.current.branchName
+      || pickedCriteria.join('|') !== initialRef.current.pickedCriteria.join('|')
+    React.useEffect(() => {
+      if (props.onDraft) props.onDraft({ title, description, manualCriteria, pickedCriteria, branchName })
+    }, [title, description, manualCriteria, pickedCriteria.join('|'), branchName])
+    const handleClose = () => {
+      if (busy) return
+      if (dirty) { setCloseConfirm(true); return }
+      props.onClose()
+    }
+    const keepDraftAndClose = () => { if (props.onDraft) props.onDraft({ title, description, manualCriteria, pickedCriteria, branchName }); props.onClose() }
+    const discardAndClose = () => { if (props.onDraft) props.onDraft(null); props.onClose() }
+    const [modelCatalog, setModelCatalog] = React.useState(null as any)
+    const [modelChoice, setModelChoice] = React.useState(null as any)
+    const [modelLoading, setModelLoading] = React.useState(true)
+    const [modelError, setModelError] = React.useState('')
+
+    // Model list comes from the host's session model catalog — the same source
+    // the official conversation model dropdown reads.
+    const loadModels = () => {
+      if (!remotes || !remotes.session || typeof remotes.session.modelCatalog !== 'function') {
+        setModelLoading(false)
+        setModelError(t.modelUnavailable)
+        return
+      }
+      setModelLoading(true)
+      setModelError('')
+      remotes.session.modelCatalog()
+        .then((r: any) => {
+          if (r && r.ok && r.value) setModelCatalog(r.value)
+          else setModelError((r && r.error && (r.error.message || r.error.code)) || t.loadFailed)
+        })
+        .catch((e: any) => setModelError((e && e.message) || t.loadFailed))
+        .finally(() => setModelLoading(false))
+    }
+    React.useEffect(() => { loadModels() }, [])
+
+    React.useEffect(() => {
+      getJson('acceptance-criteria')
+        .then((d: any) => setCriteriaLibrary(Array.isArray(d.items) ? d.items : []))
+        .catch(() => {})
+    }, [])
+    const toggleCriterion = (item: string) => {
+      setPickedCriteria((prev: string[]) => (prev.includes(item) ? prev.filter((x) => x !== item) : [...prev, item]))
+    }
+
+    React.useEffect(() => {
+      const d = branches.data
+      if (!d) return
+      setBaseBranch((prev: string) => prev || d.current || d.default || (d.branches && d.branches[0] && d.branches[0].name) || '')
+    }, [branches.data])
+
+    const clearFieldError = (name: string) => {
+      setFieldErrors((prev: any) => (prev[name] ? Object.assign({}, prev, { [name]: '' }) : prev))
+    }
+
+    const prefix = project.branchPrefix || cfg.branchPrefix || 'dsh-wt/'
+    const pattern = prefix + '<id8>'
+
+    const validBranch = (value: string) => {
+      if (!value) return true
+      const ok = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/.test(value)
+      if (!ok || value.includes('..') || value.includes('@{') || value.endsWith('/') || value.endsWith('.') || value.endsWith('.lock')) return false
+      return true
+    }
+
+    const submit = async () => {
+      if (submitRef.current || busy) return
+      setErr('')
+      const next: any = {}
+      if (!title.trim()) next.title = t.requiredField
+      if (!description.trim()) next.description = t.requiredField
+      if (!validBranch(branchName.trim())) next.branchName = t.branchInvalid
+      setFieldErrors(next)
+      if (Object.keys(next).length) {
+        const firstId = next.title ? 'dshw-publish-title' : next.description ? 'dshw-publish-description' : 'dshw-publish-branch'
+        if (next.branchName && advancedRef.current) (advancedRef.current as any).open = true
+        window.requestAnimationFrame(() => document.getElementById(firstId)?.focus())
+        return
+      }
+      submitRef.current = true
+      setBusy(true)
+      try {
+        const r = await withTimeout(postLong('publish', {
+          projectId: project.id,
+          baseBranch: baseBranch || undefined,
+          title: title.trim(),
+          description,
+          branchName: branchName.trim() || undefined,
+          model: modelChoice || undefined,
+          acceptanceCriteria: normalizeCriteria([...pickedCriteria, ...parseCriteriaText(manualCriteria)]),
+          ...(parentTask && !asPlain ? { parentId: parentTask.id, carryLeftover } : {}),
+          start,
+        }), 30000, t.publishTimeout)
+        const task = r.task
+        let publishedTask = task
+        if (start && remotes && remotes.session) {
+          try {
+            const sessionId = await withTimeout(bindSession(remotes, task, project.name, start), 60000, t.bindTimeout)
+            // Carry the freshly bound session id so the board's optimistic row
+            // shows the correct status and an active "open session" entry before
+            // the follow-up refresh lands.
+            if (sessionId) publishedTask = Object.assign({}, task, { sessionId })
+          } catch (e: any) {
+            props.onPublished(task, project, (e && e.message) || t.failed, !!(parentTask && !asPlain))
+            return
+          }
+        }
+        props.onPublished(publishedTask, project, undefined, !!(parentTask && !asPlain))
+      } catch (e: any) {
+        if (e && (e as any).timeout) {
+          // Unknown result: never auto-resubmit; offer a manual reconcile.
+          setUnknown(true)
+          setErr((e && e.message) || t.publishTimeout)
+          props.onRefresh()
+        } else {
+          setErr((e && e.message) || t.failed)
+          props.onRefresh()
+        }
+      } finally {
+        submitRef.current = false
+        setBusy(false)
+      }
+    }
+
+    const checkResult = async () => {
+      if (busy) return
+      setBusy(true)
+      setErr('')
+      try {
+        const found = props.onCheckPublished
+          ? await props.onCheckPublished({ projectId: project.id, branchName: branchName.trim(), title: title.trim() })
+          : null
+        if (found) props.onPublished(found, project)
+        else setErr(t.publishResultNotFound)
+      } catch (e: any) {
+        setErr((e && e.message) || t.failed)
+      } finally {
+        setBusy(false)
+      }
+    }
+
+    const branchHint = branches.status === 'loading'
+      ? t.loadingBranches
+      : branches.status === 'error'
+        ? h('span', null, t.loadBranchesFailed, ' ', h('button', { type: 'button', className: 'dshw-link-btn', onClick: branches.retry }, t.retry))
+        : null
+    const branchControl = branches.data
+      ? h(BranchCombobox, { t, value: baseBranch, onChange: setBaseBranch, branchInfo: branches.data, id: 'dshw-publish-base' })
+      : h(TextInput, { id: 'dshw-publish-base', value: baseBranch, onChange: (e: any) => setBaseBranch(e.target.value), placeholder: t.baseBranch })
+
+    const footer = [
+      props.onBackToProject && !parentTask ? h(Btn, { key: 'back', disabled: busy, onClick: () => props.onBackToProject && props.onBackToProject() }, t.backToProject) : null,
+      h(Btn, { key: 'cancel', onClick: handleClose, disabled: busy }, t.cancel),
+      unknown
+        ? h(Btn, { key: 'check', variant: 'primary', disabled: busy, onClick: () => void checkResult() }, busy ? h(Spinner) : null, t.refreshConfirm)
+        : h(Btn, {
+          key: 'submit',
+          variant: 'primary',
+          type: 'submit',
+          form: 'dshw-publish-form',
+          disabled: busy,
+          'aria-busy': busy ? 'true' : undefined,
+        }, busy ? h(Spinner) : null, busy ? t.publishing : t.publish),
+    ]
+
+    return h(Modal, {
+      t,
+      title: parentTask && !asPlain ? t.continueTask : t.publish,
+      icon: 'play',
+      size: 'lg',
+      busy,
+      onClose: handleClose,
+      footer: footer.filter(Boolean),
+    },
+      closeConfirm
+        ? h(Banner, { tone: 'warn', icon: 'alert', title: t.draftConfirmTitle },
+          h('div', null, t.draftConfirmHint),
+          h('div', { className: 'dshw-inline', style: { gap: '8px', marginTop: '8px' } },
+            h(Btn, { size: 'sm', onClick: keepDraftAndClose }, t.draftKeep),
+            h(Btn, { size: 'sm', variant: 'danger', onClick: discardAndClose }, t.draftDiscard)))
+        : null,
+      h('form', {
+        id: 'dshw-publish-form',
+        onSubmit: (e: any) => { e.preventDefault(); void submit() },
+      },
+      h('div', { className: 'dshw-form-rows' },
+        h('div', { className: 'dshw-form-row' },
+          h('label', null, t.projects),
+          h('div', null,
+            h('div', { className: 'dshw-readonly-box' },
+              h('span', { className: 'dshw-folder-tile dshw-folder-tile--blue' }, h(Icon, { name: 'folder' })),
+              h('span', { className: 'dshw-nowrap' }, project.name)),
+            h('div', { className: 'dshw-hint', style: { marginTop: '4px' } }, project.repoPath))),
+        parentTask
+          ? h('div', { className: 'dshw-form-row' },
+            h('label', null, t.parentTask),
+            h('div', null,
+              h('div', { className: 'dshw-readonly-box' },
+                h('span', { className: 'dshw-folder-tile dshw-folder-tile--purple' }, h(Icon, { name: 'branch' })),
+                h('span', { className: 'dshw-nowrap' }, parentTask.title)),
+              h('div', { className: 'dshw-hint' }, String(t.parentTaskMerged).replace('{base}', parentTask.baseBranch || '—')),
+              h(Checkbox, {
+                className: 'dshw-check',
+                checked: asPlain,
+                onChange: (next: boolean) => setAsPlain(next),
+                label: h('span', { className: 'dshw-check-copy' }, t.publishAsPlain),
+              }),
+              parentAhead > 0 && !asPlain
+                ? h('div', null,
+                  h('div', { className: 'dshw-choice-group', role: 'radiogroup', style: { marginTop: '6px' } },
+                    h('label', { className: 'dshw-choice' },
+                      h('input', { type: 'radio', name: 'dshw-continue-carry', checked: !carryLeftover, onChange: () => setCarryLeftover(false) }),
+                      h('span', null, t.continueMergedOnly)),
+                    h('label', { className: 'dshw-choice' },
+                      h('input', { type: 'radio', name: 'dshw-continue-carry', checked: carryLeftover, onChange: () => setCarryLeftover(true) }),
+                      h('span', null, t.continueCarry))),
+                  h('div', { className: 'dshw-hint' }, carryLeftover
+                    ? String(t.continueCarryHint).replace('{n}', String(parentAhead))
+                    : t.continueMergedOnlyHint))
+                : null))
+          : null,
+        h('div', { className: 'dshw-form-row' },
+          h('label', { htmlFor: 'dshw-publish-title' }, t.taskTitle, h('span', { className: 'dshw-req', 'aria-hidden': 'true' }, '*')),
+          h('div', null,
+            h('input', {
+              id: 'dshw-publish-title',
+              className: cx('dshw-input', fieldErrors.title && 'dshw-invalid'),
+              value: title,
+              placeholder: t.taskTitle,
+              autoComplete: 'off',
+              'aria-required': 'true',
+              'aria-invalid': fieldErrors.title ? 'true' : 'false',
+              'aria-describedby': fieldErrors.title ? 'dshw-publish-title-error' : undefined,
+              onChange: (e: any) => { setTitle(e.target.value); clearFieldError('title') },
+            }),
+            fieldErrors.title
+              ? h('div', { className: 'dshw-err', id: 'dshw-publish-title-error', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, fieldErrors.title))
+              : null)),
+        h('div', { className: 'dshw-form-row' },
+          h('label', { htmlFor: 'dshw-publish-description' }, t.taskDescription, h('span', { className: 'dshw-req', 'aria-hidden': 'true' }, '*')),
+          h('div', null,
+            h('textarea', {
+              id: 'dshw-publish-description',
+              className: cx('dshw-input', fieldErrors.description && 'dshw-invalid'),
+              value: description,
+              rows: 4,
+              placeholder: t.taskDescription,
+              'aria-required': 'true',
+              'aria-invalid': fieldErrors.description ? 'true' : 'false',
+              'aria-describedby': fieldErrors.description ? 'dshw-publish-description-error' : undefined,
+              onChange: (e: any) => { setDescription(e.target.value); clearFieldError('description') },
+            }),
+            fieldErrors.description
+              ? h('div', { className: 'dshw-err', id: 'dshw-publish-description-error', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, fieldErrors.description))
+              : null)),
+        h('div', { className: 'dshw-form-row' },
+          h('label', { htmlFor: 'dshw-publish-criteria' }, t.acceptanceCriteria),
+          h('div', null,
+            criteriaLibrary.length
+              ? h('div', { className: 'dshw-criteria-pick' },
+                h('div', { className: 'dshw-criteria-pick-title' }, t.criteriaPickHint),
+                criteriaLibrary.map((item: string) => h(Checkbox, {
+                  key: item,
+                  className: 'dshw-check dshw-criteria-check',
+                  checked: pickedCriteria.includes(item),
+                  onChange: () => toggleCriterion(item),
+                  label: h('span', { className: 'dshw-check-copy' }, item),
+                })))
+              : null,
+            h('textarea', {
+              id: 'dshw-publish-criteria',
+              className: 'dshw-input',
+              value: manualCriteria,
+              rows: 3,
+              placeholder: t.acceptanceCriteriaPlaceholder,
+              onChange: (e: any) => setManualCriteria(e.target.value),
+            }),
+            h('div', { className: 'dshw-hint' }, t.acceptanceCriteriaHint))),
+        h('div', { className: 'dshw-form-row' },
+          h('label', { htmlFor: 'dshw-publish-base' }, t.baseBranch),
+          h('div', null,
+            branchControl,
+            branchHint ? h('div', { className: 'dshw-hint' }, branchHint) : null,
+            parentTask && !asPlain && baseBranch && parentTask.baseBranch && baseBranch !== parentTask.baseBranch
+              ? h('div', { className: 'dshw-hint' }, String(t.baseNotMergeTarget).replace('{base}', parentTask.baseBranch))
+              : null)),
+        h('div', { className: 'dshw-form-row' },
+          h('span', { className: 'dshw-form-label' }, t.preview),
+          h('div', null,
+            h('div', { className: 'dshw-hint' }, t.previewBranch + '：' + (branchName.trim() || pattern)),
+            h('div', { className: 'dshw-hint' }, t.previewDir + '：' + ((project.dirName || cfg.dirName || '.dsh-worktrees') + '/<id8>')))),
+        h('div', { className: 'dshw-form-row' },
+          h('span', { className: 'dshw-form-label', id: 'dshw-publish-start-label' }, t.startNow),
+          h('div', null,
+            h('div', {
+              className: 'dshw-choice-group',
+              role: 'radiogroup',
+              'aria-labelledby': 'dshw-publish-start-label',
+              'aria-describedby': 'dshw-publish-start-hint',
+            },
+              h('label', { className: 'dshw-choice' },
+                h('input', {
+                  type: 'radio',
+                  name: 'dshw-publish-start',
+                  value: 'yes',
+                  checked: start,
+                  onChange: () => setStart(true),
+                }),
+                h('span', null, t.yes)),
+              h('label', { className: 'dshw-choice' },
+                h('input', {
+                  type: 'radio',
+                  name: 'dshw-publish-start',
+                  value: 'no',
+                  checked: !start,
+                  onChange: () => setStart(false),
+                }),
+                h('span', null, t.no))),
+            h('div', { className: 'dshw-hint', id: 'dshw-publish-start-hint' }, t.startNowHint)))),
+      h('details', { className: 'dshw-advanced', ref: advancedRef },
+        h('summary', null, h(Icon, { name: 'chevronDown' }), t.advanced),
+        h('div', { className: 'dshw-advanced-body' },
+          h('div', { className: 'dshw-field' },
+            h('label', { className: 'dshw-field-label', htmlFor: 'dshw-publish-model' }, t.model),
+            modelLoading
+              ? h('div', { className: 'dshw-select-loading' }, h(Spinner), h('span', null, t.loading))
+              : modelCatalog
+                ? h(ModelCombobox, {
+                  t,
+                  id: 'dshw-publish-model',
+                  value: modelChoice,
+                  onChange: setModelChoice,
+                  groups: modelCatalog.groups,
+                  defaultSelection: modelCatalog.default,
+                })
+                : h('div', { className: 'dshw-select-loading' }, h('span', null, modelError || t.loadFailed), ' ',
+                  h('button', { type: 'button', className: 'dshw-link-btn', onClick: loadModels }, t.retry)),
+            modelCatalog ? h('div', { className: 'dshw-hint' }, t.modelHint) : null),
+          h('div', { className: 'dshw-field' },
+            h('label', { className: 'dshw-field-label', htmlFor: 'dshw-publish-branch' }, t.branchName),
+            h('input', {
+              id: 'dshw-publish-branch',
+              className: cx('dshw-input dshw-mono', fieldErrors.branchName && 'dshw-invalid'),
+              value: branchName,
+              placeholder: t.branchNameHint,
+              autoComplete: 'off',
+              spellCheck: false,
+              'aria-invalid': fieldErrors.branchName ? 'true' : 'false',
+              'aria-describedby': fieldErrors.branchName ? 'dshw-publish-branch-error' : undefined,
+              onChange: (e: any) => { setBranchName(e.target.value); clearFieldError('branchName') },
+            }),
+            fieldErrors.branchName
+              ? h('div', { className: 'dshw-err', id: 'dshw-publish-branch-error', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, fieldErrors.branchName))
+              : null))),
+      h('div', { className: 'dshw-hint', style: { margin: '-3px 0 10px' } },
+        t.branchRule.replace('{pattern}', pattern)),
+      err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null))
+  }

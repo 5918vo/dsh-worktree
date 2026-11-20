@@ -11,13 +11,6 @@ import * as gitx from './gitx.js'
 import { DiffFile, MergeBlocker, MergeBlockingFile, MergeConflictInfo, MergePreflight, MergePreview, ModelSelection, PendingStash, Project, ProjectStats, ProjectView, TaskDiff, TaskSnapshot, TaskStatus, TaskView, WorktreeConfig, WorktreeTask } from './models.js'
 import { Store } from './store.js'
 import { normalizeCriteria } from './criteria.js'
-import { TaskError, extractConflictFiles } from './core/errors.js'
-import { RepoLockManager, normalizeRepoKey } from './core/repo-lock.js'
-import { buildFirstPrompt, ParentPromptInfo } from './core/prompt-builder.js'
-
-export { TaskError, buildFirstPrompt }
-export type { ParentPromptInfo }
-
 
 export interface PublishInput {
   projectId?: string
@@ -61,6 +54,25 @@ export interface MergeOptions {
   timeoutMs?: number
 }
 
+export class TaskError extends Error {
+  readonly status: number
+  /** Machine-readable reason (e.g. stale/conflict/repoBusy/timeout) for 409 handling. */
+  readonly code?: string
+  constructor(message: string, status = 400, code?: string) {
+    super(message)
+    this.name = 'TaskError'
+    this.status = status
+    if (code) this.code = code
+  }
+}
+
+/** Files named by git's conflict output, deduplicated. */
+function conflictFiles(text: string): string[] {
+  const files = new Set<string>()
+  for (const match of text.matchAll(/Merge conflict in ([^\r\n]+)/g)) files.add(match[1].trim())
+  for (const match of text.matchAll(/CONFLICT \([^)]*\):\s*(.+?)\s+(?:deleted|modified) in/gi)) files.add(match[1].trim())
+  return [...files]
+}
 
 function id8(id: string): string {
   return id.replace(/-/g, '').slice(0, 8)
@@ -131,6 +143,97 @@ function assertTaskBranchName(name: string): void {
   }
 }
 
+/** Facts about the preceding merged task, folded into a follow-up task's first prompt. */
+export interface ParentPromptInfo {
+  id: string
+  title: string
+  branch: string
+  mergedCommits: gitx.CommitLine[]
+  mergedFiles: string[]
+  /** Commits added on the predecessor branch after it was merged (not yet in base). */
+  leftoverCommits: gitx.CommitLine[]
+  /** `<mergeBase>..<parentBranch>` range for cherry-picking the leftovers, when known. */
+  leftoverRange?: string
+}
+
+function parentPromptLines(parent: ParentPromptInfo, baseBranch: string): string[] {
+  const lines: string[] = []
+  lines.push(`前序任务（已合并到 ${baseBranch}）：`)
+  lines.push(`- 标题：${parent.title}`)
+  lines.push(`- 分支：${parent.branch}`)
+  if (parent.mergedCommits.length) {
+    lines.push('- 已合并的提交：')
+    for (const commit of parent.mergedCommits) lines.push(`  - ${commit.hash} ${commit.subject}`)
+  } else {
+    lines.push('- 已合并的提交：—')
+  }
+  lines.push(`- 改动文件：${parent.mergedFiles.length ? parent.mergedFiles.join('、') : '—'}`)
+  lines.push('')
+  lines.push(`当前 worktree 基于 ${baseBranch} 创建，已包含上述已合并改动。`)
+  lines.push('请先阅读相关文件，了解现有实现，再在此基础上完成本次任务；不要重复实现或回退前序改动。')
+  if (parent.leftoverCommits.length && parent.leftoverRange) {
+    lines.push('')
+    lines.push(`注意：前序分支在合并后又有 ${parent.leftoverCommits.length} 个未合并提交，当前 worktree 尚未包含它们：`)
+    for (const commit of parent.leftoverCommits) lines.push(`  - ${commit.hash} ${commit.subject}`)
+    lines.push('开始开发前，请先把这些提交带入当前分支（在 worktree 内执行）：')
+    lines.push(`  git cherry-pick ${parent.leftoverRange}`)
+    lines.push('遇到冲突逐个解决；涉及业务取舍时先问我。')
+  }
+  return lines
+}
+
+export function buildFirstPrompt(task: WorktreeTask, parent?: ParentPromptInfo): string {
+  const lines = [
+    '这是一个 git worktree 任务。',
+    '',
+    `任务：${task.title}`,
+    `描述：${task.description.trim()}`,
+    '',
+  ]
+  if (parent) {
+    lines.push(...parentPromptLines(parent, task.baseBranch))
+    lines.push('')
+  }
+  if (task.acceptanceCriteria && task.acceptanceCriteria.length) {
+    lines.push('验收标准：')
+    for (const item of task.acceptanceCriteria) lines.push(`- ${item}`)
+    lines.push('结束前逐条说明是否满足，未满足的说明原因。')
+    lines.push('')
+  }
+  lines.push(
+    '环境：',
+    `- worktree：${task.worktreePath}`,
+    `  分支 ${task.branch}，基于 ${task.baseBranch} ← 所有开发都在这里进行`,
+    `- 主仓库：${task.repoPath}（只读，不要修改其中任何文件）`,
+    '',
+    '开始前：',
+    '1. 如果当前目录不是上面的 worktree，用 working_directory 工具切换过去。',
+    '2. 运行 git rev-parse --show-toplevel 和 git branch --show-current，',
+    '   确认路径和分支正确；不一致时停下并告诉我。',
+    '',
+    '开发要求：',
+    '- 文件读写优先使用 worktree 内的绝对路径。',
+    '- 按阶段 commit，提交信息写清楚改了什么、为什么改。',
+    '- 不要切换分支、rebase、push、fetch/pull，不要删除 worktree；',
+    `  验收和合并回 ${task.baseBranch} 由工作台完成。`,
+    `- 不要主动同步基线。即使发现 ${task.baseBranch} 有新提交，也只在总结里说明。`,
+    '- 遇到需求不明确或需要取舍时，直接问我。',
+    '',
+    '同步基线（仅在我明确要求时执行）：',
+    `- 在 worktree 内执行 git merge ${task.baseBranch}（使用本地分支，不 rebase）。`,
+    '- 有冲突时逐个解决；如果涉及业务取舍，先列出冲突并问我。',
+    '- 解决后运行验证（例如 npm run typecheck / npm run build），通过后再提交合并。',
+    '- 如果无法完成，执行 git merge --abort 恢复原状，并说明原因。',
+    '',
+    '完成后总结：',
+    '- 改动的文件和要点',
+    '- 提交列表',
+    '- 运行过的验证及结果',
+    '- 如果同步过基线：同步到的基线提交、冲突文件及解决方式',
+    '- 没验证的部分和遗留风险',
+  )
+  return lines.join('\n')
+}
 
 export interface SwitchObstacle {
   path: string
@@ -155,7 +258,7 @@ export class Runtime {
   private readonly config: WorktreeConfig
   readonly gitPath: string
   /** One in-flight git action per main repo, shared by chat/board/tool callers. */
-  private readonly repoLock = new RepoLockManager()
+  private readonly gitOps = new Map<string, string>()
   /** Transient (non-persisted) warnings for the next action response, e.g. restore-failed. */
   private readonly opWarnings = new Map<string, string>()
   /** Transient partial-success markers (200 but not fully done), e.g. restore-failed. */
@@ -803,8 +906,16 @@ export class Runtime {
    * second click would start a concurrent merge on the same repo and corrupt the
    * working tree. Keyed by the main repo, so worktrees of one project stay serial.
    */
-  private withRepoLock<T>(repoPath: string, label: string, fn: () => Promise<T>): Promise<T> {
-    return this.repoLock.run(repoPath, label, fn)
+  private async withRepoLock<T>(repoPath: string, label: string, fn: () => Promise<T>): Promise<T> {
+    const key = this.repoKey(repoPath)
+    const active = this.gitOps.get(key)
+    if (active) throw new TaskError(`主仓库正在执行「${active}」，请等待完成后再操作`, 409, 'repo-busy')
+    this.gitOps.set(key, label)
+    try {
+      return await fn()
+    } finally {
+      if (this.gitOps.get(key) === label) this.gitOps.delete(key)
+    }
   }
 
   /**
@@ -1061,7 +1172,7 @@ export class Runtime {
       await gitx.stashApplyBySha(this.gitPath, task.repoPath, entry.sha)
     } catch (error) {
       const text = (error as any)?.stderr || (error instanceof Error ? error.message : String(error))
-      const files = extractConflictFiles(String(text))
+      const files = conflictFiles(String(text))
       const detail = files.length ? files.join('、') : '未知文件'
       throw new TaskError(`恢复暂存产生冲突：${detail}。暂存记录已保留，请解决冲突后再恢复或丢弃。`, 409, 'stash-apply-conflict')
     }
@@ -1158,7 +1269,7 @@ export class Runtime {
     const prog = await gitx.inProgress(this.gitPath, repoPath)
     if (prog) push('in-progress', `主仓库有未完成的 ${prog} 操作，请先处理`)
 
-    if (!opts.internal && this.repoLock.isLocked(repoPath)) push('repo-busy', '主仓库正在执行其他 Git 操作，请等待完成')
+    if (!opts.internal && this.gitOps.get(this.repoKey(repoPath))) push('repo-busy', '主仓库正在执行其他 Git 操作，请等待完成')
 
     // Files that would block switching the main repo to the base branch.
     if (headSha && baseSha) {
@@ -1188,7 +1299,7 @@ export class Runtime {
     }
 
     // Conflict dry-run (only when there is something to merge and the repo is idle).
-    if (ahead > 0 && (opts.internal || !this.repoLock.isLocked(repoPath))) {
+    if (ahead > 0 && (opts.internal || !this.gitOps.get(this.repoKey(repoPath)))) {
       const pre = await this.runMergePreview(task, tipSha, baseSha)
       conflict.applicable = pre.applicable !== false
       conflict.conflict = !!pre.conflict
@@ -1342,7 +1453,7 @@ export class Runtime {
         await gitx.mergeAbort(this.gitPath, repoPath)
         if (err && err.timedOut) throw new TaskError('合并超时，已清理现场；请人工检查后重试', 409, 'timeout')
         if (/CONFLICT|Automatic merge failed/i.test(text)) {
-          const files = extractConflictFiles(text)
+          const files = conflictFiles(text)
           const detail = files.length ? `冲突文件：${files.join('、')}。` : ''
           throw new TaskError(`无法自动合并：与 ${task.baseBranch} 存在冲突。${detail}`, 409, 'conflict')
         }
@@ -1569,7 +1680,7 @@ export class Runtime {
     }
     // Never spawn git while another git action holds this repo; a cached result
     // is still safe to show, otherwise report busy.
-    if (this.repoLock.isLocked(task.repoPath)) {
+    if (this.gitOps.get(this.repoKey(task.repoPath))) {
       if (cached) return { ...cached.result, cached: true }
       return { ...empty, reason: 'busy' }
     }
