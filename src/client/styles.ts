@@ -89,8 +89,8 @@ export const CSS = `
 /* project row ------------------------------------------------------------ */
 .dshw-project{display:flex;align-items:center;gap:1px;margin-top:5px;padding:2px 1px;border-radius:8px;transition:background .12s}
 .dshw-project:hover{background:var(--dshw-surface-2)}
-.dshw-project--on{background:var(--dshw-brand-soft);box-shadow:inset 2px 0 0 var(--dshw-brand),inset 0 0 0 1px var(--dshw-brand-border)}
-.dshw-project--on .dshw-project-count{background:var(--dshw-surface);border-color:var(--dshw-brand-border);color:var(--dshw-brand)}
+.dshw-project--on{background:var(--dshw-surface);box-shadow:inset 0 0 0 1px var(--dshw-border)}
+.dshw-project--on .dshw-project-count{background:var(--dshw-surface-2);border-color:var(--dshw-border);color:var(--dshw-text-2)}
 .dshw-project-toggle{width:26px;height:30px;flex:none;border:0;background:transparent;color:var(--dshw-text-3);display:grid;place-items:center;border-radius:6px;padding:0}
 .dshw-project-toggle:hover{color:var(--dshw-text)}
 .dshw-project-toggle .dshw-ico{width:14px;height:14px;transition:transform .16s ease}
@@ -112,7 +112,7 @@ export const CSS = `
 /* task rows -------------------------------------------------------------- */
 .dshw-task{display:flex;align-items:stretch;margin:1px 0 1px 22px;border-radius:8px;transition:background .12s,box-shadow .12s}
 .dshw-task:hover{background:var(--dshw-surface-2)}
-.dshw-task--on{background:var(--dshw-brand-soft);box-shadow:inset 2px 0 0 var(--dshw-brand),inset 0 0 0 1px var(--dshw-brand-border)}
+.dshw-task--on{background:var(--dshw-surface);box-shadow:inset 0 0 0 1px var(--dshw-border)}
 .dshw-task-select{flex:1;min-width:0;display:flex;align-items:flex-start;gap:8px;border:0;background:transparent;text-align:left;padding:7px 3px 7px 8px;border-radius:8px 0 0 8px;color:inherit}
 .dshw-task-select .dshw-dot{margin-top:5px}
 .dshw-task-main{min-width:0;flex:1}
@@ -120,7 +120,7 @@ export const CSS = `
 /* simplified task rows (three lines + more + quick action) */
 .dshw-trow{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:stretch;margin:1px 0 1px 22px;border-radius:8px;transition:background .12s,box-shadow .12s}
 .dshw-trow:hover{background:var(--dshw-surface-2)}
-.dshw-trow--on{background:var(--dshw-brand-soft);box-shadow:inset 2px 0 0 var(--dshw-brand),inset 0 0 0 1px var(--dshw-brand-border)}
+.dshw-trow--on{background:var(--dshw-surface);box-shadow:inset 0 0 0 1px var(--dshw-border)}
 .dshw-trow-content{min-width:0;display:flex;flex-direction:column;gap:3px;border:0;background:transparent;text-align:left;padding:7px 3px 7px 8px;border-radius:8px;color:inherit;grid-column:1}
 .dshw-trow-content:focus-visible{outline:2px solid var(--dshw-brand);outline-offset:-2px}
 .dshw-trow-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:12.5px;font-weight:500;color:var(--dshw-text);line-height:1.35;word-break:break-word}
@@ -184,13 +184,14 @@ export const CSS = `
 .dshw-page-actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex:none}
 
 /* cards ------------------------------------------------------------------ */
-.dshw-card{background:var(--dshw-surface);border:1px solid var(--dshw-border);border-radius:10px;padding:16px 18px;margin-bottom:14px;box-shadow:none}
+.dshw-card{background:transparent;border:0;border-radius:0;box-shadow:none;padding:0 0 22px;margin:0 0 22px;border-bottom:1px solid var(--dshw-border)}
+.dshw-card:last-child{border-bottom:0;padding-bottom:0;margin-bottom:0}
 .dshw-card-head{display:flex;align-items:center;gap:8px;min-height:24px;margin-bottom:12px}
 .dshw-card-head>.dshw-ico{width:16px;height:16px;color:var(--dshw-text-3)}
 .dshw-card-title{font-size:13px;font-weight:600;letter-spacing:-.01em}
 .dshw-card-head .dshw-right{margin-left:auto;display:flex;align-items:center;gap:8px}
 .dshw-card-sub{font-size:12px;color:var(--dshw-text-2);line-height:1.65;margin:-4px 0 12px;max-width:76ch}
-.dshw-card--danger{border-color:var(--dshw-danger-border)}
+.dshw-card--danger{border-bottom-color:color-mix(in srgb,var(--dshw-danger) 30%,var(--dshw-border))}
 .dshw-card--danger .dshw-card-head>.dshw-ico{color:var(--dshw-danger)}
 .dshw-card--danger .dshw-card-title{color:var(--dshw-danger)}
 
@@ -584,15 +585,43 @@ export const CSS = `
 .dshw-toast .dshw-ico{width:15px;height:15px;flex:none}
 
 /* optical stage / inspector split ---------------------------------------- */
-.dshw-detail-inner.dshw-stage-grid{display:grid;grid-template-columns:minmax(0,1fr) 316px;gap:26px;align-items:start;max-width:1240px}
-.dshw-stage{min-width:0;display:flex;flex-direction:column;gap:14px}
-.dshw-stage>*{margin-bottom:0}
-.dshw-inspector{min-width:0;display:flex;flex-direction:column;gap:12px;position:sticky;top:0;align-self:start}
-.dshw-inspector .dshw-card{margin-bottom:0}
-.dshw-inspector .dshw-card-head{margin-bottom:10px}
+.dshw-detail-scroll:has(.dshw-stage-grid){padding:0}
+.dshw-detail-inner.dshw-stage-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:0;align-items:start;max-width:1280px;margin:0 auto}
+.dshw-stage{min-width:0;display:flex;flex-direction:column;border-right:1px solid var(--dshw-border)}
+.dshw-topbar{height:46px;padding:0 24px;border-bottom:1px solid var(--dshw-border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex:none;background:var(--dshw-bg)}
+.dshw-topbar-left,.dshw-topbar-right{display:flex;align-items:center;gap:8px;min-width:0}
+.dshw-breadcrumb{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--dshw-text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dshw-breadcrumb .dshw-ico{width:14px;height:14px;flex:none}
+.dshw-breadcrumb strong{color:var(--dshw-text);font-weight:500}
+.dshw-stage-head{padding:20px 28px 0;border-bottom:1px solid var(--dshw-border);flex:none}
+.dshw-stage-title-row{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:14px}
+.dshw-stage-title{font-size:20px;font-weight:600;letter-spacing:-.025em;line-height:1.3;color:var(--dshw-text);overflow-wrap:anywhere}
+.dshw-stage-sub{margin-top:7px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--dshw-text-2)}
+.dshw-tabs{display:flex;gap:22px}
+.dshw-tab{position:relative;padding:8px 0 11px;border:none;background:transparent;color:var(--dshw-text-3);font-size:13px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:color .12s}
+.dshw-tab:hover{color:var(--dshw-text-2)}
+.dshw-tab--on{color:var(--dshw-text)}
+.dshw-tab--on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1.5px;background:var(--dshw-text)}
+.dshw-stage-body{padding:26px 28px 48px;min-width:0}
+.dshw-measure{max-width:720px}
+.dshw-block{padding-bottom:22px;margin-bottom:22px;border-bottom:1px solid var(--dshw-border)}
+.dshw-block:last-child{border-bottom:none;padding-bottom:0;margin-bottom:0}
+.dshw-block-label{font-size:11.5px;font-weight:500;color:var(--dshw-text-3);margin-bottom:10px}
+.dshw-prose{font-size:13.5px;line-height:1.7;color:var(--dshw-text-2);white-space:pre-wrap;overflow-wrap:anywhere}
+/* flatten cards living inside the stage into divider-separated blocks */
+.dshw-stage .dshw-card{background:transparent;border:0;border-radius:0;box-shadow:none;padding:0 0 22px;margin:0 0 22px;border-bottom:1px solid var(--dshw-border)}
+.dshw-stage .dshw-card:last-child{border-bottom:0;margin-bottom:0;padding-bottom:0}
+.dshw-stage .dshw-card-head{margin-bottom:10px}
+.dshw-inspector{min-width:0;display:flex;flex-direction:column;gap:18px;padding:20px 18px 32px;position:sticky;top:0;align-self:start}
+.dshw-inspector .dshw-card{background:transparent;border:0;border-radius:0;box-shadow:none;padding:0 0 16px;margin:0;border-bottom:1px solid var(--dshw-border)}
+.dshw-inspector .dshw-card:last-child{border-bottom:0;padding-bottom:0}
+.dshw-inspector .dshw-card-head{margin-bottom:10px;min-height:0}
+.dshw-inspector .dshw-card-title{font-size:11px;font-weight:600;color:var(--dshw-text-3);letter-spacing:.02em}
+.dshw-inspector .dshw-card-sub{margin:0 0 10px;font-size:11.5px;color:var(--dshw-text-3)}
 @container dshw (max-width:1120px){
   .dshw-detail-inner.dshw-stage-grid{grid-template-columns:minmax(0,1fr)}
-  .dshw-inspector{position:static;flex-direction:row;flex-wrap:wrap;gap:12px}
+  .dshw-stage{border-right:0}
+  .dshw-inspector{position:static;flex-direction:row;flex-wrap:wrap;gap:16px;border-top:1px solid var(--dshw-border)}
   .dshw-inspector>.dshw-card{flex:1 1 320px;min-width:0}
 }
 

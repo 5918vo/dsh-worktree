@@ -1,5 +1,8 @@
 {
   "title": "Worktree 任务",
+  "codeChanges": "代码改动",
+  "mergeCheck": "合并预检",
+  "lifecycle": "生命周期管理",
   "publish": "发布任务",
   "repoPath": "目标目录",
   "repoPathHint": "仓库目录",

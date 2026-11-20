@@ -321,6 +321,7 @@ export function TaskDetail(props: any) {
     const project = props.project
     const [busy, setBusy] = React.useState('')
     const [err, setErr] = React.useState('')
+    const [tab, setTab] = React.useState('overview')
     const acceptanceItems: string[] = Array.isArray(task.acceptanceCriteria) ? task.acceptanceCriteria : []
     const [mergeOpen, setMergeOpen] = React.useState(false)
     const [mergeSwitch, setMergeSwitch] = React.useState(false)
@@ -1357,48 +1358,82 @@ export function TaskDetail(props: any) {
                 ? h(KV, { label: t.uncommitted }, h(Chip, { tone: 'warn', small: true }, snap.repo.dirtyCount + ' ' + t.changesUnit))
                 : null))))
 
-    const stageNode = h('div', { className: 'dshw-stage' },
-      h('article', { className: 'dshw-card dshw-hero' },
-        h('div', { className: 'dshw-hero-top' },
-          h('div', { className: 'dshw-hero-copy' },
-            h('div', { className: 'dshw-hero-crumb' },
-              h(Icon, { name: 'folder' }),
-              h('span', null, project ? project.name : task.repoPath),
-              h('span', null, '/'),
-              h('span', { className: 'dshw-mono' }, branch)),
-            h('h1', null, task.title),
-            task.description ? h('p', { className: 'dshw-hero-desc' }, task.description) : null,
-            h('div', { className: 'dshw-hero-meta' },
-              h(Chip, { tone: meta.tone }, meta.label),
-              meta.note ? h(Chip, { tone: 'warn' }, meta.note) : null,
-              archived ? h(Chip, { tone: 'neutral' }, t.archived) : null,
-              // Health, merge-preview and post-merge each get their own banner
-              // below; surface the base-advanced hint only when no banner covers it.
-              previewChip && !previewNode ? h(Chip, { tone: previewChip.tone }, previewChip.label) : null,
-              ahead > 0 ? h('span', { className: 'dshw-meta-pill' }, h(Icon, { name: 'arrowUp' }), ahead + ' ' + t.commitsAhead) : null,
-              dirty > 0
-                ? h('span', { className: 'dshw-meta-pill dshw-meta-pill--warn' }, h(Icon, { name: 'alert' }), dirty + ' ' + t.dirty)
-                : null)),
-          h('div', { className: 'dshw-hero-action' },
-            h('div', { className: 'dshw-inline', style: { gap: '8px', flexWrap: 'wrap' } }, primary, ...heroSecondary),
-            h('span', { className: 'dshw-hint' }, lastActivity))),
-        err ? h('div', { className: 'dshw-err', role: 'alert', style: { marginTop: '12px' } }, h(Icon, { name: 'alert' }), h('span', null, err)) : null),
-      acceptanceNode,
-      stashNode,
-      partialNode,
-      notStartedNode,
-      pendingNode,
-      healthNode,
-      reviewStaleNode,
-      previewNode,
-      postMergeNode,
-      errorNode,
-      acceptanceActionsCard,
-      relationsNode,
-      h(LiveCard, { t, task, running: props.running, pendingKind: props.pendingKind, live: props.live, history: props.history, onOpenSession: props.onOpenSession }),
-      showDiff ? h(DiffCard, { t, task, version: diffVersion, notify: props.notify }) : null)
+    const tabBtn = (key: string, label: any) => h('button', {
+      type: 'button',
+      className: 'dshw-tab' + (tab === key ? ' dshw-tab--on' : ''),
+      onClick: () => setTab(key),
+    }, label)
 
-    const inspectorNode = h('aside', { className: 'dshw-inspector' },
+    const topbar = h('div', { className: 'dshw-topbar' },
+      h('div', { className: 'dshw-topbar-left' },
+        h('div', { className: 'dshw-breadcrumb' },
+          h(Icon, { name: 'folder' }),
+          h('span', null, project ? project.name : task.repoPath),
+          h('span', null, '/'),
+          h('strong', { className: 'dshw-mono' }, branch + (task.baseBranch ? ' → ' + task.baseBranch : '')))),
+      h('div', { className: 'dshw-topbar-right' },
+        h('span', { className: 'dshw-mono', style: { fontSize: '11px', color: 'var(--dshw-text-3)' } },
+          task.sessionId ? task.sessionId : t.noSession)))
+
+    const stageHead = h('header', { className: 'dshw-stage-head' },
+      h('div', { className: 'dshw-stage-title-row' },
+        h('div', { style: { minWidth: 0 } },
+          h('h1', { className: 'dshw-stage-title' }, task.title),
+          h('div', { className: 'dshw-stage-sub' },
+            h(Chip, { tone: meta.tone }, meta.label),
+            meta.note ? h(Chip, { tone: 'warn' }, meta.note) : null,
+            archived ? h(Chip, { tone: 'neutral' }, t.archived) : null,
+            previewChip && !previewNode ? h(Chip, { tone: previewChip.tone }, previewChip.label) : null,
+            ahead > 0 ? h('span', { className: 'dshw-meta-pill' }, h(Icon, { name: 'arrowUp' }), ahead + ' ' + t.commitsAhead) : null,
+            dirty > 0 ? h('span', { className: 'dshw-meta-pill dshw-meta-pill--warn' }, h(Icon, { name: 'alert' }), dirty + ' ' + t.dirty) : null,
+            lastActivity ? h('span', { className: 'dshw-mono', style: { fontSize: '11px', color: 'var(--dshw-text-3)' } }, lastActivity) : null)),
+        h('div', { style: { display: 'flex', gap: '8px', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' } }, primary, ...heroSecondary)),
+      h('nav', { className: 'dshw-tabs' },
+        tabBtn('overview', t.overview),
+        tabBtn('live', t.liveSession),
+        tabBtn('diff', t.codeChanges)))
+
+    const overviewBody = h('div', { className: 'dshw-stage-body' },
+      h('div', { className: 'dshw-measure' },
+        err ? h('div', { className: 'dshw-err', role: 'alert', style: { marginBottom: '16px' } }, h(Icon, { name: 'alert' }), h('span', null, err)) : null,
+        healthNode, previewNode, postMergeNode, partialNode, notStartedNode, pendingNode, reviewStaleNode, errorNode,
+        task.description
+          ? h('div', { className: 'dshw-block' },
+            h('div', { className: 'dshw-block-label' }, t.taskDescription),
+            h('p', { className: 'dshw-prose' }, task.description))
+          : null,
+        acceptanceNode,
+        acceptanceActionsCard,
+        stashNode,
+        relationsNode))
+
+    const liveBody = h('div', { className: 'dshw-stage-body' },
+      h(LiveCard, { t, task, running: props.running, pendingKind: props.pendingKind, live: props.live, history: props.history, onOpenSession: props.onOpenSession }))
+
+    const diffBody = h('div', { className: 'dshw-stage-body' },
+      showDiff
+        ? h(DiffCard, { t, task, version: diffVersion, notify: props.notify })
+        : h('div', { className: 'dshw-live-empty' }, h('strong', null, t.codeChanges), h('span', null, t.diffEmpty)))
+
+    const stage = h('div', { className: 'dshw-stage' },
+      topbar,
+      stageHead,
+      tab === 'live' ? liveBody : tab === 'diff' ? diffBody : overviewBody)
+
+    const inspector = h('aside', { className: 'dshw-inspector' },
+      h(Card, null,
+        h(CardHead, {
+          icon: 'merge',
+          title: t.mergeCheck,
+          right: h('span', { className: 'dshw-dot ' + (dirty > 0 ? 'dshw-dot--warn' : 'dshw-dot--success') }),
+        }),
+        h('div', { className: 'dshw-kv' },
+          h(KV, { label: t.baseBranch }, h('span', { className: 'dshw-mono' }, task.baseBranch || '—')),
+          h(KV, { label: t.currentBranch }, h('span', { className: 'dshw-mono' }, branch || '—')),
+          h(KV, { label: t.commitsAhead }, h('span', { className: 'dshw-mono' }, String(ahead))),
+          h(KV, { label: t.uncommitted }, dirty > 0
+            ? h(Chip, { tone: 'warn', small: true }, dirty + ' ' + t.changesUnit)
+            : h('span', { className: 'dshw-hint', style: { margin: 0 } }, t.clean)))),
       techCard,
       canArchive
         ? h(Card, null,
@@ -1444,8 +1479,8 @@ export function TaskDetail(props: any) {
           }, t.deleteRecord))))
 
     return h('div', { className: 'dshw-detail-inner dshw-stage-grid' },
-      stageNode,
-      inspectorNode,
+      stage,
+      inspector,
       switchModal,
       stashModal,
       syncConfirmModal,

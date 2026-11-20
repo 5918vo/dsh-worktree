@@ -1,5 +1,8 @@
 {
   "title": "Worktree Tasks",
+  "codeChanges": "Code changes",
+  "mergeCheck": "Merge check",
+  "lifecycle": "Lifecycle",
   "publish": "Publish task",
   "repoPath": "Target directory",
   "repoPathHint": "Repository directory",
