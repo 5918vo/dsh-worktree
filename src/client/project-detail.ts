@@ -22,6 +22,7 @@ export function ProjectDetail(props: any) {
     const [msg, setMsg] = React.useState('')
     const [err, setErr] = React.useState('')
     const [nameError, setNameError] = React.useState('')
+    const [tab, setTab] = React.useState('overview')
     const saveTimer = React.useRef(null)
     const actionRef = React.useRef(false)
 
@@ -154,17 +155,30 @@ export function ProjectDetail(props: any) {
         err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null)
       : null
 
-    return h('div', { className: 'dshw-detail-inner' },
-      h('div', { className: 'dshw-page-head' },
-        h('div', { className: 'dshw-page-icon dshw-page-icon--folder' }, h(Icon, { name: 'folder' })),
-        h('div', { className: 'dshw-page-head-copy' },
-          h('h1', null, project.name),
-          h('div', { className: 'dshw-page-sub' },
+    const tabBtn = (key: string, label: any) => h('button', {
+      type: 'button',
+      className: 'dshw-tab' + (tab === key ? ' dshw-tab--on' : ''),
+      onClick: () => setTab(key),
+    }, label)
+
+    const topbar = h('div', { className: 'dshw-topbar' },
+      h('div', { className: 'dshw-topbar-left' },
+        h('div', { className: 'dshw-breadcrumb' },
+          h(Icon, { name: 'folder' }),
+          h('strong', null, project.name),
+          h('span', null, '/'),
+          h('span', { className: 'dshw-mono' }, project.repoPath))),
+      h('div', { className: 'dshw-topbar-right' },
+        h('span', { className: 'dshw-mono', style: { fontSize: '11px', color: 'var(--dshw-text-3)' } }, counts.total + ' ' + t.taskUnit)))
+
+    const stageHead = h('header', { className: 'dshw-stage-head' },
+      h('div', { className: 'dshw-stage-title-row' },
+        h('div', { style: { minWidth: 0 } },
+          h('h1', { className: 'dshw-stage-title' }, project.name),
+          h('div', { className: 'dshw-stage-sub' },
             h('span', { className: 'dshw-mono' }, project.repoPath),
-            h(CopyBtn, { text: project.repoPath, label: t.copyRepoPath, t, notify: props.notify }),
-            h('span', { className: 'dshw-sep' }, '·'),
-            h('span', null, counts.total + ' ' + t.taskUnit))),
-        h('div', { className: 'dshw-page-actions' },
+            h(CopyBtn, { text: project.repoPath, label: t.copyRepoPath, t, notify: props.notify }))),
+        h('div', { style: { display: 'flex', gap: '8px', flexShrink: 0 } },
           h(Btn, { icon: 'play', onClick: () => props.onPublish(project) }, t.publish),
           h('details', { className: 'dshw-menu' },
             h('summary', { className: 'dshw-icon-btn', 'aria-label': t.operations, title: t.operations }, h(Icon, { name: 'more' })),
@@ -173,8 +187,13 @@ export function ProjectDetail(props: any) {
               h(MenuItem, { icon: 'copy', onClick: () => { void copyText(project.repoPath).then((ok) => props.notify(ok ? t.copied : t.copyFailed, ok ? 'ok' : 'error')) } }, t.copyRepoPath),
               h('div', { className: 'dshw-menu-sep' }),
               h(MenuItem, { icon: 'trash', danger: true, onClick: () => setDeleteOpen(true) }, t.deleteProject))))),
-      h(Card, null,
-        h(CardHead, { icon: 'grid', title: t.overview, right: h('span', { className: 'dshw-hint', style: { margin: 0 } }, t.overviewHint) }),
+      h('nav', { className: 'dshw-tabs' },
+        tabBtn('overview', t.overview),
+        tabBtn('settings', t.projectSettings)))
+
+    const overviewBody = h('div', { className: 'dshw-stage-body' },
+      h('div', { className: 'dshw-measure' },
+        err ? h('div', { className: 'dshw-err', role: 'alert', style: { marginBottom: '16px' } }, h(Icon, { name: 'alert' }), h('span', null, err)) : null,
         h('div', { className: 'dshw-stats' },
           h(Stat, { label: t.attentionStat, value: attentionCount, icon: 'alert', tone: 'warn' }),
           h(Stat, { label: t.activeTasks, value: counts.active, icon: 'terminal', tone: 'brand' }),
@@ -188,69 +207,88 @@ export function ProjectDetail(props: any) {
               ? h('button', { type: 'button', className: 'dshw-link-btn', onClick: () => props.onSelectTask(firstPending.task.id, project.id) }, t.view)
               : null)
           : null,
+        h('div', { className: 'dshw-block' },
+          h('div', { className: 'dshw-block-label' }, t.overview),
+          h('p', { className: 'dshw-prose' }, t.overviewHint)),
         h('div', { className: 'dshw-kv' },
           h(KV, { label: t.repoPath },
             h('span', { className: 'dshw-mono' }, project.repoPath),
             h(CopyBtn, { text: project.repoPath, label: t.copyRepoPath, t, notify: props.notify })),
           h(KV, { label: t.defaultBase }, h('span', { className: 'dshw-meta-pill', style: { height: '22px' } }, h(Icon, { name: 'branch' }), h('span', { className: 'dshw-mono' }, project.baseBranch))),
           h(KV, { label: t.branchPrefix }, h('code', null, project.branchPrefix || cfg.branchPrefix || 'dsh-wt/')),
-          h(KV, { label: t.worktreeDirName }, h('code', null, project.dirName || cfg.dirName || '.dsh-worktrees')))),
+          h(KV, { label: t.worktreeDirName }, h('code', null, project.dirName || cfg.dirName || '.dsh-worktrees')))))
+
+    const settingsBody = h('div', { className: 'dshw-stage-body' },
+      h('div', { className: 'dshw-measure' },
+        h(Card, null,
+          h(CardHead, { icon: 'sliders', title: t.projectSettings }),
+          h('p', { className: 'dshw-card-sub' }, t.projectSettingsHint),
+          h('form', { onSubmit: (e: any) => { e.preventDefault(); save() } },
+            h('div', { className: 'dshw-form-rows' },
+              h('div', { className: 'dshw-form-row' },
+                h('label', { htmlFor: 'dshw-project-name' }, t.projectName),
+                h('div', null,
+                  h('input', {
+                    id: 'dshw-project-name',
+                    className: cx('dshw-input', nameError && 'dshw-invalid'),
+                    value: name,
+                    'aria-invalid': nameError ? 'true' : 'false',
+                    'aria-describedby': nameError ? 'dshw-project-name-error' : undefined,
+                    onChange: (e: any) => { setName(e.target.value); setNameError('') },
+                  }),
+                  h('div', { className: 'dshw-hint' }, t.projectNameHint),
+                  nameError ? h('div', { className: 'dshw-err', id: 'dshw-project-name-error', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, nameError)) : null)),
+              h('div', { className: 'dshw-form-row' },
+                h('label', { htmlFor: 'dshw-project-base' }, t.defaultBase),
+                h('div', null,
+                  branchControl,
+                  branchHint ? h('div', { className: 'dshw-hint' }, branchHint) : null)),
+              h('div', { className: 'dshw-form-row' },
+                h('label', { htmlFor: 'dshw-project-prefix' }, t.branchPrefix),
+                h('div', null,
+                  h('input', {
+                    id: 'dshw-project-prefix',
+                    className: 'dshw-input dshw-mono',
+                    value: branchPrefix,
+                    placeholder: 'dsh-wt/',
+                    onChange: (e: any) => setBranchPrefix(e.target.value),
+                  }),
+                  h('div', { className: 'dshw-hint' }, t.branchPrefixHint))),
+              h('div', { className: 'dshw-form-row' },
+                h('label', { htmlFor: 'dshw-project-dir' }, t.worktreeDirName),
+                h('div', null,
+                  h('input', {
+                    id: 'dshw-project-dir',
+                    className: 'dshw-input dshw-mono',
+                    value: dirName,
+                    placeholder: '.dsh-worktrees',
+                    onChange: (e: any) => setDirName(e.target.value),
+                  }),
+                  h('div', { className: 'dshw-hint' }, t.worktreeDirHint)))),
+            h('div', { className: 'dshw-form-foot' },
+              h(Btn, { variant: 'primary', type: 'submit', disabled: busy !== '' }, busy === 'save' ? h(Spinner) : null, busy === 'save' ? t.saving : t.save),
+              h('span', { className: 'dshw-save-state', role: 'status' }, msg ? [h(Icon, { key: 'i', name: 'check' }), h('span', { key: 's' }, msg)] : null)),
+            err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null))))
+
+    const inspector = h('aside', { className: 'dshw-inspector' },
       h(Card, null,
-        h(CardHead, { icon: 'sliders', title: t.projectSettings }),
-        h('p', { className: 'dshw-card-sub' }, t.projectSettingsHint),
-        h('form', { onSubmit: (e: any) => { e.preventDefault(); save() } },
-          h('div', { className: 'dshw-form-rows' },
-            h('div', { className: 'dshw-form-row' },
-              h('label', { htmlFor: 'dshw-project-name' }, t.projectName),
-              h('div', null,
-                h('input', {
-                  id: 'dshw-project-name',
-                  className: cx('dshw-input', nameError && 'dshw-invalid'),
-                  value: name,
-                  'aria-invalid': nameError ? 'true' : 'false',
-                  'aria-describedby': nameError ? 'dshw-project-name-error' : undefined,
-                  onChange: (e: any) => { setName(e.target.value); setNameError('') },
-                }),
-                h('div', { className: 'dshw-hint' }, t.projectNameHint),
-                nameError ? h('div', { className: 'dshw-err', id: 'dshw-project-name-error', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, nameError)) : null)),
-            h('div', { className: 'dshw-form-row' },
-              h('label', { htmlFor: 'dshw-project-base' }, t.defaultBase),
-              h('div', null,
-                branchControl,
-                branchHint ? h('div', { className: 'dshw-hint' }, branchHint) : null)),
-            h('div', { className: 'dshw-form-row' },
-              h('label', { htmlFor: 'dshw-project-prefix' }, t.branchPrefix),
-              h('div', null,
-                h('input', {
-                  id: 'dshw-project-prefix',
-                  className: 'dshw-input dshw-mono',
-                  value: branchPrefix,
-                  placeholder: 'dsh-wt/',
-                  onChange: (e: any) => setBranchPrefix(e.target.value),
-                }),
-                h('div', { className: 'dshw-hint' }, t.branchPrefixHint))),
-            h('div', { className: 'dshw-form-row' },
-              h('label', { htmlFor: 'dshw-project-dir' }, t.worktreeDirName),
-              h('div', null,
-                h('input', {
-                  id: 'dshw-project-dir',
-                  className: 'dshw-input dshw-mono',
-                  value: dirName,
-                  placeholder: '.dsh-worktrees',
-                  onChange: (e: any) => setDirName(e.target.value),
-                }),
-                h('div', { className: 'dshw-hint' }, t.worktreeDirHint)))),
-          h('div', { className: 'dshw-form-foot' },
-            h(Btn, { variant: 'primary', type: 'submit', disabled: busy !== '' }, busy === 'save' ? h(Spinner) : null, busy === 'save' ? t.saving : t.save),
-            h('span', { className: 'dshw-save-state', role: 'status' }, msg ? [h(Icon, { key: 'i', name: 'check' }), h('span', { key: 's' }, msg)] : null)),
-          err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null)),
+        h(CardHead, { icon: 'folder', title: t.overview }),
+        h('div', { className: 'dshw-kv' },
+          h(KV, { label: t.repoPath }, h('span', { className: 'dshw-mono' }, project.repoPath)),
+          h(KV, { label: t.defaultBase }, h('span', { className: 'dshw-mono' }, project.baseBranch)),
+          h(KV, { label: t.branchPrefix }, h('code', null, project.branchPrefix || cfg.branchPrefix || 'dsh-wt/')),
+          h(KV, { label: t.worktreeDirName }, h('code', null, project.dirName || cfg.dirName || '.dsh-worktrees')))),
       h(Card, { danger: true },
         h(CardHead, { icon: 'alert', title: t.deleteProject }),
         h('p', { className: 'dshw-card-sub' }, t.deleteProjectCardHint),
         reviewingTasks.length
           ? h('div', { className: 'dshw-hint', style: { marginBottom: '8px' } }, h(Icon, { name: 'alert' }), h('span', null, t.reviewingBlockHint))
           : null,
-        h(Btn, { variant: 'danger', icon: 'trash', disabled: busy !== '' || reviewingTasks.length > 0, onClick: () => setDeleteOpen(true) }, t.deleteProject)),
+        h(Btn, { variant: 'danger', icon: 'trash', disabled: busy !== '' || reviewingTasks.length > 0, onClick: () => setDeleteOpen(true) }, t.deleteProject)))
+
+    return h('div', { className: 'dshw-detail-inner dshw-stage-grid' },
+      h('div', { className: 'dshw-stage' }, topbar, stageHead, tab === 'settings' ? settingsBody : overviewBody),
+      inspector,
       deleteModal)
   }
 

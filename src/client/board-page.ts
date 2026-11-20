@@ -695,42 +695,47 @@ export function BoardPage(props: any) {
         ? h(Banner, { tone: 'warn', icon: 'alert', title: t.longPathsTitle }, t.longPathsHint)
         : null,
       h('header', { className: 'dshw-tree-head' },
-        h('div', { className: 'dshw-search' },
-          h(Icon, { name: 'search' }),
-          h('input', {
-            ref: searchRef,
-            type: 'search',
-            value: query,
-            placeholder: t.search,
-            autoComplete: 'off',
-            'aria-label': t.search,
-            onChange: (e: any) => setQuery(e.target.value),
-          })),
-        h('div', { className: 'dshw-tree-tools' },
-          h(AttentionFilter, {
-            t,
-            value: attentionFilter,
-            counts: filterCounts,
-            onChange: (next: string) => setAttentionFilter(next),
-          }),
-          h(Btn, { variant: 'primary', size: 'sm', icon: 'plus', onClick: () => openPublishEntry() }, t.publish),
-          h(IconBtn, {
-            icon: 'refresh',
-            label: t.refresh,
-            disabled: refreshing,
-            onClick: () => { void refresh(true).then(() => notify(t.refreshed)) },
-          }, refreshing ? h(Spinner) : null),
-          archivedCount > 0
-            ? h(IconBtn, {
-              icon: 'archive',
-              label: showArchived ? t.hideArchived : t.showArchived,
-              title: String(t.archiveToggleTitle).replace('{n}', String(archivedCount)),
-              'aria-pressed': showArchived ? 'true' : 'false',
-              className: showArchived ? 'dshw-icon-btn--on' : undefined,
-              onClick: () => setShowArchived((value: boolean) => !value),
-            })
-            : null,
-          h(IconBtn, { icon: 'plus', label: t.addProject, onClick: () => setProjectModalOpen(true) }))),
+        h('div', { className: 'dshw-rail-top' },
+          h('div', { className: 'dshw-logo' },
+            h('span', { className: 'dshw-logo-mark' }, 'W'),
+            h('span', null, 'Worktree')),
+          h(Btn, { variant: 'primary', size: 'sm', icon: 'plus', onClick: () => openPublishEntry() }, t.publish)),
+        h('div', { className: 'dshw-rail-controls' },
+          h('div', { className: 'dshw-search' },
+            h(Icon, { name: 'search' }),
+            h('input', {
+              ref: searchRef,
+              type: 'search',
+              value: query,
+              placeholder: t.search,
+              autoComplete: 'off',
+              'aria-label': t.search,
+              onChange: (e: any) => setQuery(e.target.value),
+            })),
+          h('div', { className: 'dshw-tree-tools' },
+            h(AttentionFilter, {
+              t,
+              value: attentionFilter,
+              counts: filterCounts,
+              onChange: (next: string) => setAttentionFilter(next),
+            }),
+            h(IconBtn, {
+              icon: 'refresh',
+              label: t.refresh,
+              disabled: refreshing,
+              onClick: () => { void refresh(true).then(() => notify(t.refreshed)) },
+            }, refreshing ? h(Spinner) : null),
+            archivedCount > 0
+              ? h(IconBtn, {
+                icon: 'archive',
+                label: showArchived ? t.hideArchived : t.showArchived,
+                title: String(t.archiveToggleTitle).replace('{n}', String(archivedCount)),
+                'aria-pressed': showArchived ? 'true' : 'false',
+                className: showArchived ? 'dshw-icon-btn--on' : undefined,
+                onClick: () => setShowArchived((value: boolean) => !value),
+              })
+              : null,
+            h(IconBtn, { icon: 'plus', label: t.addProject, onClick: () => setProjectModalOpen(true) })))),
       err
         ? projectViews.length
           ? h('div', { className: 'dshw-tree-status', role: 'status' },

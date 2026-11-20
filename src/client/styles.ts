@@ -46,7 +46,12 @@ export const CSS = `
 /* tree ------------------------------------------------------------------- */
 .dshw-sidebar{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--dshw-tree-bg);border-right:1px solid var(--dshw-border)}
 .dshw-task-list{display:flex;flex-direction:column}
-.dshw-tree-head{display:flex;flex-direction:column;gap:7px;padding:12px 10px 10px;flex:none}
+.dshw-tree-head{display:flex;flex-direction:column;flex:none}
+.dshw-rail-top{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px 14px 10px}
+.dshw-logo{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;letter-spacing:-.02em;color:var(--dshw-text);min-width:0}
+.dshw-logo-mark{width:18px;height:18px;border-radius:5px;background:var(--dshw-brand-solid);color:var(--dshw-on-brand);display:grid;place-items:center;font-size:11px;font-weight:700;flex:none}
+.dshw-rail-controls{display:flex;flex-direction:column;gap:8px;padding:0 12px 10px;border-bottom:1px solid var(--dshw-border)}
+.dshw-rail-controls .dshw-search input{height:30px;border-radius:6px;background:var(--dshw-surface);font-size:12px}
 .dshw-tree-head .dshw-search{width:100%}
 .dshw-tree-tools{display:flex;align-items:center;gap:6px;flex-wrap:wrap;position:relative;min-width:0}
 .dshw-search{position:relative;flex:1;min-width:0}
