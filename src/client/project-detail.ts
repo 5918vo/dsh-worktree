@@ -1,257 +1,164 @@
 import { React, h } from './ui'
-import { Banner, Btn, Card, CardHead, Checkbox, CopyBtn, Icon, KV, MenuItem, Modal, Spinner, Stat, BranchCombobox, TextInput } from './primitives'
+import { Btn, BranchCombobox, Checkbox, Field, Icon, Modal, Spinner, TextInput } from './primitives'
 import { useBranchInfo } from './hooks'
-import { post } from './context'
-import { copyText, cx } from './format'
-import { resolveStatus } from './status'
+import { post, postLong } from './context'
+import { copyText, relTime } from './format'
 
 export function ProjectDetail(props: any) {
-    const t = props.t
-    const v = props.view
-    const project = v.project
-    const cfg = props.cfg || {}
-    const [name, setName] = React.useState(project.name)
-    const [baseBranch, setBaseBranch] = React.useState(project.baseBranch || '')
-    const [dirName, setDirName] = React.useState(project.dirName || '')
-    const [branchPrefix, setBranchPrefix] = React.useState(project.branchPrefix || '')
-    const branches = useBranchInfo(project.repoPath)
-    const [deleteOpen, setDeleteOpen] = React.useState(false)
-    const [withTasks, setWithTasks] = React.useState(false)
-    const [withWorktrees, setWithWorktrees] = React.useState(true)
-    const [busy, setBusy] = React.useState('')
-    const [msg, setMsg] = React.useState('')
-    const [err, setErr] = React.useState('')
-    const [nameError, setNameError] = React.useState('')
-    const saveTimer = React.useRef(null)
-    const actionRef = React.useRef(false)
+  const { view, cfg = {}, t, notify, onChanged, onPublish, onSelectTask, onDeleted } = props
+  const project = view.project
+  const stats = view.stats || { tasks: 0, byStatus: {}, running: 0 }
+  const tasks: any[] = view.tasks || []
 
-    // The overview must agree with the sidebar. A Git-derived `review` on a
-    // still-running session is really "in progress", so resolve the live
-    // session state before bucketing tasks.
-    const isRunning = (task: any) => !!(task && task.sessionId && props.sessionMap && props.sessionMap[task.sessionId])
-    const counts = { total: v.tasks.length, active: 0, review: 0, merged: 0 }
-    for (const item of v.tasks) {
-      const status = resolveStatus(item.snapshot.status, isRunning(item.task))
-      if (status === 'developing' || status === 'reviewing') counts.active += 1
-      else if (status === 'review') counts.review += 1
-      else if (status === 'merged') counts.merged += 1
-    }
-    const pendingTasks = v.tasks.filter((item: any) => item.task.sessionId && props.pendingMap && props.pendingMap[item.task.sessionId])
-    const firstPending = pendingTasks[0]
-    const brokenTasks = v.tasks.filter((item: any) => resolveStatus(item.snapshot.status, isRunning(item.task)) === 'broken')
-    const attentionCount = pendingTasks.length + brokenTasks.length
-    const reviewingTasks = v.tasks.filter((item: any) => item.snapshot.status === 'reviewing')
+  const branches = useBranchInfo(project.repoPath)
+  const [name, setName] = React.useState(project.name || '')
+  const [baseBranch, setBaseBranch] = React.useState(project.baseBranch || '')
+  const [dirName, setDirName] = React.useState(project.dirName || '')
+  const [branchPrefix, setBranchPrefix] = React.useState(project.branchPrefix || '')
+  const [saving, setSaving] = React.useState(false)
+  const [delOpen, setDelOpen] = React.useState(false)
+  const [withTasks, setWithTasks] = React.useState(false)
+  const [withWorktrees, setWithWorktrees] = React.useState(true)
+  const [deleting, setDeleting] = React.useState(false)
+  const [delErr, setDelErr] = React.useState('')
 
-    const act = async (label: string, fn: () => Promise<any>) => {
-      if (actionRef.current || busy) return
-      actionRef.current = true
-      setBusy(label)
-      setErr('')
-      setMsg('')
-      try {
-        await fn()
-        await props.onChanged()
-      } catch (e: any) {
-        setErr((e && e.message) || t.failed)
-      } finally {
-        actionRef.current = false
-        setBusy('')
-      }
-    }
+  React.useEffect(() => {
+    setName(project.name || '')
+    setBaseBranch(project.baseBranch || '')
+    setDirName(project.dirName || '')
+    setBranchPrefix(project.branchPrefix || '')
+  }, [project.id, project.name, project.baseBranch, project.dirName, project.branchPrefix])
 
-    const save = () => {
-      if (busy) return
-      if (!name.trim()) {
-        setNameError(t.requiredField)
-        window.requestAnimationFrame(() => document.getElementById('dshw-project-name')?.focus())
-        return
-      }
-      setNameError('')
-      void act('save', async () => {
-        await post('projects/update', {
-          id: project.id,
-          name: name.trim(),
-          baseBranch,
-          dirName,
-          branchPrefix,
-        })
-        setMsg(t.saved)
-        if (saveTimer.current) window.clearTimeout(saveTimer.current)
-        saveTimer.current = window.setTimeout(() => setMsg(''), 3200)
+  const dirty =
+    name.trim() !== (project.name || '') ||
+    baseBranch.trim() !== (project.baseBranch || '') ||
+    dirName.trim() !== (project.dirName || '') ||
+    branchPrefix.trim() !== (project.branchPrefix || '')
+
+  const save = async (e: any) => {
+    e.preventDefault()
+    if (saving || !dirty) return
+    setSaving(true)
+    try {
+      await post('projects/update', {
+        id: project.id,
+        name: name.trim(),
+        baseBranch: baseBranch.trim(),
+        dirName: dirName.trim(),
+        branchPrefix: branchPrefix.trim(),
       })
+      notify(t.saved || '已保存')
+      await onChanged?.()
+    } catch (err: any) {
+      notify(err?.message || t.failed, 'error')
+    } finally {
+      setSaving(false)
     }
+  }
 
-    React.useEffect(() => () => {
-      if (saveTimer.current) window.clearTimeout(saveTimer.current)
-    }, [])
-
-    const remove = () => {
-      void act('del', async () => {
-        await post('projects/delete', { id: project.id, withTasks, withWorktrees: withTasks && withWorktrees })
-        setDeleteOpen(false)
-        props.onDeleted()
-        props.notify(String(t.projectDeleted).replace('{name}', project.name))
-      })
+  const runDelete = async () => {
+    if (deleting) return
+    setDeleting(true)
+    setDelErr('')
+    try {
+      await postLong('projects/delete', { id: project.id, withTasks, withWorktrees })
+      setDelOpen(false)
+      notify(t.deleted || '项目已删除')
+      onDeleted?.()
+    } catch (err: any) {
+      setDelErr(err?.message || t.failed)
+    } finally {
+      setDeleting(false)
     }
+  }
 
-    const branchHint = branches.status === 'loading'
-      ? t.loadingBranches
-      : branches.status === 'error'
-        ? h('span', null, t.loadBranchesFailed, ' ',
-          h('button', { type: 'button', className: 'dshw-link-btn', onClick: branches.retry }, t.retry))
-        : null
-    const branchControl = branches.data
-      ? h(BranchCombobox, { t, value: baseBranch, onChange: setBaseBranch, branchInfo: branches.data, id: 'dshw-project-base' })
-      : h(TextInput, { id: 'dshw-project-base', value: baseBranch, onChange: (e: any) => setBaseBranch(e.target.value), placeholder: t.baseBranch })
+  const statCards = [
+    { label: t.totalTasks || '全部任务', value: stats.tasks || 0, tone: 'neutral' },
+    { label: t.statusDeveloping || '开发中', value: stats.running || 0, tone: 'info' },
+    { label: t.statusReview || '待验收', value: (stats.byStatus?.review || 0) + (stats.byStatus?.reviewing || 0), tone: 'warn' },
+    { label: t.statusMerged || '已合并', value: stats.byStatus?.merged || 0, tone: 'ok' },
+  ]
 
-    const deleteModal = deleteOpen
+  return h('div', { className: 'dshw-detail-inner dshw-proj-detail' },
+    h('header', { className: 'dshw-detail-head' },
+      h('div', { className: 'dshw-detail-title-wrap' },
+        h('div', { className: 'dshw-detail-kicker' },
+          h(Icon, { name: 'folder' }),
+          h('span', null, t.projects || '项目'),
+          h('span', { className: 'dshw-sep' }, '·'),
+          h('span', null, `${t.baseBranch || '基线'}: ${project.baseBranch || '—'}`)),
+        h('h1', { className: 'dshw-detail-title' }, project.name),
+        h('div', { className: 'dshw-detail-path' },
+          h('code', null, project.repoPath),
+          h('button', {
+            type: 'button',
+            className: 'dshw-link-btn',
+            onClick: () => void copyText(project.repoPath).then((ok) => ok && notify(t.copied || '已复制')),
+          }, h(Icon, { name: 'copy' })))),
+      h('div', { className: 'dshw-detail-actions' },
+        h(Btn, { variant: 'primary', icon: 'plus', onClick: () => onPublish?.(project) }, t.publish || '发布任务'),
+        h(Btn, { variant: 'danger', icon: 'trash', onClick: () => { setDelErr(''); setDelOpen(true) } }, t.delete || '删除'))),
+
+    h('section', { className: 'dshw-stat-grid' },
+      statCards.map((c) => h('div', { key: c.label, className: `dshw-stat-card dshw-stat-card--${c.tone}` },
+        h('div', { className: 'dshw-stat-card__val' }, String(c.value)),
+        h('div', { className: 'dshw-stat-card__label' }, c.label)))),
+
+    h('section', { className: 'dshw-card' },
+      h('div', { className: 'dshw-card__head' },
+        h('h2', null, t.tasks || '任务列表'),
+        h('span', { className: 'dshw-muted' }, `${tasks.length} ${t.taskUnit || '项'}`)),
+      tasks.length === 0
+        ? h('div', { className: 'dshw-card__empty' }, t.noTasks || '暂无任务')
+        : h('div', { className: 'dshw-mini-list' }, tasks.slice(0, 12).map((v) =>
+          h('button', {
+            key: v.task.id,
+            type: 'button',
+            className: 'dshw-mini-row',
+            onClick: () => onSelectTask?.(v.task.id, project.id),
+          },
+            h('span', { className: `dshw-badge dshw-badge--${v.snapshot.status}` }, v.snapshot.status),
+            h('span', { className: 'dshw-mini-row__title' }, v.task.title),
+            h('code', { className: 'dshw-mini-row__branch' }, v.task.branch),
+            h('span', { className: 'dshw-mini-row__time' }, relTime(v.task.updatedAt, t)))))),
+
+    h('form', { className: 'dshw-card', onSubmit: save },
+      h('div', { className: 'dshw-card__head' },
+        h('h2', null, t.projectSettings || '项目配置'),
+        h(Btn, { variant: 'primary', size: 'sm', type: 'submit', disabled: !dirty || saving }, saving ? h(Spinner) : null, t.save || '保存')),
+      h('div', { className: 'dshw-form-grid' },
+        h(Field, { id: 'dshw-proj-name', label: t.projectName || '项目名称' },
+          h(TextInput, { value: name, onChange: (e: any) => setName(e.target.value) })),
+        h(Field, { id: 'dshw-proj-base', label: t.defaultBase || '默认基线分支' },
+          branches.data
+            ? h(BranchCombobox, { t, value: baseBranch, onChange: setBaseBranch, branchInfo: branches.data, id: 'dshw-proj-base' })
+            : h(TextInput, { value: baseBranch, onChange: (e: any) => setBaseBranch(e.target.value) })),
+        h(Field, { id: 'dshw-proj-dir', label: t.worktreeDir || 'Worktree 目录名' },
+          h(TextInput, { value: dirName, placeholder: cfg.dirName || '.dsh-worktrees', onChange: (e: any) => setDirName(e.target.value) })),
+        h(Field, { id: 'dshw-proj-prefix', label: t.branchPrefix || '分支前缀' },
+          h(TextInput, { value: branchPrefix, placeholder: cfg.branchPrefix || 'dsh-wt/', onChange: (e: any) => setBranchPrefix(e.target.value) })))),
+
+    delOpen
       ? h(Modal, {
         t,
-        title: t.deleteProjectTitle,
-        subtitle: project.name,
+        title: t.deleteProject || '删除项目',
         icon: 'trash',
         tone: 'danger',
         size: 'sm',
-        busy: busy === 'del',
-        onClose: () => { if (busy !== 'del') setDeleteOpen(false) },
+        busy: deleting,
+        onClose: () => { if (!deleting) setDelOpen(false) },
         footer: [
-          h(Btn, { key: 'c', onClick: () => setDeleteOpen(false), disabled: busy === 'del', 'data-modal-autofocus': true }, t.cancel),
-          h(Btn, {
-            key: 'ok',
-            variant: 'danger',
-            disabled: busy === 'del' || (counts.total > 0 && !withTasks) || reviewingTasks.length > 0,
-            onClick: remove,
-          }, busy === 'del' ? h(Spinner) : null, busy === 'del' ? t.deleting : t.deleteProjectConfirm),
+          h(Btn, { key: 'c', onClick: () => setDelOpen(false), disabled: deleting }, t.cancel || '取消'),
+          h(Btn, { key: 'ok', variant: 'danger', disabled: deleting, onClick: () => void runDelete() }, deleting ? h(Spinner) : null, t.delete || '确认删除'),
         ],
       },
-        counts.total > 0
-          ? h(Banner, { tone: 'warn', icon: 'alert', title: String(t.deleteProjectWarning).replace('{n}', String(counts.total)) }, t.deleteProjectWarningHint)
-          : h(Banner, { tone: 'info', icon: 'info' }, t.deleteProjectWarningHint),
-        reviewingTasks.length
-          ? h(Banner, { tone: 'warn', icon: 'alert', title: t.reviewingBlockTitle }, t.reviewingBlockHint)
+        h('p', { className: 'dshw-muted' }, `${project.name} (${project.repoPath})`),
+        tasks.length > 0
+          ? h(Checkbox, { checked: withTasks, onChange: setWithTasks, label: `${t.deleteWithTasks || '同时删除项目下所有任务'} (${tasks.length})` })
           : null,
-        h('div', { className: 'dshw-info-table' },
-          h(KV, { label: t.repoPath }, h('span', { className: 'dshw-mono' }, project.repoPath)),
-          h(KV, { label: t.deleteProjectRecords }, counts.total + ' ' + t.taskUnit),
-          h(KV, { label: t.deleteProjectBase }, h('span', { className: 'dshw-mono' }, project.baseBranch))),
-        counts.total > 0
-          ? h(Checkbox, {
-            className: 'dshw-check',
-            checked: withTasks,
-            onChange: (next: boolean) => setWithTasks(next),
-            label: h('span', { className: 'dshw-check-copy' }, t.withTasks),
-          })
+        tasks.length > 0 && withTasks
+          ? h(Checkbox, { checked: withWorktrees, onChange: setWithWorktrees, label: t.deleteWithWorktrees || '一并清理磁盘上的 Worktree 目录' })
           : null,
-        counts.total > 0
-          ? h(Checkbox, {
-            className: 'dshw-check',
-            checked: withWorktrees,
-            disabled: !withTasks,
-            onChange: (next: boolean) => setWithWorktrees(next),
-            label: h('span', { className: 'dshw-check-copy' }, t.withWorktrees, h('small', { id: 'dshw-delete-worktrees-hint' }, t.withWorktreesHint)),
-          })
-          : null,
-        err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null)
-      : null
-
-    return h('div', { className: 'dshw-detail-inner' },
-      h('div', { className: 'dshw-page-head' },
-        h('div', { className: 'dshw-page-icon dshw-page-icon--folder' }, h(Icon, { name: 'folder' })),
-        h('div', { className: 'dshw-page-head-copy' },
-          h('h1', null, project.name),
-          h('div', { className: 'dshw-page-sub' },
-            h('span', { className: 'dshw-mono' }, project.repoPath),
-            h(CopyBtn, { text: project.repoPath, label: t.copyRepoPath, t, notify: props.notify }),
-            h('span', { className: 'dshw-sep' }, '·'),
-            h('span', null, counts.total + ' ' + t.taskUnit))),
-        h('div', { className: 'dshw-page-actions' },
-          h(Btn, { icon: 'play', onClick: () => props.onPublish(project) }, t.publish),
-          h('details', { className: 'dshw-menu' },
-            h('summary', { className: 'dshw-icon-btn', 'aria-label': t.operations, title: t.operations }, h(Icon, { name: 'more' })),
-            h('div', { className: 'dshw-menu-pop' },
-              h(MenuItem, { icon: 'plus', onClick: () => props.onPublish(project) }, t.publish),
-              h(MenuItem, { icon: 'copy', onClick: () => { void copyText(project.repoPath).then((ok) => props.notify(ok ? t.copied : t.copyFailed, ok ? 'ok' : 'error')) } }, t.copyRepoPath),
-              h('div', { className: 'dshw-menu-sep' }),
-              h(MenuItem, { icon: 'trash', danger: true, onClick: () => setDeleteOpen(true) }, t.deleteProject))))),
-      h(Card, null,
-        h(CardHead, { icon: 'grid', title: t.overview, right: h('span', { className: 'dshw-hint', style: { margin: 0 } }, t.overviewHint) }),
-        h('div', { className: 'dshw-stats' },
-          h(Stat, { label: t.attentionStat, value: attentionCount, icon: 'alert', tone: 'warn' }),
-          h(Stat, { label: t.activeTasks, value: counts.active, icon: 'terminal', tone: 'brand' }),
-          h(Stat, { label: t.reviewTasks, value: counts.review, icon: 'clock', tone: 'warn' }),
-          h(Stat, { label: t.mergedTasks, value: counts.merged, icon: 'branch', tone: 'success' })),
-        pendingTasks.length
-          ? h('div', { className: 'dshw-attention' },
-            h(Icon, { name: 'clock' }),
-            h('span', null, String(t.attention).replace('{n}', String(pendingTasks.length))),
-            firstPending
-              ? h('button', { type: 'button', className: 'dshw-link-btn', onClick: () => props.onSelectTask(firstPending.task.id, project.id) }, t.view)
-              : null)
-          : null,
-        h('div', { className: 'dshw-kv' },
-          h(KV, { label: t.repoPath },
-            h('span', { className: 'dshw-mono' }, project.repoPath),
-            h(CopyBtn, { text: project.repoPath, label: t.copyRepoPath, t, notify: props.notify })),
-          h(KV, { label: t.defaultBase }, h('span', { className: 'dshw-meta-pill', style: { height: '22px' } }, h(Icon, { name: 'branch' }), h('span', { className: 'dshw-mono' }, project.baseBranch))),
-          h(KV, { label: t.branchPrefix }, h('code', null, project.branchPrefix || cfg.branchPrefix || 'dsh-wt/')),
-          h(KV, { label: t.worktreeDirName }, h('code', null, project.dirName || cfg.dirName || '.dsh-worktrees')))),
-      h(Card, null,
-        h(CardHead, { icon: 'sliders', title: t.projectSettings }),
-        h('p', { className: 'dshw-card-sub' }, t.projectSettingsHint),
-        h('form', { onSubmit: (e: any) => { e.preventDefault(); save() } },
-          h('div', { className: 'dshw-form-rows' },
-            h('div', { className: 'dshw-form-row' },
-              h('label', { htmlFor: 'dshw-project-name' }, t.projectName),
-              h('div', null,
-                h('input', {
-                  id: 'dshw-project-name',
-                  className: cx('dshw-input', nameError && 'dshw-invalid'),
-                  value: name,
-                  'aria-invalid': nameError ? 'true' : 'false',
-                  'aria-describedby': nameError ? 'dshw-project-name-error' : undefined,
-                  onChange: (e: any) => { setName(e.target.value); setNameError('') },
-                }),
-                h('div', { className: 'dshw-hint' }, t.projectNameHint),
-                nameError ? h('div', { className: 'dshw-err', id: 'dshw-project-name-error', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, nameError)) : null)),
-            h('div', { className: 'dshw-form-row' },
-              h('label', { htmlFor: 'dshw-project-base' }, t.defaultBase),
-              h('div', null,
-                branchControl,
-                branchHint ? h('div', { className: 'dshw-hint' }, branchHint) : null)),
-            h('div', { className: 'dshw-form-row' },
-              h('label', { htmlFor: 'dshw-project-prefix' }, t.branchPrefix),
-              h('div', null,
-                h('input', {
-                  id: 'dshw-project-prefix',
-                  className: 'dshw-input dshw-mono',
-                  value: branchPrefix,
-                  placeholder: 'dsh-wt/',
-                  onChange: (e: any) => setBranchPrefix(e.target.value),
-                }),
-                h('div', { className: 'dshw-hint' }, t.branchPrefixHint))),
-            h('div', { className: 'dshw-form-row' },
-              h('label', { htmlFor: 'dshw-project-dir' }, t.worktreeDirName),
-              h('div', null,
-                h('input', {
-                  id: 'dshw-project-dir',
-                  className: 'dshw-input dshw-mono',
-                  value: dirName,
-                  placeholder: '.dsh-worktrees',
-                  onChange: (e: any) => setDirName(e.target.value),
-                }),
-                h('div', { className: 'dshw-hint' }, t.worktreeDirHint)))),
-          h('div', { className: 'dshw-form-foot' },
-            h(Btn, { variant: 'primary', type: 'submit', disabled: busy !== '' }, busy === 'save' ? h(Spinner) : null, busy === 'save' ? t.saving : t.save),
-            h('span', { className: 'dshw-save-state', role: 'status' }, msg ? [h(Icon, { key: 'i', name: 'check' }), h('span', { key: 's' }, msg)] : null)),
-          err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null)),
-      h(Card, { danger: true },
-        h(CardHead, { icon: 'alert', title: t.deleteProject }),
-        h('p', { className: 'dshw-card-sub' }, t.deleteProjectCardHint),
-        reviewingTasks.length
-          ? h('div', { className: 'dshw-hint', style: { marginBottom: '8px' } }, h(Icon, { name: 'alert' }), h('span', null, t.reviewingBlockHint))
-          : null,
-        h(Btn, { variant: 'danger', icon: 'trash', disabled: busy !== '' || reviewingTasks.length > 0, onClick: () => setDeleteOpen(true) }, t.deleteProject)),
-      deleteModal)
-  }
-
-
+        delErr ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, delErr)) : null)
+      : null)
+}
