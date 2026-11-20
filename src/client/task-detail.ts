@@ -1378,7 +1378,7 @@ export function TaskDetail(props: any) {
         h('span', { className: 'dshw-mono', style: { fontSize: '11px', color: 'var(--dshw-text-3)' } },
           task.sessionId ? task.sessionId : t.noSession),
         props.onToggleInspector
-          ? h('button', { type: 'button', className: 'dshw-btn dshw-btn--ghost dshw-btn--sm', title: props.inspectorHidden ? t.expand : t.collapse, 'aria-label': t.inspector || t.collapse, onClick: () => props.onToggleInspector() }, '◨')
+          ? h('button', { type: 'button', className: 'dshw-btn dshw-btn--ghost dshw-btn--sm', title: props.inspectorHidden ? t.expand : t.collapse, 'aria-label': t.collapse, onClick: () => props.onToggleInspector() }, '◨')
           : null))
 
     const stageHead = h('header', { className: 'dshw-stage-head' },

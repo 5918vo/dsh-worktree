@@ -397,6 +397,7 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
       : h(TextInput, { id: 'dshw-publish-base', value: baseBranch, onChange: (e: any) => setBaseBranch(e.target.value), placeholder: t.baseBranch })
 
     const footer = [
+      h('span', { key: 'meta', className: 'dshw-foot-meta mono' }, (project && project.name ? project.name + ' → ' : '') + (project.dirName || cfg.dirName || '.dsh-worktrees') + '/<auto-id>'),
       props.onBackToProject && !parentTask ? h(Btn, { key: 'back', disabled: busy, onClick: () => props.onBackToProject && props.onBackToProject() }, t.backToProject) : null,
       h(Btn, { key: 'cancel', onClick: handleClose, disabled: busy }, t.cancel),
       unknown
@@ -413,8 +414,8 @@ export function PublishModal(props: { t: any; project: any; cfg: any; parentView
 
     return h(Modal, {
       t,
-      title: parentTask && !asPlain ? t.continueTask : t.publish,
-      icon: 'play',
+      title: parentTask && !asPlain ? t.continueTask : (t.publishTitle || t.publish),
+      badge: 'git worktree add',
       size: 'lg',
       busy,
       onClose: handleClose,

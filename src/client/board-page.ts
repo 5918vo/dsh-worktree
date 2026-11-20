@@ -728,19 +728,19 @@ export function BoardPage(props: any) {
               className: 'dshw-pill' + (attentionFilter === 'all' ? ' dshw-pill--on' : ''),
               'aria-selected': attentionFilter === 'all' ? 'true' : 'false',
               onClick: () => setAttentionFilter('all'),
-            }, t.all, h('span', { className: 'dshw-pill__count' }, String(filterCounts.all || 0))),
+            }, t.all, (filterCounts.all || 0) > 0 ? h('span', { className: 'dshw-pill__count' }, String(filterCounts.all)) : null),
             h('button', {
               type: 'button', role: 'tab',
               className: 'dshw-pill' + (attentionFilter === 'review' ? ' dshw-pill--on' : ''),
               'aria-selected': attentionFilter === 'review' ? 'true' : 'false',
               onClick: () => setAttentionFilter('review'),
-            }, t.review, h('span', { className: 'dshw-pill__count' }, String(filterCounts.review || 0))),
+            }, t.review, (filterCounts.review || 0) > 0 ? h('span', { className: 'dshw-pill__count' }, String(filterCounts.review)) : null),
             h('button', {
               type: 'button', role: 'tab',
               className: 'dshw-pill' + (attentionFilter === 'running' ? ' dshw-pill--on' : ''),
               'aria-selected': attentionFilter === 'running' ? 'true' : 'false',
               onClick: () => setAttentionFilter('running'),
-            }, t.running, h('span', { className: 'dshw-pill__count' }, String(runningCount || 0)))))),
+            }, t.running, runningCount > 0 ? h('span', { className: 'dshw-pill__count' }, String(runningCount)) : null)))),
       err
         ? projectViews.length
           ? h('div', { className: 'dshw-tree-status', role: 'status' },

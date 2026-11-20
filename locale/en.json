@@ -4,6 +4,7 @@
   "mergeCheck": "Merge check",
   "lifecycle": "Lifecycle",
   "publish": "Publish task",
+  "publishTitle": "Publish Worktree task",
   "repoPath": "Target directory",
   "repoPathHint": "Repository directory",
   "browse": "Browse…",

@@ -254,6 +254,7 @@ export type ModalProps = {
   t: any
   title: any
   subtitle?: any
+  badge?: string
   icon?: string
   tone?: 'brand' | 'danger' | 'warn'
   size?: 'sm' | 'lg'
@@ -283,7 +284,9 @@ export function Modal(props: ModalProps) {
     h('div', { className: 'dshw-modal-head', key: 'head' },
       props.icon ? h('div', { className: cx('dshw-modal-icon', props.tone && 'dshw-modal-icon--' + props.tone) }, h(Icon, { name: props.icon })) : null,
       h('div', { className: 'dshw-modal-head-copy' },
-        h('h2', { className: 'dshw-modal-title', id: titleId }, props.title),
+        h('div', { className: 'dshw-modal-title-group' },
+          h('h2', { className: 'dshw-modal-title', id: titleId }, props.title),
+          props.badge ? h('span', { className: 'dshw-modal-badge mono' }, props.badge) : null),
         props.subtitle ? h('p', { className: 'dshw-modal-sub' }, props.subtitle) : null),
       h(IconBtn, { className: 'dshw-modal-close', icon: 'x', label: t.close, onClick: requestClose, disabled: !!props.busy })),
     h('div', { className: 'dshw-modal-body', key: 'body' }, props.children),

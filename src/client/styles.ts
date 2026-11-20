@@ -776,6 +776,11 @@ export const CSS = `
 .dshw-modal-body{display:flex;flex-direction:column;gap:16px;padding:18px 20px}
 .dshw-modal-foot{padding:13px 20px;background:var(--dshw-tree-bg);border-top:1px solid var(--dshw-border)}
 .dshw-modal-badge{font-size:10.5px;color:var(--dshw-text-3);padding:1px 6px;border-radius:4px;border:1px solid var(--dshw-border);background:var(--dshw-surface);font-weight:500}
+.dshw-modal-title-group{display:flex;align-items:center;gap:10px;min-width:0}
 .dshw-field-row-2{display:grid;grid-template-columns:1.3fr 1fr;gap:12px}
 @media (max-width:520px){.dshw-field-row-2{grid-template-columns:1fr}}
+.dshw-modal .dshw-form-rows{gap:14px}
+.dshw-modal .dshw-form-row{grid-template-columns:1fr;gap:6px}
+.dshw-modal .dshw-form-row>label,.dshw-modal .dshw-form-row>.dshw-form-label{padding-top:0;font-size:11.5px;font-weight:500;color:var(--dshw-text-2)}
+.dshw-foot-meta{margin-right:auto;font-size:11px;color:var(--dshw-text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:52%}
 `
