@@ -1317,11 +1317,10 @@ export function TaskDetail(props: any) {
           }, busy === 'merge' ? h(Spinner) : null, curOnBase ? t.merge : t.mergeSwitchToBase) : null),
         reasonsNode) : null
 
-    const techCard = h(Card, null,
-      h('details', { className: 'dshw-advanced' },
-        h('summary', null, h(Icon, { name: 'sliders' }), t.techInfo,
-          worktreeState.tone === 'error' ? h(Chip, { tone: 'error', small: true }, worktreeState.label) : null),
-        h('div', { className: 'dshw-advanced-body' },
+    const techCard = h(Card, { className: 'dshw-tech-card' },
+      h(CardHead, { icon: 'sliders', title: t.techInfo,
+        right: worktreeState.tone === 'error' ? h(Chip, { tone: 'error', small: true }, worktreeState.label) : null }),
+      h('div', { className: 'dshw-tech-body' },
           task.sessionId
             ? h('div', { className: 'dshw-kv' }, [
               h(KV, { key: 'sid', label: t.sessionId },
@@ -1356,9 +1355,9 @@ export function TaskDetail(props: any) {
               task.originalBranch ? h(KV, { label: t.originalBranch }, h('span', { className: 'dshw-mono' }, task.originalBranch)) : null,
               snap.repo.dirtyCount > 0
                 ? h(KV, { label: t.uncommitted }, h(Chip, { tone: 'warn', small: true }, snap.repo.dirtyCount + ' ' + t.changesUnit))
-                : null)))))
+                : null))))
 
-    return h('div', { className: 'dshw-detail-inner' },
+    const stageNode = h('div', { className: 'dshw-stage' },
       h('article', { className: 'dshw-card dshw-hero' },
         h('div', { className: 'dshw-hero-top' },
           h('div', { className: 'dshw-hero-copy' },
@@ -1397,7 +1396,10 @@ export function TaskDetail(props: any) {
       acceptanceActionsCard,
       relationsNode,
       h(LiveCard, { t, task, running: props.running, pendingKind: props.pendingKind, live: props.live, history: props.history, onOpenSession: props.onOpenSession }),
-      showDiff ? h(DiffCard, { t, task, version: diffVersion, notify: props.notify }) : null,
+      showDiff ? h(DiffCard, { t, task, version: diffVersion, notify: props.notify }) : null)
+
+    const inspectorNode = h('aside', { className: 'dshw-inspector' },
+      techCard,
       canArchive
         ? h(Card, null,
           h(CardHead, {
@@ -1439,7 +1441,11 @@ export function TaskDetail(props: any) {
             icon: 'xCircle',
             disabled: busy !== '' || checkedOut,
             onClick: () => setDeleteOpen(true),
-          }, t.deleteRecord))),
+          }, t.deleteRecord))))
+
+    return h('div', { className: 'dshw-detail-inner dshw-stage-grid' },
+      stageNode,
+      inspectorNode,
       switchModal,
       stashModal,
       syncConfirmModal,
