@@ -41,7 +41,8 @@ export function AttentionSummaryBar(props: any) {
     prevSig.current = signature
   })
 
-  if (!stale && total === 0) return null
+  const problemTotal = (counts.pending || 0) + (counts.broken || 0) + (counts.recovery || 0)
+  if (!stale && problemTotal === 0) return null
 
   const iconName = stale ? 'clock' : severity >= 3 ? 'alert' : 'clock'
   const tone = stale ? 'neutral' : severity >= 3 ? 'error' : 'warn'

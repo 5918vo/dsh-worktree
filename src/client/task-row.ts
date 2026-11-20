@@ -1,12 +1,14 @@
 import { React, h } from './ui'
-import { Chip, Icon } from './primitives'
-import { postMergeLabel, resolveStatus, statusMeta } from './status'
+import { Icon } from './primitives'
+import { postMergeLabel, statusMeta } from './status'
 import { quickActionKey } from './task-attention'
 
 /**
- * One task row: a selectable three-line content area, an optional focusable
- * "more status" disclosure, and a single fixed quick action. No buttons are
- * nested; every part is a sibling control.
+ * One task row, rendered as the compact two-line item from demo.html:
+ *   row1: status dot · title (ellipsis) · stat (↑ahead)
+ *   row2: short branch · status label
+ * The whole row selects the task; a single quick action appears on hover.
+ * Extra alert kinds live behind a small "more" disclosure so nothing is lost.
  */
 export function TaskRow(props: any) {
   const t = props.t
@@ -14,32 +16,38 @@ export function TaskRow(props: any) {
   const task = view.task
   const snap = view.snapshot
   const attention = props.attention
-  const running = props.running
-  const pendingKind = props.pendingKind
-  const health = props.health
 
-  const effectiveStatus = resolveStatus(snap.status, running)
-  const base = statusMeta(t, effectiveStatus, null)
+  const status = String(snap.status || '')
+  const running = props.running
+  const effective = running === true ? 'developing' : status
+  const base = statusMeta(t, running === true ? 'developing' : status, null)
   const ahead = Number((snap.worktree && snap.worktree.ahead) || 0)
   const dirty = Number((snap.worktree && snap.worktree.dirtyCount) || 0)
-  const postMerge = Number(snap.postMergeAhead || 0)
+
+  const dotClass = effective === 'review'
+    ? 'dshw-dot--warn'
+    : effective === 'merged'
+      ? 'dshw-dot--success'
+      : effective === 'developing' || effective === 'reviewing'
+        ? 'dshw-dot--brand dshw-dot--pulse'
+        : effective === 'broken' || effective === 'error'
+          ? 'dshw-dot--error'
+          : 'dshw-dot--neutral'
+
+  const stat = ahead > 0 ? '↑' + ahead : dirty > 0 ? dirty + '•' : ''
+  const branch = String(task.branch || '').replace(/^dsh-wt\//, '')
 
   const alertText = (kind: string): string => {
     if (kind === 'recovery') return t.attentionRecovery
     if (kind === 'pending') {
-      if (pendingKind === 'question') return t.pendingQuestion
-      if (pendingKind === 'plan-review') return t.pendingPlanReview
+      if (props.pendingKind === 'question') return t.pendingQuestion
+      if (props.pendingKind === 'plan-review') return t.pendingPlanReview
       return t.pendingApproval
     }
     if (kind === 'broken') return t.broken
-    if (kind === 'post-merge') return postMergeLabel(t, postMerge)
-    if (kind === 'session') return health && health.kind === 'error' ? t.sessionError : t.sessionInterrupted
+    if (kind === 'post-merge') return postMergeLabel(t, Number((snap && snap.postMergeAhead) || 0))
+    if (kind === 'session') return props.health && props.health.kind === 'error' ? t.sessionError : t.sessionInterrupted
     return ''
-  }
-  const alertTone = (kind: string): string => {
-    if (kind === 'broken' || kind === 'recovery') return 'error'
-    if (kind === 'session') return health && health.kind === 'error' ? 'error' : 'warn'
-    return 'warn'
   }
   const alertIcon = (kind: string): string => {
     if (kind === 'broken' || kind === 'recovery') return 'alert'
@@ -50,7 +58,6 @@ export function TaskRow(props: any) {
 
   const [moreOpen, setMoreOpen] = React.useState(false)
   const moreRef = React.useRef(null)
-  const moreBtnRef = React.useRef(null)
   React.useEffect(() => {
     if (!moreOpen) return undefined
     const onPointer = (e: any) => {
@@ -60,13 +67,6 @@ export function TaskRow(props: any) {
     document.addEventListener('pointerdown', onPointer, true)
     return () => document.removeEventListener('pointerdown', onPointer, true)
   }, [moreOpen])
-  const onMoreKey = (e: any) => {
-    if (e.key === 'Escape' && moreOpen) {
-      e.preventDefault()
-      setMoreOpen(false)
-      if (moreBtnRef.current) (moreBtnRef.current as any).focus()
-    }
-  }
 
   const extraAlerts: string[] = (attention && attention.extraAlerts) || []
   const quick = attention && attention.quickAction
@@ -74,48 +74,46 @@ export function TaskRow(props: any) {
   const quickIcon = quick === 'handle' ? 'message' : quick === 'review' ? 'checkCircle' : quick === 'recover' ? 'archiveRestore' : 'external'
 
   return h('div', {
-    className: 'dshw-trow' + (props.active ? ' dshw-trow--on' : ''),
+    className: 'dshw-item' + (props.active ? ' dshw-item--on' : ''),
     role: 'listitem',
     'data-task-id': task.id,
   },
     h('button', {
       type: 'button',
-      className: 'dshw-trow-content',
+      className: 'dshw-item-hit',
       onClick: () => props.onSelect && props.onSelect(view),
       title: task.title,
       'aria-label': task.title,
       'aria-current': props.active ? 'true' : undefined,
     },
-      h('span', { className: 'dshw-trow-title' }, task.title),
-      h('span', { className: 'dshw-trow-meta' },
-        h(Chip, { tone: base.tone, small: true }, base.label),
-        attention && attention.primaryAlert ? h(Chip, { tone: alertTone(attention.primaryAlert), small: true }, alertText(attention.primaryAlert)) : null),
-      h('span', { className: 'dshw-trow-counts' },
-        ahead > 0 ? h('span', { className: 'dshw-trow-count', title: ahead + ' ' + t.commitsAhead }, h(Icon, { name: 'arrowUp' }), String(ahead)) : null,
-        dirty > 0 ? h('span', { className: 'dshw-trow-count', title: dirty + ' ' + t.changedFilesCount }, h(Icon, { name: 'file' }), String(t.changedFilesCount).replace('{n}', String(dirty))) : null)),
-    extraAlerts.length
-      ? h('button', {
-        ref: moreBtnRef,
-        type: 'button',
-        className: 'dshw-trow-more',
-        title: t.moreStates,
-        'aria-label': t.moreStates + '：' + task.title,
-        'aria-expanded': moreOpen ? 'true' : 'false',
-        onClick: () => setMoreOpen((value: boolean) => !value),
-        onKeyDown: onMoreKey,
-      }, h(Icon, { name: 'more' }))
-      : null,
+      h('div', { className: 'dshw-item-row1' },
+        h('span', { className: 'dshw-dot ' + dotClass }),
+        h('span', { className: 'dshw-item-title' }, task.title),
+        stat ? h('span', { className: 'dshw-item-stat mono' }, stat) : null),
+      h('div', { className: 'dshw-item-row2 mono' },
+        h('span', { className: 'dshw-item-branch' }, branch || '—'),
+        h('span', { className: 'dshw-item-status' }, base.label))),
     quick
       ? h('button', {
         type: 'button',
-        className: 'dshw-trow-quick',
+        className: 'dshw-item-quick',
         title: quickLabel,
         'aria-label': quickLabel + '：' + task.title,
-        onClick: () => props.onQuick && props.onQuick(quick, view),
-      }, h(Icon, { name: quickIcon }), h('span', { className: 'dshw-trow-quick-label' }, quickLabel))
+        onClick: (e: any) => { e.stopPropagation(); props.onQuick && props.onQuick(quick, view) },
+      }, h(Icon, { name: quickIcon }))
+      : null,
+    extraAlerts.length
+      ? h('button', {
+        type: 'button',
+        className: 'dshw-item-more',
+        title: t.moreStates,
+        'aria-label': t.moreStates + '：' + task.title,
+        'aria-expanded': moreOpen ? 'true' : 'false',
+        onClick: (e: any) => { e.stopPropagation(); setMoreOpen((v: boolean) => !v) },
+      }, h(Icon, { name: 'more' }))
       : null,
     extraAlerts.length && moreOpen
-      ? h('div', { ref: moreRef, className: 'dshw-trow-popover', role: 'group', 'aria-label': t.moreStates },
+      ? h('div', { ref: moreRef, className: 'dshw-item-popover', role: 'group', 'aria-label': t.moreStates },
         extraAlerts.map((kind: string, i: number) => h('div', { key: i, className: 'dshw-trow-pop-item' },
           h(Icon, { name: alertIcon(kind), className: 'dshw-trow-pop-ico' }),
           h('span', null, alertText(kind)))))

@@ -1366,6 +1366,9 @@ export function TaskDetail(props: any) {
 
     const topbar = h('div', { className: 'dshw-topbar' },
       h('div', { className: 'dshw-topbar-left' },
+        props.onToggleRail
+          ? h('button', { type: 'button', className: 'dshw-btn dshw-btn--ghost dshw-btn--sm', title: props.railHidden ? t.expand : t.collapse, 'aria-label': props.railHidden ? t.expand : t.collapse, onClick: () => props.onToggleRail() }, '◧')
+          : null,
         h('div', { className: 'dshw-breadcrumb' },
           h(Icon, { name: 'folder' }),
           h('span', null, project ? project.name : task.repoPath),
@@ -1373,7 +1376,10 @@ export function TaskDetail(props: any) {
           h('strong', { className: 'dshw-mono' }, branch + (task.baseBranch ? ' → ' + task.baseBranch : '')))),
       h('div', { className: 'dshw-topbar-right' },
         h('span', { className: 'dshw-mono', style: { fontSize: '11px', color: 'var(--dshw-text-3)' } },
-          task.sessionId ? task.sessionId : t.noSession)))
+          task.sessionId ? task.sessionId : t.noSession),
+        props.onToggleInspector
+          ? h('button', { type: 'button', className: 'dshw-btn dshw-btn--ghost dshw-btn--sm', title: props.inspectorHidden ? t.expand : t.collapse, 'aria-label': t.inspector || t.collapse, onClick: () => props.onToggleInspector() }, '◨')
+          : null))
 
     const stageHead = h('header', { className: 'dshw-stage-head' },
       h('div', { className: 'dshw-stage-title-row' },

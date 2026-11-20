@@ -129,13 +129,20 @@ export function SettingsPage(props: any) {
       : null
 
     return h('div', { className: 'dshw-scope dshw-shell', style: { overflow: 'auto' } },
-      h('div', { className: 'dshw-settings' },
-        h('div', { className: 'dshw-page-head' },
-          h('div', { className: 'dshw-page-icon' }, h(Icon, { name: 'settings' })),
-          h('div', { className: 'dshw-page-head-copy' },
-            h('h1', null, t.title),
-            h('div', { className: 'dshw-page-sub' }, t.settingsSub))),
-        err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null,
+      h('div', { className: 'dshw-stage dshw-settings' },
+        h('div', { className: 'dshw-topbar' },
+          h('div', { className: 'dshw-topbar-left' },
+            h('div', { className: 'dshw-breadcrumb' },
+              h(Icon, { name: 'settings' }),
+              h('strong', null, t.title)))),
+        h('header', { className: 'dshw-stage-head' },
+          h('div', { className: 'dshw-stage-title-row' },
+            h('div', { style: { minWidth: 0 } },
+              h('h1', { className: 'dshw-stage-title' }, t.title),
+              h('div', { className: 'dshw-stage-sub' }, h('span', null, t.settingsSub))))),
+        h('div', { className: 'dshw-stage-body' },
+          h('div', { className: 'dshw-measure' },
+            err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null,
         h(Card, null,
           h(CardHead, { icon: 'checkCircle', title: t.acceptanceLibrary }),
           h('p', { className: 'dshw-card-sub' }, t.acceptanceLibraryHint),
@@ -220,7 +227,7 @@ export function SettingsPage(props: any) {
             h(KV, { label: t.worktreeDirName }, h('code', null, cfg ? String(cfg.dirName) : '…')),
             h(KV, { label: t.branchPrefix }, h('code', null, cfg ? String(cfg.branchPrefix) : '…')),
             h(KV, { label: t.gitPath }, h('code', null, cfg ? String(cfg.gitPath) : '…')))),
-        clearModal),
+            clearModal))),
       h(Toast, { toast, onClose: dismiss }))
   }
 

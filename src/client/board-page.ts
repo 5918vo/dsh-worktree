@@ -7,7 +7,6 @@ import { TaskDetail } from './task-detail'
 import { TaskRow } from './task-row'
 import { ProjectDetail } from './project-detail'
 import { upsertPublishedTask, visibleProjectViews } from './board-data'
-import { AttentionFilter } from './attention-filter'
 import { AttentionSummaryBar } from './attention-summary'
 import { RECOVERY_UI_READY, computeFilterCounts, deriveTaskAttention } from './task-attention'
 import { appCtx, bindSession, getJson, post, postLong } from './context'
@@ -35,6 +34,8 @@ export function BoardPage(props: any) {
     const [detailFocus, setDetailFocus] = React.useState(null as any)
     const [showDetail, setShowDetail] = React.useState(false)
     const [collapsed, setCollapsed] = React.useState({})
+    const [railHidden, setRailHidden] = React.useState(false)
+    const [inspectorHidden, setInspectorHidden] = React.useState(false)
     const [publishFor, setPublishFor] = React.useState(null)
     const [publishParent, setPublishParent] = React.useState(null)
     const [publishEntryOpen, setPublishEntryOpen] = React.useState(false)
@@ -299,6 +300,16 @@ export function BoardPage(props: any) {
     const archivedCount = allTasks.filter((v: any) => !!v.task.archivedAt).length
     const visibleTasks = shownViews.flatMap((pv: any) => pv.tasks)
     const filterCounts = computeFilterCounts(visibleTasks, allTasks, attnOf, RECOVERY_UI_READY)
+    // "运行中" pill: tasks with a live session or in an active Git state.
+    const isRunningView = (v: any) => runningOf(v.task) === true
+      || ['developing', 'reviewing'].includes(resolveStatus(v.snapshot.status, runningOf(v.task)))
+    const runningCount = visibleTasks.filter(isRunningView).length
+    const matchesFilter = (v: any) => {
+      if (attentionFilter === 'all') return true
+      if (attentionFilter === 'running') return isRunningView(v)
+      const a = attnOf(v)
+      return !!a && a.categories.has(attentionFilter as any)
+    }
     // Look up the selected project from the visible rows so its overview counts
     // match the sidebar; fall back to the full list for an archived-only project.
     const selectedProject =
@@ -419,6 +430,8 @@ export function BoardPage(props: any) {
             return
           }
         }
+        if (!typing && e.key === '[') { e.preventDefault(); setRailHidden((v: boolean) => !v); return }
+        if (!typing && e.key === ']') { e.preventDefault(); setInspectorHidden((v: boolean) => !v); return }
         if (e.key === 'Escape' && active === searchRef.current && query) {
           setQuery('')
         }
@@ -578,7 +591,7 @@ export function BoardPage(props: any) {
     const baseViews = attentionFilter === 'recovery' ? visibleProjectViews(projectViews, true) : shownViews
     const filtered = baseViews.map((pv: any) => {
       const catTasks = filterActive
-        ? pv.tasks.filter((v: any) => { const a = attnOf(v); return !!a && a.categories.has(attentionFilter as any) })
+        ? pv.tasks.filter((v: any) => matchesFilter(v))
         : pv.tasks
       const nameHit = !q || pv.project.name.toLowerCase().includes(q) || pv.project.repoPath.toLowerCase().includes(q)
       const tasks = !q ? catTasks : catTasks.filter((v: any) => {
@@ -592,10 +605,7 @@ export function BoardPage(props: any) {
     }).filter((item: any) => item.tasks.length > 0 || (!q && !filterActive))
 
     const totalTasks = shownViews.reduce((sum: number, pv: any) => sum + pv.tasks.length, 0)
-    const selectedHidden = !!(selectedTask && filterActive && (() => {
-      const a = selectedTask ? attnOf(selectedTask) : null
-      return !a || !a.categories.has(attentionFilter as any)
-    })())
+    const selectedHidden = !!(selectedTask && filterActive && !matchesFilter(selectedTask))
 
     const projectRow = (item: any) => {
       const pv = item.pv
@@ -702,7 +712,6 @@ export function BoardPage(props: any) {
           h(Btn, { variant: 'primary', size: 'sm', icon: 'plus', onClick: () => openPublishEntry() }, t.publish)),
         h('div', { className: 'dshw-rail-controls' },
           h('div', { className: 'dshw-search' },
-            h(Icon, { name: 'search' }),
             h('input', {
               ref: searchRef,
               type: 'search',
@@ -711,31 +720,27 @@ export function BoardPage(props: any) {
               autoComplete: 'off',
               'aria-label': t.search,
               onChange: (e: any) => setQuery(e.target.value),
-            })),
-          h('div', { className: 'dshw-tree-tools' },
-            h(AttentionFilter, {
-              t,
-              value: attentionFilter,
-              counts: filterCounts,
-              onChange: (next: string) => setAttentionFilter(next),
             }),
-            h(IconBtn, {
-              icon: 'refresh',
-              label: t.refresh,
-              disabled: refreshing,
-              onClick: () => { void refresh(true).then(() => notify(t.refreshed)) },
-            }, refreshing ? h(Spinner) : null),
-            archivedCount > 0
-              ? h(IconBtn, {
-                icon: 'archive',
-                label: showArchived ? t.hideArchived : t.showArchived,
-                title: String(t.archiveToggleTitle).replace('{n}', String(archivedCount)),
-                'aria-pressed': showArchived ? 'true' : 'false',
-                className: showArchived ? 'dshw-icon-btn--on' : undefined,
-                onClick: () => setShowArchived((value: boolean) => !value),
-              })
-              : null,
-            h(IconBtn, { icon: 'plus', label: t.addProject, onClick: () => setProjectModalOpen(true) })))),
+            h('span', { className: 'dshw-search-kbd mono', 'aria-hidden': 'true' }, '/')),
+          h('div', { className: 'dshw-pills', role: 'tablist', 'aria-label': t.attentionFilterTitle },
+            h('button', {
+              type: 'button', role: 'tab',
+              className: 'dshw-pill' + (attentionFilter === 'all' ? ' dshw-pill--on' : ''),
+              'aria-selected': attentionFilter === 'all' ? 'true' : 'false',
+              onClick: () => setAttentionFilter('all'),
+            }, t.all, h('span', { className: 'dshw-pill__count' }, String(filterCounts.all || 0))),
+            h('button', {
+              type: 'button', role: 'tab',
+              className: 'dshw-pill' + (attentionFilter === 'review' ? ' dshw-pill--on' : ''),
+              'aria-selected': attentionFilter === 'review' ? 'true' : 'false',
+              onClick: () => setAttentionFilter('review'),
+            }, t.review, h('span', { className: 'dshw-pill__count' }, String(filterCounts.review || 0))),
+            h('button', {
+              type: 'button', role: 'tab',
+              className: 'dshw-pill' + (attentionFilter === 'running' ? ' dshw-pill--on' : ''),
+              'aria-selected': attentionFilter === 'running' ? 'true' : 'false',
+              onClick: () => setAttentionFilter('running'),
+            }, t.running, h('span', { className: 'dshw-pill__count' }, String(runningCount || 0)))))),
       err
         ? projectViews.length
           ? h('div', { className: 'dshw-tree-status', role: 'status' },
@@ -760,8 +765,27 @@ export function BoardPage(props: any) {
           : null,
         treeBody),
       h('footer', { className: 'dshw-tree-foot' },
-        h('span', null, projectViews.length + ' ' + t.projectUnit + ' · ' + totalTasks + ' ' + t.taskUnit),
-        h('span', { className: 'dshw-tree-tag' }, 'worktree')))
+        h('span', { className: 'dshw-foot-count mono' }, projectViews.length + ' ' + t.projectUnit + ' · ' + totalTasks + ' ' + t.taskUnit),
+        h('div', { className: 'dshw-foot-tools' },
+          h(IconBtn, {
+            size: 'sm',
+            icon: 'refresh',
+            label: t.refresh,
+            disabled: refreshing,
+            onClick: () => { void refresh(true).then(() => notify(t.refreshed)) },
+          }, refreshing ? h(Spinner) : null),
+          archivedCount > 0
+            ? h(IconBtn, {
+              size: 'sm',
+              icon: 'archive',
+              label: showArchived ? t.hideArchived : t.showArchived,
+              title: String(t.archiveToggleTitle).replace('{n}', String(archivedCount)),
+              'aria-pressed': showArchived ? 'true' : 'false',
+              className: showArchived ? 'dshw-icon-btn--on' : undefined,
+              onClick: () => setShowArchived((value: boolean) => !value),
+            })
+            : null,
+          h(IconBtn, { size: 'sm', icon: 'plus', label: t.addProject, onClick: () => setProjectModalOpen(true) }))))
 
     const mobileBar = selectedTask || selectedProject
       ? h('div', { className: 'dshw-mobile-bar' },
@@ -780,6 +804,10 @@ export function BoardPage(props: any) {
         live: liveValues,
         history: historyEntries,
         t,
+        railHidden,
+        inspectorHidden,
+        onToggleRail: () => setRailHidden((v: boolean) => !v),
+        onToggleInspector: () => setInspectorHidden((v: boolean) => !v),
         notify,
         onChanged: afterChange,
         onOpenSession: selectedTask.task.sessionId ? () => openTaskSession(selectedTask.task.sessionId) : undefined,
@@ -803,6 +831,10 @@ export function BoardPage(props: any) {
         pendingMap,
         sessionMap,
         t,
+        railHidden,
+        inspectorHidden,
+        onToggleRail: () => setRailHidden((v: boolean) => !v),
+        onToggleInspector: () => setInspectorHidden((v: boolean) => !v),
         notify,
         onChanged: afterChange,
         onPublish: (project: any) => setPublishFor(project),
@@ -976,7 +1008,7 @@ export function BoardPage(props: any) {
           })
         },
       }),
-      h('div', { className: 'dshw-app' + (showDetail ? ' dshw-app--detail' : '') }, treeNode, detailNode, modalNode),
+      h('div', { className: 'dshw-app' + (showDetail ? ' dshw-app--detail' : '') + (railHidden ? ' dshw-rail-hidden' : '') + (inspectorHidden ? ' dshw-inspector-hidden' : '') }, treeNode, detailNode, modalNode),
       h(Toast, { toast, onClose: dismiss }))
   }
 

@@ -99,6 +99,8 @@
   "noProjects": "暂无项目",
   "developing": "进行中",
   "review": "待验收",
+  "all": "全部",
+  "running": "运行中",
   "reviewing": "验收中",
   "merged": "已合并",
   "cleaned": "已清理",

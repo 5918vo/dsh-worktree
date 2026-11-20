@@ -99,6 +99,8 @@
   "noProjects": "No projects",
   "developing": "In progress",
   "review": "Ready for review",
+  "all": "All",
+  "running": "Running",
   "reviewing": "Reviewing",
   "merged": "Merged",
   "cleaned": "Cleaned",
