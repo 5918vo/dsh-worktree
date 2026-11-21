@@ -1,11 +1,19 @@
 /* --------------------------------------------------------------------------
  * Palette — the single source of truth for every colour in the workbench.
  *
- * Design language: "Optical Precision" (mirrors demo.html one-to-one).
- *   Dark  — obsidian carbon greys with a 1px specular top highlight; the
- *           primary action is a near-white "ink" button.
- *   Light — warm alabaster paper tones; the primary action is deep ink black.
- *           Colour is reserved for Git state and agent vitals, never chrome.
+ * Design language: "Instrument panel" (mirrors docs/ui-prototype.html).
+ *   Dark  — near-black paper (#0b0b0c) with a darker shell for rail/terminal;
+ *           a single copper accent marks liveness and primary action; the
+ *           primary button inverts to ink so it reads as a stamp, not a chip.
+ *   Light — warm paper (#f8f5ef) with a slightly darker shell; the same copper
+ *           accent, darkened for contrast. Colour is reserved for Git state,
+ *           agent vitals and the accent — never for chrome.
+ *
+ * Rules of the system:
+ *   · Every hairline is rgba over paper, never a solid grey — it disappears
+ *     into the background instead of drawing boxes.
+ *   · --dshw-text-3 is metadata ink; it must stay >= 4.5:1 on bg (AA, 11–12px).
+ *   · Shadows are for overlays only; inline chrome uses rules.
  *
  * To re-skin the plugin, edit only this object. Every rule below consumes
  * --dshw-* variables generated from these tokens; no colour literals should
@@ -14,172 +22,172 @@
 
 export const PALETTE = {
   light: {
-    bg: '#f2f1ec', // --bg-canvas
-    surface: '#fcfbf8', // --bg-stage
-    surface2: '#f6f5f0', // panels / code / stat wells (= --bg-rail family)
-    surface3: '#ece9e1',
-    treeBg: '#f6f5f0', // --bg-rail
-    elevated: '#ffffff', // --bg-elevated (raised chips / active rows / buttons)
-    hover: 'rgba(20,20,19,.04)', // --bg-hover
-    active: 'rgba(20,20,19,.075)', // --bg-active
+    bg: '#f8f5ef', // --bg-canvas  (paper)
+    surface: '#f8f5ef', // --bg-stage   (same paper: no cards, only rules)
+    surface2: '#f3efe6', // panels / code wells
+    surface3: '#ebe6dc', // sunken wells
+    treeBg: '#f1ede4', // --bg-rail (shell)
+    elevated: '#fffdf8', // raised chips / active rows / inputs
+    hover: 'rgba(23,21,15,.045)', // --bg-hover
+    active: 'rgba(23,21,15,.08)', // --bg-active
 
-    border: 'rgba(20,20,19,.085)', // --line
-    borderSoft: 'rgba(20,20,19,.055)',
-    borderStrong: 'rgba(20,20,19,.18)', // --line-strong
-    specular: 'inset 0 1px 0 rgba(255,255,255,.9)', // --specular
+    border: 'rgba(23,21,15,.14)', // --line
+    borderSoft: 'rgba(23,21,15,.07)', // --line-soft
+    borderStrong: 'rgba(23,21,15,.26)', // --line-strong
+    specular: 'inset 0 1px 0 rgba(255,255,255,.7)', // --specular
 
-    text: '#141413', // --text-1
-    text2: '#575652', // --text-2
-    text3: '#8c8a82', // --text-3
+    text: '#17150f', // --text-1
+    text2: '#4d4a42', // --text-2
+    text3: '#736f64', // --text-3  (4.61:1 on bg — AA for 11–12px)
 
-    brand: '#4f46e5', // --accent
-    brandStrong: '#4338ca',
-    brandSolid: '#141413', // --cta-bg
-    brandSolidHover: '#2a2a28', // --cta-hover
-    brandSoft: 'rgba(79,70,229,.09)', // --accent-soft
-    brandBorder: 'rgba(79,70,229,.24)', // --accent-line
-    onBrand: '#fcfbf8', // --cta-text
+    brand: '#9a5619', // --accent (copper, darkened for light paper)
+    brandStrong: '#7a4314',
+    brandSolid: '#17150f', // --cta-bg (ink stamp)
+    brandSolidHover: '#2b2820', // --cta-hover
+    brandSoft: 'rgba(154,86,25,.10)', // --accent-soft
+    brandBorder: 'rgba(154,86,25,.30)', // --accent-line
+    onBrand: '#f8f5ef', // --cta-text
 
-    success: '#059669', // --ok
-    successSoft: 'rgba(5,150,105,.09)',
-    successBorder: 'rgba(5,150,105,.24)',
+    success: '#3f7a4a', // --ok
+    successSoft: 'rgba(63,122,74,.10)',
+    successBorder: 'rgba(63,122,74,.28)',
 
-    warn: '#b45309', // --warn
-    warnSoft: 'rgba(180,83,9,.09)',
-    warnBorder: 'rgba(180,83,9,.24)',
+    warn: '#8a5a12', // --warn
+    warnSoft: 'rgba(138,90,18,.10)',
+    warnBorder: 'rgba(138,90,18,.28)',
 
-    danger: '#dc2626', // --err
-    dangerSoft: 'rgba(220,38,38,.08)',
-    dangerBorder: 'rgba(220,38,38,.22)',
+    danger: '#a83a34', // --err
+    dangerSoft: 'rgba(168,58,52,.08)',
+    dangerBorder: 'rgba(168,58,52,.26)',
 
-    purple: '#7c3aed',
-    purpleSoft: 'rgba(124,58,237,.09)',
-    purpleBorder: 'rgba(124,58,237,.24)',
+    purple: '#6b4a7a',
+    purpleSoft: 'rgba(107,74,122,.09)',
+    purpleBorder: 'rgba(107,74,122,.26)',
 
-    folderBlueBg: '#e7ecf8',
-    folderBlueFg: '#3b5bdb',
-    folderPurpleBg: '#f1e9fd',
-    folderPurpleFg: '#7c3aed',
-    folderGreenBg: '#e5f2ea',
-    folderGreenFg: '#2f855a',
-    folderOrangeBg: '#f8efdd',
-    folderOrangeFg: '#b7791f',
+    folderBlueBg: '#e8edf3',
+    folderBlueFg: '#3d5a80',
+    folderPurpleBg: '#efe9f4',
+    folderPurpleFg: '#6b4a7a',
+    folderGreenBg: '#e6efe7',
+    folderGreenFg: '#3f7a4a',
+    folderOrangeBg: '#f7eedd',
+    folderOrangeFg: '#8a5a12',
 
-    shadow: '0 1px 2px rgba(20,20,19,.05),0 1px 3px rgba(20,20,19,.04)',
-    shadowLg: '0 24px 60px rgba(20,20,19,.16), 0 0 0 1px rgba(20,20,19,.09)',
-    modalShadow: '0 24px 60px rgba(20,20,19,.16), 0 0 0 1px rgba(20,20,19,.09)',
-    brandShadow: '0 1px 2px rgba(20,20,19,.22)',
-    focusRing: '0 0 0 3px rgba(79,70,229,.22)',
+    shadow: '0 1px 0 rgba(23,21,15,.04)',
+    shadowLg: '0 20px 48px rgba(23,21,15,.14), 0 0 0 1px rgba(23,21,15,.10)',
+    modalShadow: '0 20px 48px rgba(23,21,15,.14), 0 0 0 1px rgba(23,21,15,.10)',
+    brandShadow: '0 1px 0 rgba(23,21,15,.18)',
+    focusRing: '0 0 0 3px rgba(154,86,25,.25)',
 
-    overlay: 'rgba(20,20,19,.36)',
-    backdrop: 'rgba(20,20,19,.36)',
-    toastBg: '#141413',
-    toastFg: '#fcfbf8',
+    overlay: 'rgba(23,21,15,.32)',
+    backdrop: 'rgba(23,21,15,.32)',
+    toastBg: '#17150f',
+    toastFg: '#f8f5ef',
 
-    codeBg: '#f6f5f0',
-    diffAddBg: 'rgba(16,185,129,.10)',
-    diffDelBg: 'rgba(220,38,38,.08)',
+    codeBg: '#f3efe6',
+    diffAddBg: 'rgba(63,122,74,.10)',
+    diffDelBg: 'rgba(168,58,52,.09)',
 
-    termBg: '#1a1a15',
-    termBorder: '#2c2b24',
-    termText: '#e7e4d9',
-    termMuted: '#9a968a',
-    termBar: '#9a968a',
+    termBg: '#141310',
+    termBorder: '#26231d',
+    termText: '#e8e6e1',
+    termMuted: '#9a958a',
+    termBar: '#9a958a',
     termGutter: '#6f6b60',
-    termUser: '#a5b4fc',
-    termTool: '#6ee7b7',
-    termWarn: '#fcd34d',
-    termError: '#fca5a5',
+    termUser: '#d8c39a',
+    termTool: '#9dc2a2',
+    termWarn: '#d9a93f',
+    termError: '#e0776f',
 
-    meterFrom: '#6366f1',
-    meterTo: '#34d399',
+    meterFrom: '#9a5619',
+    meterTo: '#3f7a4a',
 
     selectArrow:
-      'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'16\' height=\'16\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%238c8a82\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpath d=\'m6 9 6 6 6-6\'/%3E%3C/svg%3E")',
+      'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'16\' height=\'16\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23736f64\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpath d=\'m6 9 6 6 6-6\'/%3E%3C/svg%3E")',
   },
   dark: {
-    bg: '#09090b',
-    surface: '#101114',
-    surface2: '#16181d',
-    surface3: '#1f222a',
-    treeBg: '#0d0e11',
-    elevated: '#16181d',
-    hover: 'rgba(255,255,255,.045)',
-    active: 'rgba(255,255,255,.075)',
+    bg: '#0b0b0c', // paper
+    surface: '#0b0b0c',
+    surface2: '#121214',
+    surface3: '#17171a',
+    treeBg: '#070708', // shell: rail + terminal
+    elevated: '#131315',
+    hover: 'rgba(242,240,236,.05)',
+    active: 'rgba(242,240,236,.085)',
 
-    border: 'rgba(255,255,255,.08)',
-    borderSoft: 'rgba(255,255,255,.05)',
-    borderStrong: 'rgba(255,255,255,.16)',
-    specular: 'inset 0 1px 0 rgba(255,255,255,.07)',
+    border: 'rgba(242,240,236,.11)',
+    borderSoft: 'rgba(242,240,236,.06)',
+    borderStrong: 'rgba(242,240,236,.20)',
+    specular: 'inset 0 1px 0 rgba(242,240,236,.045)',
 
-    text: '#f4f4f5',
-    text2: '#a1a1aa',
-    text3: '#63636e',
+    text: '#f2f0ec',
+    text2: '#a9a59d',
+    text3: '#807c74', // 4.71:1 on paper
 
-    brand: '#818cf8',
-    brandStrong: '#a5b4fc',
-    brandSolid: '#f4f4f5',
+    brand: '#e0a256', // copper
+    brandStrong: '#eab877',
+    brandSolid: '#f2f0ec',
     brandSolidHover: '#ffffff',
-    brandSoft: 'rgba(129,140,248,.12)',
-    brandBorder: 'rgba(129,140,248,.28)',
-    onBrand: '#09090b',
+    brandSoft: 'rgba(224,162,86,.12)',
+    brandBorder: 'rgba(224,162,86,.30)',
+    onBrand: '#0b0b0c',
 
-    success: '#34d399',
-    successSoft: 'rgba(52,211,153,.11)',
-    successBorder: 'rgba(52,211,153,.25)',
+    success: '#8fbf94',
+    successSoft: 'rgba(143,191,148,.12)',
+    successBorder: 'rgba(143,191,148,.28)',
 
-    warn: '#fbbf24',
-    warnSoft: 'rgba(251,191,36,.11)',
-    warnBorder: 'rgba(251,191,36,.26)',
+    warn: '#d9a93f',
+    warnSoft: 'rgba(217,169,63,.12)',
+    warnBorder: 'rgba(217,169,63,.28)',
 
-    danger: '#f87171',
-    dangerSoft: 'rgba(248,113,113,.11)',
-    dangerBorder: 'rgba(248,113,113,.26)',
+    danger: '#e0776f',
+    dangerSoft: 'rgba(224,119,111,.12)',
+    dangerBorder: 'rgba(224,119,111,.28)',
 
-    purple: '#a78bfa',
-    purpleSoft: 'rgba(167,139,250,.13)',
-    purpleBorder: 'rgba(167,139,250,.28)',
+    purple: '#bfa8d0',
+    purpleSoft: 'rgba(191,168,208,.12)',
+    purpleBorder: 'rgba(191,168,208,.28)',
 
-    folderBlueBg: '#1a2138',
-    folderBlueFg: '#8fb0ff',
-    folderPurpleBg: '#1e1a30',
-    folderPurpleFg: '#b9a2ff',
-    folderGreenBg: '#12261d',
-    folderGreenFg: '#49d793',
-    folderOrangeBg: '#2a2012',
-    folderOrangeFg: '#f0b354',
+    folderBlueBg: '#1a1e26',
+    folderBlueFg: '#9fb3d1',
+    folderPurpleBg: '#221c2a',
+    folderPurpleFg: '#bfa8d0',
+    folderGreenBg: '#182420',
+    folderGreenFg: '#9dc2a2',
+    folderOrangeBg: '#2a2418',
+    folderOrangeFg: '#dfb277',
 
-    shadow: '0 1px 2px rgba(0,0,0,.5)',
-    shadowLg: '0 24px 64px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.08)',
-    modalShadow: '0 24px 64px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.08)',
-    brandShadow: '0 1px 2px rgba(0,0,0,.4)',
-    focusRing: '0 0 0 3px rgba(129,140,248,.30)',
+    shadow: '0 1px 0 rgba(0,0,0,.5)',
+    shadowLg: '0 24px 64px rgba(0,0,0,.62), 0 0 0 1px rgba(242,240,236,.09)',
+    modalShadow: '0 24px 64px rgba(0,0,0,.62), 0 0 0 1px rgba(242,240,236,.09)',
+    brandShadow: '0 1px 0 rgba(0,0,0,.4)',
+    focusRing: '0 0 0 3px rgba(224,162,86,.28)',
 
-    overlay: 'rgba(4,4,6,.72)',
-    backdrop: 'rgba(4,4,6,.72)',
-    toastBg: '#f4f4f5',
-    toastFg: '#09090b',
+    overlay: 'rgba(4,4,5,.74)',
+    backdrop: 'rgba(4,4,5,.74)',
+    toastBg: '#f2f0ec',
+    toastFg: '#0b0b0c',
 
-    codeBg: '#0b0c0f',
-    diffAddBg: 'rgba(16,185,129,.11)',
-    diffDelBg: 'rgba(244,63,94,.12)',
+    codeBg: '#070708',
+    diffAddBg: 'rgba(143,191,148,.12)',
+    diffDelBg: 'rgba(224,119,111,.12)',
 
-    termBg: '#0b0c0f',
-    termBorder: '#1f222a',
-    termText: '#d4d4d8',
-    termMuted: '#8b8b93',
-    termBar: '#8b8b93',
-    termGutter: '#6b6b74',
-    termUser: '#a5b4fc',
-    termTool: '#6ee7b7',
-    termWarn: '#fcd34d',
-    termError: '#fca5a5',
+    termBg: '#070708',
+    termBorder: '#1c1c1e',
+    termText: '#e8e6e1',
+    termMuted: '#8b877f',
+    termBar: '#8b877f',
+    termGutter: '#6a665f',
+    termUser: '#d8c39a',
+    termTool: '#9dc2a2',
+    termWarn: '#d9a93f',
+    termError: '#e0776f',
 
-    meterFrom: '#818cf8',
-    meterTo: '#34d399',
+    meterFrom: '#e0a256',
+    meterTo: '#8fbf94',
 
     selectArrow:
-      'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'16\' height=\'16\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%2363636e\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpath d=\'m6 9 6 6 6-6\'/%3E%3C/svg%3E")',
+      'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'16\' height=\'16\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23807c74\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpath d=\'m6 9 6 6 6-6\'/%3E%3C/svg%3E")',
   },
 }
 

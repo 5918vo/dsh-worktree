@@ -1,5 +1,103 @@
 import { PALETTE, paletteVars } from './palette'
 
+const PANEL_CSS = `
+/* ---------- shared geometry -------------------------------------------------- */
+.dshw-btn{height:32px;border-radius:6px;padding:0 12px;font-size:12.5px;letter-spacing:-.005em}
+.dshw-btn--sm{height:28px;border-radius:6px;padding:0 9px;font-size:12px}
+.dshw-btn--lg{height:36px;border-radius:6px;padding:0 15px}
+.dshw-btn:hover:not(:disabled){border-color:var(--dshw-border-strong)}
+.dshw-btn--primary{background:var(--dshw-brand-solid);border-color:var(--dshw-brand-solid);color:var(--dshw-on-brand)}
+.dshw-btn--primary:hover:not(:disabled){background:var(--dshw-brand-solid-hover);border-color:var(--dshw-brand-solid-hover)}
+.dshw-icon-btn{width:28px;height:28px;border-radius:6px}
+.dshw-icon-btn--sm{width:24px;height:24px}
+.dshw-input,.dshw-textarea,.dshw-select{border-radius:6px}
+.dshw-chip{height:19px;padding:0 6px;border-radius:4px;font-size:10.5px;font-weight:600;letter-spacing:.02em}
+.dshw-tab{border-radius:4px}
+
+/* focus: one ring for every control, only from the keyboard */
+.dshw-btn:focus-visible,.dshw-icon-btn:focus-visible,.dshw-tab:focus-visible,.dshw-input:focus-visible,
+.dshw-textarea:focus-visible,.dshw-check input:focus-visible,.dshw-link-btn:focus-visible,
+.dshw-item:focus-visible,.dshw-project:focus-visible,
+.dshw-demo .dshwd-btn:focus-visible,.dshw-demo .dshwd-input:focus-visible,
+.dshw-demo .dshwd-pill:focus-visible,.dshw-demo .dshwd-item:focus-visible,
+.dshw-demo .dshwd-group-head:focus-visible,.dshw-demo .dshwd-criteria-remove:focus-visible{
+  outline:2px solid var(--dshw-brand);outline-offset:2px}
+.dshw-demo .dshwd-btn:focus-visible,.dshw-demo .dshwd-input:focus-visible,
+.dshw-demo .dshwd-pill:focus-visible,.dshw-demo .dshwd-item:focus-visible,
+.dshw-demo .dshwd-group-head:focus-visible,.dshw-demo .dshwd-criteria-remove:focus-visible{
+  outline-color:var(--accent)}
+
+/* ---------- numbered sections, no card chrome -------------------------------- */
+.dshw-measure,.dshw-demo .dshwd-measure{counter-reset:sec}
+.dshw-card{position:relative;counter-increment:sec;padding:0 0 20px;margin:0 0 20px;border-bottom:1px solid var(--dshw-border)}
+.dshw-card:last-child{border-bottom:0}
+.dshw-card-head{min-height:0;margin-bottom:10px;gap:7px}
+.dshw-card-title{font-size:12px;font-weight:600;letter-spacing:.02em}
+.dshw-card-title::before{content:counter(sec,decimal-leading-zero);margin-right:8px;font-family:var(--dshw-mono);font-size:10.5px;font-weight:500;color:var(--dshw-text-3);letter-spacing:.06em}
+.dshw-inspector .dshw-card-title::before{content:none}
+.dshw-card-sub{font-size:12px;color:var(--dshw-text-3);max-width:70ch}
+.dshw-block-label,.dshw-demo .dshwd-block-label{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-family:var(--dshw-mono);font-size:10.5px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--dshw-text-3)}
+.dshw-block-label::after{content:"";flex:1;height:1px;background:var(--dshw-border-soft)}
+
+/* ---------- editorial figures ------------------------------------------------ */
+.dshw-stats{grid-template-columns:repeat(4,minmax(0,1fr));gap:0;margin-bottom:18px;border-top:1px solid var(--dshw-border)}
+.dshw-stat{display:flex;align-items:flex-start;gap:0;padding:12px 14px 0 0;background:transparent;border:0;border-radius:0;min-width:0}
+.dshw-stat+.dshw-stat{padding-left:14px;border-left:1px solid var(--dshw-border-soft)}
+.dshw-stat-ico{display:none}
+.dshw-stat-body{display:flex;flex-direction:column;gap:3px;min-width:0}
+.dshw-stat-num{order:1;font-family:var(--dshw-mono);font-size:26px;font-weight:400;line-height:1;letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:var(--dshw-text)}
+.dshw-stat-label{order:2;font-family:var(--dshw-mono);font-size:10.5px;letter-spacing:.06em;color:var(--dshw-text-3)}
+.dshw-stat:first-child .dshw-stat-num{color:var(--dshw-text)}
+
+/* ---------- key/value as dotted leaders ------------------------------------- */
+.dshw-kv-row{display:flex;align-items:baseline;gap:8px;padding:6px 0;border-top:0}
+.dshw-kv-k{flex:none;font-size:12px;color:var(--dshw-text-3)}
+.dshw-kv-k::after{content:"";display:none}
+.dshw-kv-v{flex:1;display:flex;align-items:center;justify-content:flex-end;gap:6px;min-width:0;text-align:right}
+.dshw-kv-row::before{content:"";order:1;flex:1;height:1px;align-self:center;
+  background-image:linear-gradient(to right,var(--dshw-border) 1px,transparent 1px);
+  background-size:3px 100%;background-repeat:repeat-x;opacity:.9}
+.dshw-kv-k{order:0}
+.dshw-kv-v{order:2}
+
+/* ---------- rail: one left axis, one right axis ------------------------------ */
+.dshw-sidebar{--rp:12px;--gut:16px;--rgap:6px}
+.dshw-demo .dshwd-rail{--rp:12px;--gut:16px;--rgap:6px}
+.dshw-project{padding-left:var(--rp)}
+.dshw-item{margin-left:0;padding-left:calc(var(--rp) + var(--gut) + var(--rgap))}
+.dshw-demo .dshwd-item{margin-left:0;padding-left:calc(var(--rp) + var(--gut) + var(--rgap))}
+.dshw-group-head,.dshw-demo .dshwd-group-head{padding-left:var(--rp);padding-right:var(--rp)}
+.dshw-project-count,.dshw-item-time{font-variant-numeric:tabular-nums}
+.dshw-item-row1,.dshw-item-row2{grid-template-columns:minmax(0,1fr) auto}
+.dshw-item-title,.dshw-demo .dshwd-item-title{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshw-item.dshw-selected{box-shadow:inset 1.5px 0 0 var(--dshw-brand);background:var(--dshw-hover)}
+
+/* ---------- modal shell ------------------------------------------------------ */
+.dshw-modal{border-radius:8px;border:1px solid var(--dshw-border-strong)}
+.dshw-modal-head{padding:14px 18px 12px;align-items:flex-start}
+.dshw-modal-title{font-size:15px;font-weight:600;letter-spacing:-.01em}
+.dshw-modal-sub{font-size:12px;color:var(--dshw-text-3);margin-top:1px}
+.dshw-modal-body{padding:16px 18px;gap:14px}
+.dshw-modal-foot{padding:12px 18px;gap:8px}
+.dshw-demo .dshwd-modal{border-radius:8px}
+
+/* ---------- activity feed ----------------------------------------------------- */
+.dshw-acts{display:flex;flex-direction:column;margin:0 -6px}
+.dshw-act-row{display:grid;grid-template-columns:7px minmax(0,1fr) auto;align-items:center;gap:9px;width:100%;padding:7px 6px;border:0;background:transparent;border-radius:4px;text-align:left;cursor:pointer;transition:background .12s}
+.dshw-act-row:hover{background:var(--dshw-hover)}
+.dshw-act-row+.dshw-act-row{box-shadow:inset 0 1px 0 var(--dshw-border-soft)}
+.dshw-act-dot{width:5px;height:5px;border-radius:50%;background:var(--dshw-text-3);justify-self:center}
+.dshw-act-dot--developing,.dshw-act-dot--reviewing{background:var(--dshw-brand)}
+.dshw-act-dot--review{background:var(--dshw-warn)}
+.dshw-act-dot--merged{background:var(--dshw-success)}
+.dshw-act-dot--broken{background:var(--dshw-danger)}
+.dshw-act-title{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;color:var(--dshw-text)}
+.dshw-act-time{font-size:11px;color:var(--dshw-text-3);font-variant-numeric:tabular-nums}
+
+/* mono plumbing */
+.dshw-mono,.dshw-demo .dshwd-mono{font-variant-numeric:tabular-nums}
+`
+
 export const CSS = `
 .dshw-scope{${paletteVars(PALETTE.light)}}
 .dshw-dark .dshw-scope,.dshw-scope.dshw-dark{${paletteVars(PALETTE.dark)}}
@@ -783,42 +881,54 @@ export const CSS = `
 .dshw-modal .dshw-form-row{grid-template-columns:1fr;gap:6px}
 .dshw-modal .dshw-form-row>label,.dshw-modal .dshw-form-row>.dshw-form-label{padding-top:0;font-size:11.5px;font-weight:500;color:var(--dshw-text-2)}
 .dshw-foot-meta{margin-right:auto;font-size:11px;color:var(--dshw-text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:52%}
+${PANEL_CSS}
 `
+
+/**
+ * Instrument-panel layer — shared by the real workbench and demo.html.
+ *
+ * One visual idea, applied on top of both legacy stylesheets:
+ *   · no cards: sections are numbered and separated by hairlines
+ *   · monospace carries structure (labels, counts, shas, times)
+ *   · one copper accent, only for liveness, selection and the primary action
+ *   · editorial figures: big tabular numbers, small uppercase labels
+ *   · every interactive control is 28/32/36px tall with a 6px radius
+ */
 
 /** Demo.html's Optical Precision surface, scoped so it cannot affect host pages. */
 export const DEMO_CSS = `
 .dshw-demo, .dshw-demo *, .dshw-demo *::before, .dshw-demo *::after { box-sizing: border-box; }
 .dshw-demo {
   container-type: inline-size; container-name: dshwdemo;
-  --bg-canvas: #09090b; --bg-rail: #0d0e11; --bg-stage: #101114; --bg-elevated: #16181d;
-  --bg-modal: #13151a; --bg-hover: rgba(255,255,255,.045); --bg-active: rgba(255,255,255,.075);
-  --backdrop: rgba(4,4,6,.72); --line: rgba(255,255,255,.08); --line-strong: rgba(255,255,255,.16);
-  --specular: inset 0 1px 0 rgba(255,255,255,.07);
-  --modal-shadow: 0 24px 64px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.08);
-  --text-1: #f4f4f5; --text-2: #a1a1aa; --text-3: #63636e;
-  --cta-bg: #f4f4f5; --cta-text: #09090b; --cta-hover: #ffffff;
-  --accent: #818cf8; --accent-soft: rgba(129,140,248,.12); --accent-line: rgba(129,140,248,.28);
-  --ok: #34d399; --ok-soft: rgba(52,211,153,.11); --ok-line: rgba(52,211,153,.25);
-  --warn: #fbbf24; --warn-soft: rgba(251,191,36,.11); --warn-line: rgba(251,191,36,.26);
-  --err: #f87171; --err-soft: rgba(248,113,113,.11); --err-line: rgba(248,113,113,.26);
-  --code-bg: #0b0c0f; --diff-add-bg: rgba(16,185,129,.11); --diff-del-bg: rgba(244,63,94,.12);
+  --bg-canvas: #0b0b0c; --bg-rail: #070708; --bg-stage: #0b0b0c; --bg-elevated: #131315;
+  --bg-modal: #0f0f11; --bg-hover: rgba(242,240,236,.05); --bg-active: rgba(242,240,236,.085);
+  --backdrop: rgba(4,4,5,.74); --line: rgba(242,240,236,.11); --line-strong: rgba(242,240,236,.20);
+  --specular: inset 0 1px 0 rgba(242,240,236,.045);
+  --modal-shadow: 0 24px 64px rgba(0,0,0,.62), 0 0 0 1px rgba(242,240,236,.09);
+  --text-1: #f2f0ec; --text-2: #a9a59d; --text-3: #807c74;
+  --cta-bg: #f2f0ec; --cta-text: #0b0b0c; --cta-hover: #ffffff;
+  --accent: #e0a256; --accent-soft: rgba(224,162,86,.12); --accent-line: rgba(224,162,86,.30);
+  --ok: #8fbf94; --ok-soft: rgba(143,191,148,.12); --ok-line: rgba(143,191,148,.28);
+  --warn: #d9a93f; --warn-soft: rgba(217,169,63,.12); --warn-line: rgba(217,169,63,.28);
+  --err: #e0776f; --err-soft: rgba(224,119,111,.12); --err-line: rgba(224,119,111,.28);
+  --code-bg: #070708; --diff-add-bg: rgba(143,191,148,.12); --diff-del-bg: rgba(224,119,111,.12);
   height: 100%; min-height: 0; position: relative; overflow: hidden;
   color: var(--text-1); background: var(--bg-canvas);
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
   font-size: 13px; line-height: 1.5; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
 }
 .dshw-demo[data-theme="light"] {
-  --bg-canvas: #f2f1ec; --bg-rail: #f6f5f0; --bg-stage: #fcfbf8; --bg-elevated: #ffffff;
-  --bg-modal: #fcfbf8; --bg-hover: rgba(20,20,19,.04); --bg-active: rgba(20,20,19,.075);
-  --backdrop: rgba(20,20,19,.36); --line: rgba(20,20,19,.085); --line-strong: rgba(20,20,19,.18);
+  --bg-canvas: #f8f5ef; --bg-rail: #f1ede4; --bg-stage: #f8f5ef; --bg-elevated: #fffdf8;
+  --bg-modal: #fffdf8; --bg-hover: rgba(23,21,15,.045); --bg-active: rgba(23,21,15,.08);
+  --backdrop: rgba(23,21,15,.32); --line: rgba(23,21,15,.14); --line-strong: rgba(23,21,15,.26);
   --specular: inset 0 1px 0 rgba(255,255,255,.9);
   --modal-shadow: 0 24px 60px rgba(20,20,19,.16), 0 0 0 1px rgba(20,20,19,.09);
-  --text-1: #141413; --text-2: #575652; --text-3: #8c8a82;
-  --cta-bg: #141413; --cta-text: #fcfbf8; --cta-hover: #2a2a28;
-  --accent: #4f46e5; --accent-soft: rgba(79,70,229,.09); --accent-line: rgba(79,70,229,.24);
-  --ok: #059669; --ok-soft: rgba(5,150,105,.09); --ok-line: rgba(5,150,105,.24);
-  --warn: #b45309; --warn-soft: rgba(180,83,9,.09); --warn-line: rgba(180,83,9,.24);
-  --err: #dc2626; --err-soft: rgba(220,38,38,.08); --err-line: rgba(220,38,38,.22);
+  --text-1: #17150f; --text-2: #4d4a42; --text-3: #736f64;
+  --cta-bg: #17150f; --cta-text: #f8f5ef; --cta-hover: #2b2820;
+  --accent: #9a5619; --accent-soft: rgba(154,86,25,.10); --accent-line: rgba(154,86,25,.30);
+  --ok: #3f7a4a; --ok-soft: rgba(63,122,74,.10); --ok-line: rgba(63,122,74,.28);
+  --warn: #8a5a12; --warn-soft: rgba(138,90,18,.10); --warn-line: rgba(138,90,18,.28);
+  --err: #a83a34; --err-soft: rgba(168,58,52,.08); --err-line: rgba(168,58,52,.26);
   --code-bg: #f6f5f0; --diff-add-bg: rgba(16,185,129,.10); --diff-del-bg: rgba(220,38,38,.08);
 }
 /* Project overview keeps the legacy .dshw-scope palette, but it must follow the
@@ -1016,4 +1126,5 @@ export const DEMO_CSS = `
   .dshw-demo .dshwd-stage-body { padding: 16px 14px 28px; }
   .dshw-demo .dshwd-topbar { padding: 0 14px; }
 }
+${PANEL_CSS}
 `

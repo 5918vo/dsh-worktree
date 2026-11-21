@@ -2,7 +2,7 @@ import { React, h } from './ui'
 import { Banner, Btn, Card, CardHead, Checkbox, CopyBtn, Icon, KV, MenuItem, Modal, Spinner, Stat, BranchCombobox, TextInput } from './primitives'
 import { useBranchInfo } from './hooks'
 import { post } from './context'
-import { copyText, cx } from './format'
+import { copyText, cx, relTime } from './format'
 import { resolveStatus } from './status'
 
 export function ProjectDetail(props: any) {
@@ -132,8 +132,6 @@ export function ProjectDetail(props: any) {
           ? h(Banner, { tone: 'warn', icon: 'alert', title: t.reviewingBlockTitle }, t.reviewingBlockHint)
           : null,
         h('div', { className: 'dshw-info-table' },
-          h(KV, { label: t.repoPath }, h('span', { className: 'dshw-mono' }, project.repoPath)),
-          h(KV, { label: t.deleteProjectRecords }, counts.total + ' ' + t.taskUnit),
           h(KV, { label: t.deleteProjectBase }, h('span', { className: 'dshw-mono' }, project.baseBranch))),
         counts.total > 0
           ? h(Checkbox, {
@@ -197,6 +195,10 @@ export function ProjectDetail(props: any) {
         tabBtn('overview', t.overview),
         tabBtn('settings', t.projectSettings)))
 
+    const recent = v.tasks.slice()
+      .sort((a: any, b: any) => ((b.task.updatedAt || b.task.createdAt || 0) - (a.task.updatedAt || a.task.createdAt || 0)))
+      .slice(0, 6)
+
     const overviewBody = h('div', { className: 'dshw-stage-body' },
       h('div', { className: 'dshw-measure' },
         err ? h('div', { className: 'dshw-err', role: 'alert', style: { marginBottom: '16px' } }, h(Icon, { name: 'alert' }), h('span', null, err)) : null,
@@ -213,16 +215,22 @@ export function ProjectDetail(props: any) {
               ? h('button', { type: 'button', className: 'dshw-link-btn', onClick: () => props.onSelectTask(firstPending.task.id, project.id) }, t.view)
               : null)
           : null,
-        h('div', { className: 'dshw-block' },
-          h('div', { className: 'dshw-block-label' }, t.overview),
-          h('p', { className: 'dshw-prose' }, t.overviewHint)),
-        h('div', { className: 'dshw-kv' },
-          h(KV, { label: t.repoPath },
-            h('span', { className: 'dshw-mono' }, project.repoPath),
-            h(CopyBtn, { text: project.repoPath, label: t.copyRepoPath, t, notify: props.notify })),
-          h(KV, { label: t.defaultBase }, h('span', { className: 'dshw-meta-pill', style: { height: '22px' } }, h(Icon, { name: 'branch' }), h('span', { className: 'dshw-mono' }, project.baseBranch))),
-          h(KV, { label: t.branchPrefix }, h('code', null, project.branchPrefix || cfg.branchPrefix || 'dsh-wt/')),
-          h(KV, { label: t.worktreeDirName }, h('code', null, project.dirName || cfg.dirName || '.dsh-worktrees')))))
+        h(Card, null,
+          h(CardHead, { title: t.lastActivity }),
+          recent.length
+            ? h('div', { className: 'dshw-acts' }, recent.map((item: any) => {
+              const st = resolveStatus(item.snapshot.status, isRunning(item.task))
+              return h('button', {
+                key: item.task.id,
+                type: 'button',
+                className: 'dshw-act-row',
+                onClick: () => props.onSelectTask(item.task.id, project.id),
+              },
+                h('span', { className: 'dshw-act-dot dshw-act-dot--' + st }),
+                h('span', { className: 'dshw-act-title' }, item.task.title),
+                h('span', { className: 'dshw-act-time dshw-mono' }, relTime(item.task.updatedAt || item.task.createdAt, t)))
+            }))
+            : h('div', { className: 'dshw-hint' }, t.noTasks))))
 
     const settingsBody = h('div', { className: 'dshw-stage-body' },
       h('div', { className: 'dshw-measure' },
@@ -277,13 +285,6 @@ export function ProjectDetail(props: any) {
             err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null))))
 
     const inspector = h('aside', { className: 'dshw-inspector' },
-      h(Card, null,
-        h(CardHead, { icon: 'folder', title: t.overview }),
-        h('div', { className: 'dshw-kv' },
-          h(KV, { label: t.repoPath }, h('span', { className: 'dshw-mono' }, project.repoPath)),
-          h(KV, { label: t.defaultBase }, h('span', { className: 'dshw-mono' }, project.baseBranch)),
-          h(KV, { label: t.branchPrefix }, h('code', null, project.branchPrefix || cfg.branchPrefix || 'dsh-wt/')),
-          h(KV, { label: t.worktreeDirName }, h('code', null, project.dirName || cfg.dirName || '.dsh-worktrees')))),
       h(Card, { danger: true },
         h(CardHead, { icon: 'alert', title: t.deleteProject }),
         h('p', { className: 'dshw-card-sub' }, t.deleteProjectCardHint),

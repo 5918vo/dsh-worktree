@@ -221,8 +221,7 @@ export function AddProjectModal(props: AddProjectModalProps) {
         fieldErrors.repoPath ? h('div', { className: 'dshwd-alert', role: 'alert' }, fieldErrors.repoPath) : null,
 
         h('label', { className: 'dshwd-field' },
-          h('span', { className: 'dshwd-label' }, t.projectName,
-            h('span', { className: 'dshwd-label-hint' }, t.projectNameHint)),
+          h('span', { className: 'dshwd-label' }, t.projectName),
           h('input', {
             className: 'dshwd-input',
             value: name,
