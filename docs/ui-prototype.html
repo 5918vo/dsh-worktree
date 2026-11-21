@@ -314,6 +314,14 @@ h1 .lead{color:var(--ink-3);font-weight:400}
 .insp-scroll{flex:1;min-height:0;overflow:auto;padding:16px 14px 18px}
 .ititle{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);display:flex;align-items:center;gap:8px;margin-bottom:9px}
 .ititle .line{flex:1;height:1px;background:var(--rule-2)}
+.acts-list{display:flex;flex-direction:column}
+.actrow{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--rule-2);text-align:left;width:100%;background:none}
+.actrow:last-child{border-bottom:0}
+.adot{width:5px;height:5px;border-radius:50%;background:var(--ink-3);flex:none}
+.adot.ok{background:var(--ok)}.adot.warn{background:var(--warn)}.adot.run{background:var(--accent)}
+.actrow .tt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;color:var(--ink-2)}
+.actrow:hover .tt{color:var(--ink)}
+.actrow .w{font-family:var(--mono);font-size:10px;color:var(--ink-3)}
 .isec{padding-bottom:15px;margin-bottom:15px;border-bottom:1px solid var(--rule-2)}
 .isec:last-child{border-bottom:0;margin-bottom:0;padding-bottom:0}
 .ld{display:flex;align-items:baseline;gap:6px;font-family:var(--mono);font-size:11px;padding:3.5px 0}
@@ -714,7 +722,7 @@ function renderTree(){
   const treeEl = document.getElementById('tree');
   if (S.state === 'offline'){
     treeEl.innerHTML = '<div class="reconnect"><span class="spin"></span>重新连接中…<button class="btn" data-act="refresh">重试</button></div>'+
-      '<div class="railed">'+icon('alert','ico')+'<h3>加载失败</h3><p>连接已断开，请重试，或从 DSH 启动地址重新打开工作台。</p></div>';
+      '<div class="railed">'+icon('alert','ico')+'<h3>加载失败</h3></div>';
     const lv = document.querySelector('.rail-foot .live');
     lv.classList.add('off');
     lv.innerHTML = '<span class="slot"><i></i></span>会话离线';
@@ -724,7 +732,7 @@ function renderTree(){
   }
   document.querySelector('.rail-foot .live').classList.remove('off');
   if (S.state === 'empty'){
-    treeEl.innerHTML = '<div class="railed">'+icon('repo','ico')+'<h3>暂无项目</h3><p>选择一个 Git 仓库，开始发布 worktree 任务。</p>'+
+    treeEl.innerHTML = '<div class="railed">'+icon('repo','ico')+'<h3>暂无项目</h3>'+
       '<button class="btn" data-act="add-project">新增项目</button></div>';
     document.getElementById('foot-stat').textContent = '0 个项目 · 0 个任务';
     return;
@@ -761,7 +769,7 @@ function emptyTree(){
   const q = S.q.trim();
   return '<div class="empty" style="padding-top:40px">'+icon('search','ico')+
     '<h3>'+(q?'没有匹配的项目':'暂无项目')+'</h3>'+
-    '<p>'+(q?'换个关键词，或清除搜索查看全部项目。':'选择一个 Git 仓库，开始发布 worktree 任务。')+'</p>'+
+    (q?'<p>换个关键词试试。</p>':'')+
     '<button class="btn" data-act="'+(q?'clear-search':'add-project')+'">'+(q?'清除搜索':'新增项目')+'</button></div>';
 }
 function renderStrip(){
@@ -836,8 +844,8 @@ function viewTask(t){
 
   const sessionSec = t.session === false
     ? '<div class="sec"><span class="num">01</span><span class="name">会话</span><span class="line"></span><span class="aside">未创建</span></div>'+
-      '<div class="banner">'+icon('info')+'<div>这个任务还没有会话，启动后会绑定一个 worktree 会话。</div></div>'
-    : '<div class="sec"><span class="num">01</span><span class="name">会话</span><span class="line"></span><span class="aside">'+t.turns+' 轮 · 8 次调用</span></div>'+termHTML(t);
+      '<div class="banner">'+icon('info')+'<div>还没有会话。</div></div>'
+    : '<div class="sec"><span class="num">01</span><span class="name">会话</span><span class="line"></span><span class="aside">8 次调用</span></div>'+termHTML(t);
 
   const reviewActs = t.status==='developing' || t.status==='review'
     ? '<div class="rowacts">'+
@@ -860,7 +868,6 @@ function viewTask(t){
       '<span class="fact"><span class="k">ahead</span><span class="v acc">'+t.ahead+'</span></span>'+
       '<span class="fact"><span class="k">dirty</span><span class="v'+(t.dirty?' acc':'')+'">'+t.dirty+'</span></span>'+
       '<span class="fact"><span class="k">model</span><span class="v">'+esc(t.model||'—')+'</span></span>'+
-      '<span class="fact"><span class="k">turns</span><span class="v">'+t.turns+'</span></span>'+
     '</div>'+
     banner+
     sessionSec+
@@ -908,23 +915,16 @@ function viewProject(p){
         '</div>'+
       '</div>'+
     '</div></div>'+
-    '<div class="sec"><span class="num">01</span><span class="name">概览</span><span class="line"></span><span class="aside">按 Git 与会话状态推导</span></div>'+
+    '<div class="sec"><span class="num">01</span><span class="name">概览</span><span class="line"></span></div>'+
     '<div class="stats">'+
       [['需要处理',attention,attention>0],['进行中',active,false],['待验收',review,false],['已合并',merged,false]]
         .map(([l,n,a]) => '<div class="stat"><div class="n'+(a?' acc':'')+'">'+n+'</div><div class="l">'+l+'</div></div>').join('')+
     '</div>'+
     (attention>0 ? '<div style="margin-top:12px"><div class="banner banner--warn">'+icon('alert')+
       '<div><b>'+attention+' 个任务等待处理。</b> <button class="lnk" data-act="task:t2">查看</button></div></div></div>' : '')+
-    '<div class="sec"><span class="num">02</span><span class="name">仓库</span><span class="line"></span></div>'+
-    '<div class="kvs">'+
-      kv('仓库路径', p.path, 'copy:'+p.path)+
-      kv('默认基线分支', p.base)+
-      kv('分支前缀', p.prefix)+
-      kv('Worktree 目录', p.dir)+
-    '</div>'+
-    '<div class="sec"><span class="num">03</span><span class="name">项目设置</span><span class="line"></span><span class="aside">覆盖全局命名规则</span></div>'+
+    '<div class="sec"><span class="num">02</span><span class="name">项目设置</span><span class="line"></span></div>'+
     '<div class="form" style="max-width:520px">'+
-      field('项目名称','只影响看板显示，不会改写仓库。','<input class="inp" value="'+esc(p.name)+'">')+
+      field('项目名称','','<input class="inp" value="'+esc(p.name)+'">')+
       field('默认基线分支','','<input class="inp mono" value="'+esc(p.base)+'">')+
       field('分支前缀','自动分支为前缀加 8 位任务 ID。','<input class="inp mono" value="'+esc(p.prefix)+'">')+
       field('Worktree 目录','相对仓库根目录，并写入 .git/info/exclude。','<input class="inp mono" value="'+esc(p.dir)+'">')+
@@ -933,8 +933,8 @@ function viewProject(p){
         (S.saved?'<span class="tiny">已保存</span>':'')+
       '</div>'+
     '</div>'+
-    '<div class="sec"><span class="num">04</span><span class="name">危险操作</span><span class="line"></span></div>'+
-    '<p class="tiny" style="line-height:1.7;max-width:52ch">删除后，项目配置与任务记录会从工作台移除；仓库和提交不会被删除。</p>'+
+    '<div class="sec"><span class="num">03</span><span class="name">危险操作</span><span class="line"></span></div>'+
+    '<p class="tiny" style="line-height:1.7;max-width:52ch">只移除工作台记录，不动仓库。</p>'+
     '<div class="rowacts"><button class="btn btn--danger" data-act="open-delete-project">'+icon('trash','ico ico-sm')+'删除项目</button></div>'+
   '</div>';
 }
@@ -961,15 +961,13 @@ function viewSettings(){
       '</span></div>').join('');
   return '<div class="stage-scroll">'+
     '<div class="crumb">'+icon('sliders','ico ico-sm')+'设置<span class="sl">/</span>WORKTREE 任务</div>'+
-    '<div class="head"><div class="head-copy"><h1 style="margin-top:10px">任务</h1>'+
-      '<p class="sub">全局配置与最近使用的仓库目录。</p></div></div>'+
+    '<div class="head"><div class="head-copy"><h1 style="margin-top:10px">任务</h1></div></div>'+
 
     '<div class="sec"><span class="num">01</span><span class="name">验收标准库</span><span class="line"></span><span class="aside">'+S.crit.length+' 条</span></div>'+
-    '<p class="tiny" style="line-height:1.7;margin-bottom:10px">发布任务时可勾选，也可临时手动补充。</p>'+
     '<div class="inp-row" style="max-width:520px"><input class="inp" id="crit-new" placeholder="输入一条验收标准" aria-label="输入一条验收标准">'+
       '<button class="btn btn--solid" data-act="crit-add">添加</button></div>'+
     '<div style="margin-top:10px"><input class="inp" id="crit-q" placeholder="搜索验收标准…" aria-label="搜索验收标准" style="max-width:320px"></div>'+
-    '<div class="slist" style="margin-top:10px" id="crit-list">'+(rows||'<div class="tiny" style="padding:10px 0">暂无验收标准，先在上方添加一条。</div>')+'</div>'+
+    '<div class="slist" style="margin-top:10px" id="crit-list">'+(rows||'<div class="tiny" style="padding:10px 0">暂无</div>')+'</div>'+
 
     '<div class="sec"><span class="num">02</span><span class="name">最近目录</span><span class="line"></span><span class="aside">'+S.recents.length+' 个目录</span></div>'+
     '<div class="slist">'+S.recents.map(r =>
@@ -977,7 +975,7 @@ function viewSettings(){
       '<span class="tx mono">'+esc(r)+'</span>'+
       '<span class="ops"><button title="复制路径" data-act="copy:'+esc(r)+'">'+icon('copy','ico ico-sm')+'</button></span></div>').join('')+
     '</div>'+
-    '<p class="tiny" style="margin-top:10px;line-height:1.7">新增项目弹窗不会展示这些目录，这里仅供快速复制与清理。</p>'+
+    '<p class="tiny" style="margin-top:10px;line-height:1.7">最近目录只出现在这里，不参与新增项目。</p>'+
     '<div class="rowacts"><button class="btn btn--danger" data-act="open-clear-recents">'+icon('trash','ico ico-sm')+'清空最近目录</button></div>'+
 
     '<div class="sec"><span class="num">03</span><span class="name">配置</span><span class="line"></span><span class="aside">由宿主提供 · 只读</span></div>'+
@@ -991,12 +989,7 @@ function ld(k,v,cls){
 }
 function renderInsp(){
   if (S.state === 'empty'){ document.getElementById('insp').innerHTML = ''; return }
-  if (S.state === 'offline'){
-    document.getElementById('insp').innerHTML = '<div class="insp-scroll">'+
-      '<div class="isec"><div class="ititle">connection<span class="line"></span></div>'+
-      '<div class="tiny" style="line-height:1.7;padding:2px 0">实时通道已断开，等待重连后恢复会话与 Git 状态。</div></div></div>';
-    return;
-  }
+  if (S.state === 'offline'){ document.getElementById('insp').innerHTML = ''; return }
   let h = '';
   if (S.view.type === 'task'){
     const t = task(S.view.id), p = proj(t.p), st = STATUS[t.status];
@@ -1036,33 +1029,16 @@ function renderInsp(){
   } else if (S.view.type === 'project'){
     const p = proj(S.view.id), ts = projTasks(p.id);
     h = '<div class="insp-scroll">'+
-      '<div class="isec"><div class="ititle">project<span class="line"></span></div>'+
-        ld('name', p.name)+ld('tasks', String(ts.length))+ld('base', p.base)+ld('prefix', p.prefix)+ld('dir', p.dir)+
+      '<div class="isec"><div class="ititle">activity<span class="line"></span></div>'+
+        '<div class="acts-list">'+ts.slice().reverse().slice(0,5).map(t =>
+          '<button class="actrow" data-act="task:'+t.id+'"><span class="adot '+STATUS[t.status].dot+'"></span>'+
+          '<span class="tt">'+esc(t.title)+'</span><span class="w">'+esc(t.time)+'</span></button>').join('')+'</div>'+
       '</div>'+
-      '<div class="isec"><div class="ititle">status<span class="line"></span></div>'+
-        ld('进行中', String(ts.filter(t=>t.status==='developing').length))+
-        ld('待验收', String(ts.filter(t=>t.status==='review').length), 'warn')+
-        ld('已合并', String(ts.filter(t=>t.status==='merged').length), 'ok')+
-        ld('异常', String(ts.filter(t=>t.status==='broken').length), ts.some(t=>t.status==='broken')?'err':'dim')+
-      '</div>'+
-      '<div class="isec"><div class="ititle">actions<span class="line"></span></div><div class="ilist">'+
-        '<button data-act="publish:'+p.id+'"><span class="ic">'+icon('play','ico ico-sm')+'</span>发布任务<span class="ar">'+icon('chev','ico ico-sm')+'</span></button>'+
-        '<button data-act="copy:'+esc(p.path)+'"><span class="ic">'+icon('copy','ico ico-sm')+'</span>复制仓库路径<span class="ar">'+icon('chev','ico ico-sm')+'</span></button>'+
-      '</div></div>'+
-      '<div class="isec"><div class="ititle">danger<span class="line"></span></div><div class="ilist">'+
-        '<button class="danger" data-act="open-delete-project"><span class="ic">'+icon('trash','ico ico-sm')+'</span>删除项目<span class="ar">'+icon('chev','ico ico-sm')+'</span></button>'+
-      '</div></div>'+
     '</div>';
   } else {
     h = '<div class="insp-scroll">'+
-      '<div class="isec"><div class="ititle">config<span class="line"></span></div>'+
-        ld('worktree', '.dsh-worktrees')+ld('prefix','dsh-wt/')+ld('git','/usr/bin/git')+
-      '</div>'+
-      '<div class="isec"><div class="ititle">library<span class="line"></span></div>'+
-        ld('标准', String(S.crit.length))+ld('最近目录', String(S.recents.length))+
-      '</div>'+
       '<div class="isec"><div class="ititle">about<span class="line"></span></div>'+
-        '<p class="tiny" style="line-height:1.6">@5318vo/dsh-worktree · 1.8.0<br>宿主配置只读，改动需在 DSH 设置中完成。</p>'+
+        '<p class="tiny" style="line-height:1.6">@5318vo/dsh-worktree · 1.8.0</p>'+
       '</div>'+
     '</div>';
   }
@@ -1075,12 +1051,12 @@ function render(){
   const st = document.getElementById('stage');
   if (S.state === 'offline'){
     st.innerHTML = '<div class="stage-scroll"><div class="stageed">'+icon('alert','ico')+'<h2>连接已断开</h2>'+
-      '<p>工作台与 DSH 的实时通道暂时不可用。重试成功后，看板会自动恢复，不会丢失任务状态。</p>'+
+      '<p>重连成功后看板会自动恢复，任务状态不会丢失。</p>'+
       '<button class="btn" data-act="refresh">重试</button></div></div>';
   }
   else if (S.state === 'empty'){
     st.innerHTML = '<div class="stage-scroll"><div class="stageed">'+icon('repo','ico')+'<h2>还没有项目</h2>'+
-      '<p>添加一个 Git 仓库后，可以为它发布基于 worktree 的任务，并在同一个看板里跟踪进度、验收与合并。</p>'+
+      '<p>添加一个 Git 仓库，为它发布 worktree 任务，在看板里跟踪进度、验收与合并。</p>'+
       '<button class="btn btn--solid" data-act="add-project">新增项目</button></div></div>';
   }
   else if (S.view.type === 'task') st.innerHTML = viewTask(task(S.view.id));
@@ -1102,27 +1078,24 @@ function go(view){ S.view = view; S.saved = false; render(); }
 /* ── 弹窗 ───────────────────────────────────────────────────────────────── */
 const MODALS = {
   'add-project': () => ({
-    title:'新增项目', sub:'选择一个 Git 仓库，读取分支并设置默认基线。', icon:'folder', size:'lg',
+    title:'新增项目', icon:'folder', size:'lg',
     body:
       '<div class="form">'+
         '<div class="field"><span class="lb">目标目录<span class="req">*</span></span>'+
           '<div class="field-inline"><input class="inp mono" placeholder="仓库目录" value="~/Projects/dsh-worktree"><button class="btn">浏览…</button></div></div>'+
-        '<div class="field"><span class="lb">项目名称</span><input class="inp" placeholder="目录名或「项目名称」">'+
-          '<span class="hint">只影响看板显示，不会改写仓库。</span></div>'+
+        '<div class="field"><span class="lb">项目名称</span><input class="inp" placeholder="默认取目录名"></div>'+
         '<div class="field"><span class="lb">默认基线分支<span class="req">*</span></span><input class="inp mono" value="main">'+
-          '<span class="hint">从当前分支回填；仓库较大时会出现「正在加载分支…」，加载完成后变为可搜索下拉。</span></div>'+
+          '<span class="hint">默认取当前分支。</span></div>'+
       '</div>',
     foot:'<button class="btn" data-act="close-modal">取消</button><button class="btn btn--solid" data-act="submit" data-msg="项目已新增">新增项目</button>'
   }),
   'publish': (ctx) => ({
     title: ctx && ctx.mode==='continue' ? '基于此任务继续' : '发布任务',
-    sub: ctx && ctx.pid ? proj(ctx.pid).name : '', icon:'play', size:'lg',
+    sub: ctx && ctx.mode==='continue' ? '前序任务的成果已进入 main' : '', icon:'play', size:'lg',
     body:
       '<div class="form">'+
-        '<div class="field"><span class="lb">项目</span><div class="mono" style="font-size:12px;display:flex;align-items:center;gap:7px;color:var(--ink-2)">'+icon('folder','ico ico-sm')+esc((ctx&&ctx.pid?proj(ctx.pid):DATA.projects[0]).name)+'</div></div>'+
         ((ctx&&ctx.mode==='continue') ?
-          '<div class="banner banner--warn">'+icon('alert')+'<div><b>前序任务已合并到 main。</b>新任务会以已合并成果为基线。</div></div>'+
-          '<label class="opt"><input type="checkbox"><span>作为普通任务发布<b>（不关联前序任务）</b></span></label>' : '')+
+          '<label class="opt"><input type="checkbox"><span>作为普通任务发布，不关联前序任务</span></label>' : '')+
         '<div class="field"><span class="lb">标题<span class="req">*</span></span><input class="inp" placeholder="标题"></div>'+
         '<div class="field"><span class="lb">任务描述<span class="req">*</span></span><textarea class="inp" placeholder="任务描述"></textarea></div>'+
         '<div class="field"><span class="lb">验收标准</span>'+
@@ -1132,25 +1105,24 @@ const MODALS = {
         '</div>'+
         '<div class="field"><span class="lb">基线分支</span><input class="inp mono" value="main"></div>'+
         '<div class="field"><span class="lb">立即执行</span>'+
-          '<div class="seg"><button aria-pressed="true">是</button><button aria-pressed="false">否</button></div>'+
-          '<span class="hint">选「是」会绑定后立即发送首条指令。</span></div>'+
+          '<div class="seg"><button aria-pressed="true">是</button><button aria-pressed="false">否</button></div></div>'+
         '<details><summary class="lb" style="cursor:pointer;list-style:none">高级选项 +</summary>'+
           '<div class="form" style="margin-top:10px">'+
             '<div class="field"><span class="lb">模型</span><input class="inp mono" placeholder="默认模型" value="deepseek-v3.2"></div>'+
             '<div class="field"><span class="lb">任务分支</span><input class="inp mono" placeholder="自动生成">'+
-              '<span class="hint">仅限 ASCII 字母、数字、点、下划线和斜杠。</span></div>'+
+              '<span class="hint">留空自动生成。</span></div>'+
           '</div></details>'+
       '</div>',
     foot:'<button class="btn" data-act="close-modal">取消</button><button class="btn btn--solid" data-act="submit" data-msg="任务已发布">发布任务</button>'
   }),
   'merge': () => ({
-    title:'合并到 main', sub:'将任务分支的提交合并到基线分支。', icon:'merge', size:'sm',
+    title:'合并到 main', icon:'merge', size:'sm',
     body:
       '<div class="kvs" style="border-top:0">'+
-        kv('分支','feat/ui-tokens')+kv('基线分支','main')+kv('领先基线的提交','3')+kv('未提交改动','0')+
+        kv('任务分支','feat/ui-tokens')+kv('领先','3')+kv('未提交','0')+
       '</div>'+
-      '<div class="banner banner--warn">'+icon('alert')+'<div><b>预计有 1 个文件冲突。</b> 可以先让 Agent 同步基线，再回来合并。</div></div>'+
-      '<p class="tiny" style="line-height:1.7;margin-top:10px">合并过程中主仓库会临时切到任务分支，完成后自动切回原分支。</p>'+
+      '<div class="banner banner--warn">'+icon('alert')+'<div><b>预计有 1 个文件冲突。</b></div></div>'+
+      '<p class="tiny" style="line-height:1.7;margin-top:10px">合并期间主仓库会临时切到任务分支。</p>'+
       '<div><div class="lb" style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:6px">验收标准</div>'+
         '<div class="checks" style="grid-template-columns:1fr">'+
         ['裸 hex / rgba 归零','text-3 对比度 ≥ 4.5:1','半径收敛到 5 档'].map(c=>'<div class="chk done"><span class="bx">'+icon('check','ico ico-sm')+'</span><span>'+c+'</span></div>').join('')+'</div></div>',
@@ -1166,8 +1138,8 @@ const MODALS = {
     foot:'<button class="btn" data-act="close-modal">关闭</button>'
   }),
   'sync': () => ({
-    title:'发送同步基线指令？', sub:'让 Agent 同步基线', icon:'wand', size:'sm',
-    body:'<p class="tiny" style="line-height:1.7">将以你的名义向当前会话发送以下内容：</p>'+
+    title:'发送同步基线指令？', icon:'wand', size:'sm',
+    body:'<p class="tiny" style="line-height:1.7">以你的名义发送给当前会话：</p>'+
       '<pre class="patch" style="max-height:220px">请把 main 的最新提交同步进当前分支，并解决冲突。\n\n基线：main @ 74decac\n任务分支：feat/ui-tokens\n冲突文件：`src/client/styles.ts`</pre>',
     foot:'<button class="btn" data-act="close-modal">取消</button><button class="btn btn--solid" data-act="submit" data-msg="指令已发送">发送</button>'
   }),
@@ -1175,12 +1147,12 @@ const MODALS = {
     const t = task((ctx && ctx.tid) || (S.view.type==='task' ? S.view.id : 't1')) || task('t1');
     const wt = proj(t.p).dir + '/' + t.branch.replace(/\//g,'-');
     return {
-    title:'清理 worktree', sub:'清理指定的 worktree 及其相关文件。', icon:'trash', tone:'danger', size:'sm',
-    body:'<div class="dlist"><div class="dh">以下内容将被永久删除，且无法恢复：</div>'+
+    title:'清理 worktree', icon:'trash', tone:'danger', size:'sm',
+    body:'<div class="dlist">'+
       '<div class="dr">'+icon('folder','ico ico-sm')+'<span>'+esc(wt)+'</span></div>'+
-      '<div class="dr">'+icon('file','ico ico-sm')+'<span>'+(t.dirty ? t.dirty+' 个未提交改动会一并丢失' : '工作区干净，没有未提交改动')+'</span></div></div>'+
-      '<div class="form"><label class="opt"><input type="checkbox"'+(t.dirty?'':' disabled')+'><span><b>强制</b><span class="d">即使存在未提交的改动也执行清理。</span></span></label>'+
-      '<label class="opt"><input type="checkbox"><span><b>同时删除分支</b><span class="d">清理完成后，一并删除对应的本地分支。</span></span></label></div>',
+      '</div>'+
+      '<div class="form"><label class="opt"><input type="checkbox"'+(t.dirty?'':' disabled')+'><span><b>强制</b><span class="d">会丢弃未提交的改动。</span></span></label>'+
+      '<label class="opt"><input type="checkbox"><span><b>删除分支</b><span class="d">本地分支一并删除。</span></span></label></div>',
     foot:'<button class="btn" data-act="close-modal">取消</button><button class="btn btn--solid btn--danger" data-act="submit" data-msg="worktree 已清理">清理 worktree</button>'
     }
   },
@@ -1189,38 +1161,35 @@ const MODALS = {
     return {
     title:'删除任务记录', sub:t.title, icon:'trash', tone:'danger', size:'sm',
     body:'<div class="banner banner--err">'+icon('alert')+'<div><b>此操作不可撤销。</b>任务记录会从看板移除，但 worktree 与分支不会被删除。</div></div>'+
-      '<div class="kvs" style="border-top:0">'+kv('分支',t.branch)+kv('Worktree',proj(t.p).dir+'/'+t.branch.replace(/\//g,'-'))+kv('状态',STATUS[t.status].label)+'</div>'+
-      '<p class="tiny" style="line-height:1.7">如果还需要保留代码，请先合并，再删除记录。</p>',
+      '<div class="kvs" style="border-top:0">'+kv('分支',t.branch)+kv('Worktree',proj(t.p).dir+'/'+t.branch.replace(/\//g,'-'))+kv('状态',STATUS[t.status].label)+'</div>',
     foot:'<button class="btn" data-act="close-modal">取消</button><button class="btn btn--solid btn--danger" data-act="submit" data-msg="任务记录已删除">删除记录</button>'
     }
   },
   'delete-project': () => ({
-    title:'删除项目', sub:'dsh-worktree', icon:'trash', tone:'danger', size:'sm',
-    body:'<div class="banner banner--warn">'+icon('alert')+'<div><b>项目下还有 4 条任务记录。</b>需要同时删除这些任务记录才能移除项目。</div></div>'+
-      '<div class="kvs" style="border-top:0">'+kv('仓库路径','~/Projects/dsh-worktree')+kv('任务记录','4 个任务')+kv('默认基线','main')+'</div>'+
+    title:'删除项目', icon:'trash', tone:'danger', size:'sm',
+    body:'<div class="banner banner--warn">'+icon('alert')+'<div><b>项目下还有 4 条任务记录。</b></div></div>'+
+      '<div class="kvs" style="border-top:0">'+kv('仓库路径','~/Projects/dsh-worktree')+kv('默认基线','main')+'</div>'+
       '<div class="form"><label class="opt"><input type="checkbox" checked><span><b>连同任务一起删除</b></span></label>'+
       '<label class="opt"><input type="checkbox"><span><b>同时删除 worktree 文件夹</b><span class="d">强制删除磁盘上的 worktree 目录，未提交的改动会一并丢失。</span></span></label></div>',
     foot:'<button class="btn" data-act="close-modal">取消</button><button class="btn btn--solid btn--danger" data-act="submit" data-msg="项目「dsh-worktree」已删除">删除项目</button>'
   }),
   'cleanup-prev': () => ({
-    title:'清理前序任务的 worktree', sub:'前序任务已合并，可以清理它的 worktree 以释放空间。', icon:'trash', tone:'danger', size:'sm',
-    body:'<div class="dlist"><div class="dh">将删除：</div>'+
+    title:'清理前序任务的 worktree', icon:'trash', tone:'danger', size:'sm',
+    body:'<div class="dlist">'+
       '<div class="dr">'+icon('folder','ico ico-sm')+'<span>.dsh-worktrees/fix-publish-chain</span></div></div>'+
-      '<p class="tiny" style="line-height:1.7">只删除 worktree 目录，不删除分支和已有提交。</p>'+
-      '<label class="opt"><input type="checkbox"><span><b>强制清理</b><span class="d">前序 worktree 有 2 处未提交改动，强制清理会丢失这些改动。</span></span></label>',
+      '<label class="opt"><input type="checkbox"><span><b>强制清理</b><span class="d">该 worktree 有 2 处未提交改动。</span></span></label>',
     foot:'<button class="btn" data-act="close-modal">保留</button><button class="btn btn--solid btn--danger" data-act="submit" data-msg="前序 worktree 已清理">清理 worktree</button>'
   }),
   'clear-recents': () => ({
-    title:'清空最近目录', sub:'将从设置页移除最近使用的仓库目录。', icon:'trash', tone:'danger', size:'sm',
-    body:'<div class="dlist"><div class="dh">以下 '+S.recents.length+' 个目录会从列表移除：</div>'+
+    title:'清空最近目录', icon:'trash', tone:'danger', size:'sm',
+    body:'<div class="dlist"><div class="dh">'+S.recents.length+' 个目录</div>'+
       S.recents.map(r=>'<div class="dr">'+icon('folder','ico ico-sm')+'<span>'+esc(r)+'</span></div>').join('')+'</div>'+
-      '<p class="tiny" style="line-height:1.7">磁盘上的目录和仓库不会被删除，只清空这份列表。</p>',
+      '<p class="tiny" style="line-height:1.7">只清空列表，不动磁盘上的目录。</p>',
     foot:'<button class="btn" data-act="close-modal">取消</button><button class="btn btn--solid btn--danger" data-act="submit" data-msg="已清空最近目录" data-clear-recents="1">清空最近目录</button>'
   }),
   'switch': () => ({
-    title:'切到任务分支验收', sub:'主仓库有未提交改动，直接切换会被 Git 拒绝。', icon:'alert', tone:'warn', size:'sm',
-    body:'<p class="tiny" style="line-height:1.7">以下 3 个文件会阻止切换，请选择处理方式：</p>'+
-      '<div class="dlist">'+
+    title:'切到任务分支验收', sub:'主仓库有未提交改动', icon:'alert', tone:'warn', size:'sm',
+    body:'<div class="dlist">'+
         '<div class="dr"><span>src/client/styles.ts</span><span class="mut">M</span></div>'+
         '<div class="dr"><span>docs/plan.md</span><span class="mut">M</span></div>'+
         '<div class="dr"><span>tmp/notes.txt</span><span class="chip">未跟踪</span></div>'+
@@ -1291,7 +1260,7 @@ document.addEventListener('click', e => {
   if (head === 'crit-up') { const i=+arg; if(i>0){ [S.crit[i-1],S.crit[i]]=[S.crit[i],S.crit[i-1]]; render() } return }
   if (head === 'crit-down') { const i=+arg; if(i<S.crit.length-1){ [S.crit[i+1],S.crit[i]]=[S.crit[i],S.crit[i+1]]; render() } return }
 
-  switch (act) {
+  switch (head) {
     case 'settings': go({type:'settings'}); break;
     case 'add-project': openModal('add-project'); break;
     case 'publish': openModal('publish', { pid: arg || (S.view.type==='project'?S.view.id:DATA.projects[0].id) }); break;
