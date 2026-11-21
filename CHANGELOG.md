@@ -2,6 +2,29 @@
 
 本文件记录 `@5318vo/dsh-worktree` 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.8.0] - 2026-11-20
+
+### 变更
+
+- 工作台按 `demo.html` 1:1 重建为三栏结构：左栏 Rail（品牌行、发布任务、搜索、筛选与工具行）、中间 Stage（面包屑顶栏、stage head、标签页、平铺内容区）、右侧 Inspector（合并检查、技术信息、危险操作）。项目详情、任务详情和设置页统一使用同一套骨架。
+- 任务详情拆为「概览 / 实时会话 / 代码改动」三个标签页，生命周期主操作固定在 stage head，不再随页面滚动。
+- 新视觉语言「Optical Precision」：深色为碳黑灰阶、浅色为暖白纸感，主操作使用墨黑，颜色只用于 Git 与会话状态；表面改为无阴影、细分割线的扁平样式。
+- 左栏可折叠；三栏断点改由看板自身容器宽度决定（不再读取视口媒体查询），窄屏收起左栏、Inspector 变为覆盖式抽屉，宿主侧栏或页面缩放不再挤压内容。
+- 发布弹窗改为 demo 版式：保留草稿、返回项目选择、超时刷新确认和部分成功提示；分支字段校验失败时标记 `aria-invalid`，关闭后焦点回到触发按钮。
+- 恢复项目概览、暂存恢复和恢复流程；清理后的任务不再显示已失效的 worktree 路径；零任务的项目仍可选择。
+- 归档任务可通过左栏开关重新显示，选中状态在轮询刷新后保持。
+- 模型目录兼容带 `groups` 包装的返回结构。
+- 错误 Toast 保证对比度并暴露 `alert` 角色。
+
+### 内部
+
+- `src/client` 按 `rail` / `stage` / `inspector` / `board` / `publish` / `add-project` / `model` / `palette` 拆分；移除 `board-page`、`task-detail`、`modals`、`task-row`、`attention-*`、`model-*`、`publish-flow` 等旧模块。
+- README 与 `docs/frontend-design.md` 按当前三栏工作台重写。
+
+### 测试
+
+- `npm run typecheck`、`npm run build`、`npm test`（161 项）通过。
+
 ## [1.7.0] - 2026-11-15
 
 ### 变更
