@@ -487,15 +487,15 @@ Git 状态与会话状态分开：
 当前 UI 已按职责拆分到 `src/client/`，`src/client.ts` 只保留宿主模块注册、factory 和 slot 接线。后续扩展遵循：
 
 - 新组件优先复用 `src/client/primitives.ts` 的 `Btn`、`IconBtn`、`Chip`、`Dot`、`Card`、`CardHead`、`KV`、`Field`、`Modal`、`Banner`、`Stat`、`Toast`。
-- 新颜色必须加入 `src/client/palette.ts` 的 `PALETTE`，不能在 `styles.ts` 或组件里写十六进制、`rgb()` 或命名颜色。
+- 看板新颜色必须加入 `src/client/styles.ts` 的 `DEMO_CSS` token；项目详情/设置页新颜色必须加入 `src/client/palette.ts` 的 `PALETTE`，组件里不写十六进制、`rgb()` 或命名颜色。
 - 新状态必须进入 `src/client/status.ts` 的 `STATUS_TONE`，不能单独定义近似色。
 - 新文案必须加入 `locale/en.json` 和 `locale/zh.json`；`src/client/i18n.ts` 直接引用这两个文件，不再维护第二份字典。
 - 新表单必须使用 `Field` 或等价的 label / error / aria 关联。
 - 弹窗必须复用 `Modal`，不能复制焦点管理；需要“取消 + 确认”时优先复用统一 footer 结构。
-- 复制、刷新、操作结果统一使用 `useToast` + `Toast`，不要在每个页面复制计时器。
+- 复制、刷新、操作结果在看板走 `board.ts` 的轻量 Toast 状态，在项目详情/设置页走 `useToast` + `Toast`，不要重复实现计时器。
 - 请求统一走 `src/client/context.ts` 的 `getJson` / `post`，它们带 token 刷新、12s 超时和重试语义。
 - 组件内不要直接 `import React from 'react'`：宿主通过 `factory(require)` 注入 React，统一从 `src/client/ui.ts` 读取代理。
-- 样式只改 `src/client/styles.ts`；主题探测和 `<style>` 单例引用计数在 `ui.ts`。
+- 看板样式只改 `src/client/styles.ts` 的 `DEMO_CSS`，遵循 `dshwd-*` 前缀和 `.dshw-demo` 作用域；项目详情/设置页样式改同一文件的 `CSS`。主题探测和 `<style>` 单例引用计数在 `ui.ts`。
 - 修改交互后同时更新本文件和 `README.md`。
 
 当前边界：
@@ -506,7 +506,7 @@ src/client/
 ├─ ui.ts                      # 宿主 React 代理、h、useStyles
 ├─ context.ts                 # appCtx、token、请求、bindSession
 ├─ palette.ts
-├─ styles.ts
+├─ styles.ts                  # 看板 DEMO_CSS + 项目详情/设置页 CSS
 ├─ i18n.ts                    # 直接引用 locale/*.json
 ├─ icons.ts
 ├─ format.ts                  # 时间、路径、文本、diff、复制
@@ -514,22 +514,31 @@ src/client/
 ├─ status.ts
 ├─ primitives.ts              # 基础组件与 Modal/Field/Toast
 ├─ hooks.ts                   # useBranchInfo、useToast
-├─ modals.ts                  # 新增项目、发布任务
-├─ task-detail.ts             # LiveCard + TaskDetail
-├─ project-detail.ts
-├─ settings-page.ts
-└─ board-page.ts              # BoardPage + BoardIcon
+├─ board.ts                   # DemoBoardPage、DemoBoardIcon、数据轮询
+├─ rail.ts                    # 左栏 Rail
+├─ stage.ts                   # 中栏 Stage（概览/实时会话/diff）
+├─ inspector.ts               # 右栏 Inspector
+├─ publish.ts                 # 发布任务弹窗
+├─ actions.ts                 # 打开/创建会话、启动任务
+├─ model.ts                   # 状态、CTA、过滤与格式化派生
+├─ board-data.ts              # 项目/任务视图派生
+├─ merge-preview.ts           # 合并预检控制器
+├─ task-attention.ts          # 待处理事项推导
+├─ model-filter.ts            # 模型分组过滤
+├─ publish-flow.ts            # 发布目标解析
+├─ project-detail.ts          # 项目详情（Stage 中显示）
+└─ settings-page.ts
 ```
 
 ## 11. 验收清单
 
 ### 布局
 
-- [ ] 1280px 左右可用容器宽度下为双栏。
-- [ ] 860px 以下左栏收窄且详情不溢出。
-- [ ] 700px 以下统计卡片两列、会话侧栏换行。
-- [ ] 620px 以下为单栏，详情有返回按钮。
-- [ ] 420px 以下键值行上下排列，项目行发布按钮换行。
+- [ ] 宽容器下为 `272px / 自适应 / 284px` 三栏。
+- [ ] 左右栏折叠按钮生效，折叠后选中任务和标签页状态不丢。
+- [ ] 未选中任务时右栏自动收起；选中项目时 Stage 显示项目详情。
+- [ ] 900px 以下左栏收至 248px，右栏以覆盖式抽屉出现且不挤压 Stage。
+- [ ] 折叠/展开有 180ms 宽度过渡，`prefers-reduced-motion` 下关闭。
 - [ ] 长标题、长路径、长分支名不撑破容器。
 - [ ] 200% 缩放下主要操作仍可到达。
 
@@ -537,8 +546,11 @@ src/client/
 
 - [ ] 搜索能过滤项目、任务和分支，空结果有清除入口。
 - [ ] `/` 和 `Ctrl/Cmd+K` 只在插件内生效，不劫持宿主输入。
-- [ ] 点击项目行主体选中项目，折叠和发布任务互不干扰。
-- [ ] 点击任务行查看详情，打开会话使用独立按钮。
+- [ ] 状态 pills 在「全部 / 待验收 / 进行中」间切换，计数与列表一致。
+- [ ] 点击项目分组头部打开项目详情，点击任务项同时选中其所属项目。
+- [ ] 任务项显示状态点、标题、统计、分支和最近提交时间；键盘 Enter/Space 可选中。
+- [ ] Stage 的「概览 / 实时会话 / 代码改动」切换正确，切换任务后回到概览。
+- [ ] Inspector 的合并预检、技术信息和生命周期操作对应选中任务。
 - [ ] 有会话可打开，无会话可创建。
 - [ ] 主仓库有已跟踪文件的未提交改动时，切分支按钮禁用并说明原因；仅有未跟踪文件时按钮可用。
 - [ ] 合并、清理、删除任务和删除项目均使用页面内确认弹窗。
@@ -554,8 +566,9 @@ src/client/
 
 ### 视觉
 
-- [ ] 修改 `PALETTE` 能整体改变明暗两套配色。
-- [ ] 明暗主题下状态色、路径文本和危险按钮对比度可读。
+- [ ] 修改 `DEMO_CSS` 顶部 token 能整体改变看板明暗两套配色。
+- [ ] 修改 `PALETTE` 能改变项目详情/设置页的明暗配色。
+- [ ] 明暗主题下状态色、路径文本和危险按钮对比度可读，主题切换持久化。
 - [ ] 复制、刷新、发布、清理均有明确反馈。
 
 ### 可访问性
@@ -579,6 +592,7 @@ npm run build
 - 目录选择器由 the agent harness / 操作系统提供，无法在当前前端内自定义其样式。
 - 合并策略由后端固定为 no-ff，前端不提供策略选择。
 - 实时会话只能展示宿主投影提供的轮次、执行清单和上下文，不包含完整工具日志。
+- 看板新界面暂未接入「会话中断 / 会话异常」行内提示和验收按钮的禁用原因说明（`task-attention.ts` 的推导仍保留），操作失败目前统一以 Toast 呈现。
 - 当前没有自动化 UI 测试，交互验收以类型检查、构建和真实 the agent harness 浏览器测试为主。
 - 设置页仍保留最近目录管理，与新增项目表单的历史目录选择是两套不同入口。
 - 后续任务不会在发布时物理迁移前序分支合并后新增的提交，而是在首条指令中交给 Agent 用 cherry-pick 带入并处理冲突。
