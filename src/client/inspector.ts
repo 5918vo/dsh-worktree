@@ -34,6 +34,7 @@ export function Inspector(props: InspectorProps) {
   const preview = state.phase === 'ready' ? state.preview : state.previous && state.previous.preview
   const error = state.phase === 'error' ? state.message : ''
   const merged = snap.status === 'merged' || snap.status === 'cleaned'
+  const cleaned = snap.status === 'cleaned'
   const summary = merged && !preview && state.phase !== 'checking' && state.phase !== 'error'
     ? { key: 'merged' as const, tone: 'ok' as const }
     : mergeSummary(preview, state.phase, error)
@@ -64,8 +65,14 @@ export function Inspector(props: InspectorProps) {
         h('span', { className: 'dshwd-kv-v dshwd-mono', title: task.sessionId || '' }, task.sessionId || '—')),
       h('div', { className: 'dshwd-kv', style: { alignItems: 'flex-start' } },
         h('span', { className: 'dshwd-kv-k' }, t.worktree),
-        h('span', { className: 'dshwd-kv-v dshwd-mono', title: task.worktreePath, style: { whiteSpace: 'normal', overflowWrap: 'anywhere', textAlign: 'right' } }, task.worktreePath || '—')),
-      h('div', { className: 'dshwd-path-box dshwd-mono', title: t.demoCopyPath, onClick: () => props.onCopy(task.worktreePath) }, task.worktreePath || '—')),
+        h('span', {
+          className: 'dshwd-kv-v dshwd-mono',
+          title: cleaned ? '' : task.worktreePath,
+          style: { whiteSpace: 'normal', overflowWrap: 'anywhere', textAlign: 'right' },
+        }, cleaned ? t.cleaned : (task.worktreePath || '—'))),
+      cleaned
+        ? null
+        : h('div', { className: 'dshwd-path-box dshwd-mono', title: t.demoCopyPath, onClick: () => props.onCopy(task.worktreePath) }, task.worktreePath || '—')),
 
     h('section', { className: 'dshwd-insp-sec' },
       h('div', { className: 'dshwd-insp-title' }, t.lifecycle),

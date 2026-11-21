@@ -2,6 +2,7 @@ node_modules/
 dist/
 .test-dist/
 .zcode/
+.playwright-mcp/
 ~$*
 *.log
 .DS_Store

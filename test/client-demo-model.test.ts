@@ -132,6 +132,15 @@ test('filterViews removes project groups that lost every task', () => {
   assert.equal(out[0].project.id, 'p1')
 })
 
+test('filterViews keeps empty projects only when nothing is filtered', () => {
+  const empty = { project: { id: 'p1' }, tasks: [], stats: {} } as any
+  const filled = { project: { id: 'p2' }, tasks: [view()], stats: {} } as any
+  const all = filterViews([empty, filled], 'all', '', () => false)
+  assert.equal(all.length, 2)
+  assert.equal(filterViews([empty, filled], 'review', '', () => false).length, 1)
+  assert.equal(filterViews([empty, filled], 'all', 'login', () => false).length, 1)
+})
+
 test('diff helpers prefer the recorded review/merge tips', () => {
   assert.equal(diffHeadSha(task({ reviewSha: 'aaaaaaa' }), view().snapshot), 'aaaaaaa')
   assert.equal(diffHeadSha(task(), view().snapshot), 'abcdef123456')

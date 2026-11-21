@@ -29,10 +29,12 @@ export function AddProjectModal(props: AddProjectModalProps) {
   const submitRef = React.useRef(false)
   const rootRef = React.useRef(null)
   const restoreFocus = React.useRef(null as any)
+  // Capture the opener during render, before autoFocus moves focus into the
+  // dialog; an effect would already see the focused input.
+  if (restoreFocus.current === null && typeof document !== 'undefined') restoreFocus.current = document.activeElement
   const branches = useBranchInfo(repoPath, 150)
 
   React.useEffect(() => {
-    restoreFocus.current = typeof document !== 'undefined' ? document.activeElement : null
     return () => {
       const el: any = restoreFocus.current
       if (el && typeof el.focus === 'function' && el.isConnected) el.focus()

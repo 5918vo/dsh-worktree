@@ -50,13 +50,15 @@ export function PublishModal(props: PublishModalProps) {
   const titleRef = React.useRef(null)
   const rootRef = React.useRef(null)
   const restoreFocus = React.useRef(null as any)
+  // Capture the opener during render, before autoFocus moves focus into the
+  // dialog; an effect would already see the focused input.
+  if (restoreFocus.current === null && typeof document !== 'undefined') restoreFocus.current = document.activeElement
   const submitRef = React.useRef(false)
   const branchInfo = useBranchInfo(project ? project.repoPath : '')
   const branches = branchInfo.data && Array.isArray(branchInfo.data.branches) ? branchInfo.data.branches : []
   const branchNames = branches.map((b: any) => (typeof b === 'string' ? b : b && b.name)).filter(Boolean)
 
   React.useEffect(() => {
-    restoreFocus.current = typeof document !== 'undefined' ? document.activeElement : null
     return () => {
       const el: any = restoreFocus.current
       if (el && typeof el.focus === 'function' && el.isConnected) el.focus()
@@ -85,7 +87,11 @@ export function PublishModal(props: PublishModalProps) {
           return
         }
         const rows: ModelRow[] = []
-        for (const g of Array.isArray(r.value) ? r.value : []) {
+        // The host returns { default, routableProviders, groups }; older builds
+        // returned the group list directly.
+        const catalog: any = r.value
+        const groups: any[] = Array.isArray(catalog) ? catalog : (catalog && Array.isArray(catalog.groups) ? catalog.groups : [])
+        for (const g of groups) {
           for (const m of Array.isArray(g.models) ? g.models : []) {
             rows.push({
               provider: String(g.id),
@@ -97,6 +103,7 @@ export function PublishModal(props: PublishModalProps) {
           }
         }
         setModels(rows)
+        if (!rows.length) setModelError(t.modelUnavailable)
       })
       .catch((e: any) => { if (!cancelled) setModelError((e && e.message) || t.loadFailed) })
     return () => { cancelled = true }
@@ -323,6 +330,7 @@ export function PublishModal(props: PublishModalProps) {
           value: branch,
           disabled: busy,
           placeholder: branchPlaceholder,
+          'aria-invalid': fieldErrors.branch ? 'true' : 'false',
           onChange: (e: any) => { setBranch(e.target.value); clearField('branch') },
         })),
         fieldErrors.branch ? h('div', { className: 'dshwd-alert', role: 'alert' }, fieldErrors.branch) : null,

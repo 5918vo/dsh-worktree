@@ -11,10 +11,13 @@ export interface RailProps {
   selectedProjectId: string
   query: string
   filter: DemoFilter
+  showArchived: boolean
+  archivedCount: number
   theme: DemoTheme
   runningOf: (task: any) => boolean
   onQuery: (value: string) => void
   onFilter: (filter: DemoFilter) => void
+  onToggleArchived: () => void
   onSelectTask: (taskId: string, projectId: string) => void
   onSelectProject: (projectId: string) => void
   onPublish: () => void
@@ -56,7 +59,18 @@ export function Rail(props: RailProps) {
       h('div', { className: 'dshwd-pills' },
         pill(t, 'all', t.all, props),
         pill(t, 'review', t.demoWaitingReview, props),
-        pill(t, 'developing', t.running, props))),
+        pill(t, 'developing', t.running, props)),
+      props.archivedCount > 0 || props.showArchived
+        ? h('div', { style: { display: 'flex', justifyContent: 'flex-end' } },
+          h('button', {
+            className: 'dshwd-btn dshwd-btn-ghost',
+            style: { height: '22px', fontSize: '11px', padding: '0 6px' },
+            'aria-pressed': props.showArchived,
+            title: String(t.archiveToggleTitle).replace('{n}', String(props.archivedCount)),
+            onClick: props.onToggleArchived,
+          }, props.showArchived ? t.hideArchived : t.showArchived,
+            h('span', { className: 'dshwd-mono', style: { marginLeft: '5px', color: 'var(--text-3)' } }, String(props.archivedCount))))
+        : null),
 
     h('div', { className: 'dshwd-rail-list' },
       props.views.length
@@ -68,7 +82,9 @@ export function Rail(props: RailProps) {
           },
             h('span', null, view.project.name),
             h('span', { className: 'dshwd-mono' }, String(view.tasks.length))),
-          view.tasks.map((tv) => taskRow(t, tv, view, props))))
+          view.tasks.length
+            ? view.tasks.map((tv) => taskRow(t, tv, view, props))
+            : h('div', { className: 'dshwd-hint', style: { padding: '0 8px 8px 24px', fontSize: '11px' } }, t.noTasks)))
         : h('div', { className: 'dshwd-empty', style: { minHeight: '160px' } },
           h('div', { className: 'dshwd-empty-title' }, props.query ? t.demoNoMatches : t.noTasks),
           h('div', { className: 'dshwd-hint' }, props.query ? t.demoClearSearch : t.noProjectsHint),
@@ -114,5 +130,5 @@ function taskRow(t: any, tv: TaskView, view: ProjectView, props: RailProps) {
       h('span', { className: 'dshwd-item-stat dshwd-mono' }, demoStat(tv.snapshot))),
     h('div', { className: 'dshwd-item-row2' },
       h('span', { className: 'dshwd-mono' }, demoBranch(task.branch)),
-      h('span', null, relTime(tv.snapshot.worktree.lastCommitAt, t))))
+      h('span', null, task.archivedAt ? t.archived : relTime(tv.snapshot.worktree.lastCommitAt, t))))
 }

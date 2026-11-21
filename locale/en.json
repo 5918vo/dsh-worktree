@@ -548,6 +548,7 @@
   "demoStashDropConfirm": "These changes cannot be restored from the board afterwards. Drop this stash?",
   "restoreFailed": "Could not switch back to the original branch after merging",
   "demoDeleteConfirm": "Deleting the task record keeps the branch and worktree directory, and cannot be undone from the board.",
+  "demoDeleteConfirmCleaned": "This task's worktree is already cleaned; deleting the record only removes the board entry and keeps the repository and commits untouched.",
   "demoContinueHint": "A follow-up task starts from the predecessor's merge target {branch}.",
   "demoPublishAsPlain": "Publish as a plain task (no predecessor link)",
   "demoCarryLeftover": "Carry the {n} commits added after the merge"

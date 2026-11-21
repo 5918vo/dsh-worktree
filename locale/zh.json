@@ -548,6 +548,7 @@
   "demoStashDropConfirm": "丢弃后将无法从看板恢复这些改动，确认丢弃该暂存？",
   "restoreFailed": "合并后未能自动切回原分支",
   "demoDeleteConfirm": "删除任务记录不会删除分支或 worktree 目录，之后无法在看板中恢复。",
+  "demoDeleteConfirmCleaned": "该任务的 worktree 已清理，删除记录只会移除看板中的条目，不影响仓库与提交。",
   "demoContinueHint": "后续任务默认基于前序任务的合并目标 {branch}。",
   "demoPublishAsPlain": "作为普通任务发布（不关联前序）",
   "demoCarryLeftover": "带上合并后新增的 {n} 个提交"

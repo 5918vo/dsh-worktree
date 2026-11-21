@@ -5,7 +5,7 @@ export const CSS = `
 .dshw-dark .dshw-scope{${paletteVars(PALETTE.dark)}}
 
 .dshw-scope, .dshw-scope *, .dshw-scope *::before, .dshw-scope *::after{box-sizing:border-box}
-.dshw-scope{font-family:"Inter",-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif;color:var(--dshw-text);font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;font-feature-settings:"cv02","cv03","cv04","cv11"}
+.dshw-scope{container-type:inline-size;container-name:dshw;font-family:"Inter",-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif;color:var(--dshw-text);font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;font-feature-settings:"cv02","cv03","cv04","cv11"}
 .dshw-scope :where(button, input, select, textarea){font:inherit;color:inherit}
 .dshw-scope button{cursor:pointer}
 .dshw-scope button:disabled{cursor:not-allowed}
@@ -789,6 +789,7 @@ export const CSS = `
 export const DEMO_CSS = `
 .dshw-demo, .dshw-demo *, .dshw-demo *::before, .dshw-demo *::after { box-sizing: border-box; }
 .dshw-demo {
+  container-type: inline-size; container-name: dshwdemo;
   --bg-canvas: #09090b; --bg-rail: #0d0e11; --bg-stage: #101114; --bg-elevated: #16181d;
   --bg-modal: #13151a; --bg-hover: rgba(255,255,255,.045); --bg-active: rgba(255,255,255,.075);
   --backdrop: rgba(4,4,6,.72); --line: rgba(255,255,255,.08); --line-strong: rgba(255,255,255,.16);
@@ -984,13 +985,25 @@ export const DEMO_CSS = `
 .dshw-demo .dshwd-toast.dshwd-show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .dshw-demo .dshwd-toast.dshwd-error { background: var(--err); color: #fff; }
 .dshw-demo .dshwd-management { height: 100%; min-height: 0; overflow: hidden; }
-@media (max-width: 900px) {
+@container dshwdemo (max-width: 980px) {
   .dshw-demo .dshwd-app { grid-template-columns: 248px minmax(0,1fr) 0; }
   .dshw-demo .dshwd-app.dshwd-hide-left { grid-template-columns: 0 minmax(0,1fr) 0; }
+  .dshw-demo .dshwd-app.dshwd-hide-right { grid-template-columns: 248px minmax(0,1fr) 0; }
+  .dshw-demo .dshwd-app.dshwd-hide-left.dshwd-hide-right { grid-template-columns: 0 minmax(0,1fr) 0; }
   .dshw-demo .dshwd-inspector { display: none; }
-  .dshw-demo .dshwd-app:not(.dshwd-hide-right) .dshwd-inspector { display: flex; position: absolute; right: 0; top: 0; bottom: 0; width: 284px; z-index: 20; }
+  .dshw-demo .dshwd-app:not(.dshwd-hide-right) .dshwd-inspector { display: flex; position: absolute; right: 0; top: 46px; bottom: 0; width: 300px; z-index: 20; background: var(--bg-rail); box-shadow: -16px 0 40px rgba(0,0,0,.28); }
   .dshw-demo .dshwd-stage-head { padding: 18px 20px 0; }
   .dshw-demo .dshwd-stage-body { padding: 20px 20px 36px; }
   .dshw-demo .dshwd-stage-title-row { flex-direction: column; }
+}
+@container dshwdemo (max-width: 620px) {
+  .dshw-demo .dshwd-app { grid-template-columns: 208px minmax(0,1fr) 0; }
+  .dshw-demo .dshwd-app.dshwd-hide-left { grid-template-columns: 0 minmax(0,1fr) 0; }
+  .dshw-demo .dshwd-app.dshwd-hide-right { grid-template-columns: 208px minmax(0,1fr) 0; }
+  .dshw-demo .dshwd-app.dshwd-hide-left.dshwd-hide-right { grid-template-columns: 0 minmax(0,1fr) 0; }
+  .dshw-demo .dshwd-app:not(.dshwd-hide-right) .dshwd-inspector { width: 100%; }
+  .dshw-demo .dshwd-stage-head { padding: 14px 14px 0; }
+  .dshw-demo .dshwd-stage-body { padding: 16px 14px 28px; }
+  .dshw-demo .dshwd-topbar { padding: 0 14px; }
 }
 `

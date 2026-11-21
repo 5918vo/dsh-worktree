@@ -65,11 +65,13 @@ export function DemoBoardPage(props: any) {
   const [err, setErr] = React.useState('')
   const [query, setQuery] = React.useState('')
   const [filter, setFilter] = React.useState('all' as DemoFilter)
+  const [showArchived, setShowArchived] = React.useState(false)
   const [selectedTaskId, setSelectedTaskId] = React.useState('')
   const [selectedProjectId, setSelectedProjectId] = React.useState('')
   const [tab, setTab] = React.useState('overview' as DemoTab)
   const [railHidden, setRailHidden] = React.useState(false)
   const [inspectorHidden, setInspectorHidden] = React.useState(false)
+  const [compact, setCompact] = React.useState(false)
   const [sessionMap, setSessionMap] = React.useState({} as Record<string, boolean>)
   const [pendingMap, setPendingMap] = React.useState({} as Record<string, string>)
   const [entries, setEntries] = React.useState([] as any[])
@@ -101,6 +103,7 @@ export function DemoBoardPage(props: any) {
   })
 
   const rootRef = React.useRef(null)
+  const compactRef = React.useRef(false)
   const searchRef = React.useRef(null)
   const refreshSeq = React.useRef(0)
   const failures = React.useRef(0)
@@ -134,7 +137,10 @@ export function DemoBoardPage(props: any) {
       online.current = true
       setErr('')
       setLoaded(true)
-      setSelectedTaskId((prev: string) => prev && list.some((v: any) => v.tasks.some((x: any) => x.task.id === prev && !x.task.archivedAt)) ? prev : '')
+      // Keep archived tasks selected too: the board fetches them all, and the
+      // "show archived" toggle must be able to open one without the next poll
+      // dropping the selection.
+      setSelectedTaskId((prev: string) => prev && list.some((v: any) => v.tasks.some((x: any) => x.task.id === prev)) ? prev : '')
       setSelectedProjectId((prev: string) => {
         if (prev && list.some((v: any) => v.project.id === prev)) return prev
         return list.length ? list[0].project.id : ''
@@ -162,6 +168,32 @@ export function DemoBoardPage(props: any) {
     return () => { cancelled = true; if (timer) clearTimeout(timer) }
   }, [refresh])
 
+  // The board lives beside the host sidebar, so its own width is narrower than
+  // the viewport (and shrinks when the page is zoomed). Drive the compact
+  // layout from the container, never from window.innerWidth.
+  React.useLayoutEffect(() => {
+    const el: any = rootRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const apply = (width: number) => {
+      const next = width <= 980
+      if (next === compactRef.current) return
+      compactRef.current = next
+      setCompact(next)
+    }
+    apply(el.getBoundingClientRect().width)
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (entry) apply(entry.contentRect.width)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // The inspector is a drawer in compact mode: keep it closed until asked for.
+  React.useEffect(() => {
+    if (compact) setInspectorHidden(true)
+  }, [compact])
+
   React.useEffect(() => {
     const onShow = () => { if (!document.hidden) void refresh() }
     window.addEventListener('focus', onShow)
@@ -178,7 +210,7 @@ export function DemoBoardPage(props: any) {
     if (initialSelect.current || !loaded) return
     initialSelect.current = true
     if (!selectedTaskId) {
-      const visible = visibleProjectViews(views, false)
+      const visible = visibleProjectViews(views, showArchived)
       const project = selectedProjectId ? visible.find((v: any) => v.project.id === selectedProjectId) : null
       const first = project && project.tasks.length ? project : visible.find((v: any) => v.tasks.length)
       if (first) {
@@ -186,7 +218,7 @@ export function DemoBoardPage(props: any) {
         setSelectedProjectId(first.project.id)
       }
     }
-  }, [loaded, views, selectedTaskId, selectedProjectId])
+  }, [loaded, views, selectedTaskId, selectedProjectId, showArchived])
 
   React.useEffect(() => {
     try {
@@ -294,6 +326,9 @@ export function DemoBoardPage(props: any) {
     previewRef.current = null
     if (!selectedTask) { setPreviewState({ phase: 'idle' }); return }
     const snap = selectedTask.snapshot
+    // Merged/cleaned tasks keep whatever the last review-time preflight said;
+    // drop it so the inspector reports the completed lifecycle instead.
+    if (snap.status === 'merged' || snap.status === 'cleaned') { setPreviewState({ phase: 'idle' }); return }
     const controller = createPreviewController({
       taskId: selectedTask.task.id,
       request: (force: boolean) => post('task/merge-preview', { id: selectedTask.task.id, force }).then((r: any) => (r && r.preview) || null),
@@ -362,6 +397,15 @@ export function DemoBoardPage(props: any) {
     const next = theme === 'dark' ? 'light' : 'dark'
     setTheme(next)
     try { localStorage.setItem(THEME_KEY, next) } catch { /* noop */ }
+  }
+  const toggleArchived = () => {
+    // Hiding archived rows also drops an archived selection so the stage does
+    // not keep showing a task the rail just concealed.
+    if (showArchived && selectedTask && selectedTask.task.archivedAt) {
+      setSelectedProjectId(selectedTask.task.projectId)
+      setSelectedTaskId('')
+    }
+    setShowArchived((v: boolean) => !v)
   }
 
   async function runAct(key: string, fn: () => Promise<any>, success: string) {
@@ -486,9 +530,10 @@ export function DemoBoardPage(props: any) {
   function runDeleteTask() {
     if (!selectedTask || busy) return
     const task = selectedTask.task
+    const cleaned = selectedTask.snapshot.status === 'cleaned'
     setConfirm({
       title: t.deleteTaskTitle,
-      body: t.demoDeleteConfirm,
+      body: cleaned ? t.demoDeleteConfirmCleaned : t.demoDeleteConfirm,
       label: t.deleteRecordConfirm,
       danger: true,
       run: async () => {
@@ -598,7 +643,8 @@ export function DemoBoardPage(props: any) {
   const baseSha = selectedTask ? diffBaseSha(selectedTask.task, selectedTask.snapshot, previewRef.current && previewRef.current.preview ? (previewRef.current.preview.expectedBase || null) : null) : ''
   const canArchive = !!(selectedTask && (selectedTask.snapshot.status === 'merged' || selectedTask.snapshot.status === 'cleaned' || archived))
   const archiveReason = selectedTask && !canArchive ? t.archiveMergedOnly : ''
-  const filtered = filterViews(visibleProjectViews(views, false), filter, query, runningOf)
+  const archivedCount = views.reduce((n: number, v: any) => n + v.tasks.filter((x: any) => x.task.archivedAt).length, 0)
+  const filtered = filterViews(visibleProjectViews(views, showArchived), filter, query, runningOf)
 
   return h('div', { ref: rootRef, className: 'dshw-demo', 'data-theme': theme },
     h('div', {
@@ -614,10 +660,13 @@ export function DemoBoardPage(props: any) {
         selectedProjectId,
         query,
         filter,
+        showArchived,
+        archivedCount,
         theme,
         runningOf,
         onQuery: setQuery,
         onFilter: setFilter,
+        onToggleArchived: toggleArchived,
         onSelectTask: selectTask,
         onSelectProject: selectProject,
         onPublish: () => openPublish(),

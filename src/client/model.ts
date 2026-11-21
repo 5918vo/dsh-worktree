@@ -130,12 +130,17 @@ export function taskMatches(task: TaskView, filter: DemoFilter, query: string, r
 
 /** Filter tasks but keep project groups (with empty task lists removed). */
 export function filterViews(views: ProjectView[], filter: DemoFilter, query: string, runningOf: (task: WorktreeTask) => boolean): ProjectView[] {
+  const q = String(query || '').trim()
+  // With no active filter, keep every project so a freshly added repository
+  // stays selectable even before its first task exists. Searching or filtering
+  // by status still hides groups that have nothing to show.
+  const keepEmpty = filter === 'all' && !q
   return views
     .map((view) => ({
       ...view,
       tasks: view.tasks.filter((tv) => taskMatches(tv, filter, query, runningOf(tv.task))),
     }))
-    .filter((view) => view.tasks.length > 0)
+    .filter((view) => view.tasks.length > 0 || keepEmpty)
 }
 
 export function criteria(task: WorktreeTask, status: TaskStatus): Array<{ text: string; checked: boolean }> {
