@@ -31,7 +31,7 @@ const used = new Set()
 const keyRe = /\bt\.([A-Za-z_][A-Za-z0-9_]*)/g
 // Pure helpers / infra that do not read the locale dictionary (avoid false positives
 // such as `t.task` where `t` is a task view, not the translation table).
-const EXCLUDE = new Set(['board-data.ts', 'branch-filter.ts', 'model-filter.ts', 'i18n.ts', 'context.ts', 'icons.ts', 'hooks.ts', 'ui.ts', 'styles.ts', 'palette.ts'])
+const EXCLUDE = new Set(['board-data.ts', 'branch-filter.ts', 'i18n.ts', 'context.ts', 'icons.ts', 'hooks.ts', 'ui.ts', 'styles.ts', 'palette.ts'])
 for (const file of walk(CLIENT)) {
   if (EXCLUDE.has(file.split(/[\\/]/).pop())) continue
   const src = readFileSync(file, 'utf8')

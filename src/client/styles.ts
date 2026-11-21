@@ -896,6 +896,15 @@ export const DEMO_CSS = `
 .dshw-demo .dshwd-check-item { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-1); }
 .dshw-demo .dshwd-check-box { width: 15px; height: 15px; border-radius: 4px; border: 1px solid var(--ok-line); display: grid; place-items: center; font-size: 10px; color: var(--ok); background: var(--ok-soft); flex-shrink: 0; }
 .dshw-demo .dshwd-check-box.dshwd-todo { background: transparent; border-color: var(--line-strong); color: transparent; }
+.dshw-demo .dshwd-check-row { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: var(--text-2); cursor: pointer; }
+.dshw-demo .dshwd-check-row input { margin: 2px 0 0; flex: none; accent-color: var(--accent); }
+.dshw-demo .dshwd-check-label { color: var(--text-1); line-height: 1.45; }
+.dshw-demo .dshwd-check-hint { display: block; margin-top: 1px; font-size: 11px; color: var(--text-3); }
+.dshw-demo .dshwd-criteria-library { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--line); max-height: 160px; overflow-y: auto; }
+.dshw-demo .dshwd-stash-card { border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.dshw-demo .dshwd-stash-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.dshw-demo .dshwd-input.dshwd-invalid, .dshw-demo .dshwd-textarea.dshwd-invalid { border-color: var(--err); }
+.dshw-demo .dshwd-diff-pre { font-family: "JetBrains Mono", "Cascadia Code", ui-monospace, monospace; font-size: 11.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-all; color: var(--text-2); background: var(--code-bg); border: 1px solid var(--line); border-radius: 7px; padding: 10px; }
 .dshw-demo .dshwd-stream { border: 1px solid var(--line); border-radius: 8px; background: var(--code-bg); overflow: hidden; }
 .dshw-demo .dshwd-stream-head { padding: 9px 14px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 11.5px; color: var(--text-3); }
 .dshw-demo .dshwd-stream-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 13px; font-size: 12px; }

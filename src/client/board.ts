@@ -11,6 +11,7 @@ import { Rail } from './rail'
 import { Stage, type DemoTab } from './stage'
 import { Inspector } from './inspector'
 import { PublishModal } from './publish'
+import { AddProjectModal } from './add-project'
 import { openNativeSession, startTask } from './actions'
 import {
   demoCta,
@@ -26,6 +27,7 @@ import {
 
 const THEME_KEY = 'dshw-demo:theme'
 let demoStyleEl: any = null
+let demoStyleRefs = 0
 
 export function DemoBoardIcon() {
   return h('svg', { viewBox: '0 0 24 24', width: 22, height: 22, 'aria-hidden': true, style: { color: 'currentColor' } },
@@ -38,11 +40,23 @@ export function DemoBoardPage(props: any) {
   const t = props.__t
   useStyles()
   React.useEffect(() => {
+    demoStyleRefs += 1
     if (!demoStyleEl || !demoStyleEl.isConnected) {
       demoStyleEl = document.createElement('style')
       demoStyleEl.setAttribute('data-dshw-demo', '1')
       demoStyleEl.textContent = DEMO_CSS
       document.head.appendChild(demoStyleEl)
+    }
+    return () => {
+      demoStyleRefs = Math.max(0, demoStyleRefs - 1)
+      if (demoStyleRefs === 0 && demoStyleEl) {
+        try {
+          demoStyleEl.remove()
+        } catch {
+          /* noop */
+        }
+        demoStyleEl = null
+      }
     }
   }, [])
 
@@ -67,9 +81,12 @@ export function DemoBoardPage(props: any) {
   const [previewState, setPreviewState] = React.useState({ phase: 'idle' } as any)
   const [busy, setBusy] = React.useState('')
   const [publishOpen, setPublishOpen] = React.useState(false)
+  const [addOpen, setAddOpen] = React.useState(false)
   const [publishProjectId, setPublishProjectId] = React.useState('')
   const [publishParentId, setPublishParentId] = React.useState('')
   const [confirm, setConfirm] = React.useState(null)
+  const [stashView, setStashView] = React.useState(null as any)
+  const [partialRestore, setPartialRestore] = React.useState(null as any)
   const [toast, setToast] = React.useState(null as { message: string; error?: boolean } | null)
   const [theme, setTheme] = React.useState(() => {
     let stored = ''
@@ -296,8 +313,13 @@ export function DemoBoardPage(props: any) {
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (publishOpen || confirm) {
-        if (e.key === 'Escape' && !busy) { setPublishOpen(false); setConfirm(null) }
+      if (publishOpen || addOpen || confirm || stashView) {
+        // Publish and add-project own their Escape handling so a submit in
+        // flight cannot be dismissed from here.
+        if (e.key === 'Escape' && !busy) {
+          if (confirm) setConfirm(null)
+          if (stashView) setStashView(null)
+        }
         return
       }
       const root: any = rootRef.current
@@ -317,7 +339,7 @@ export function DemoBoardPage(props: any) {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [query, publishOpen, confirm, busy])
+  }, [query, publishOpen, addOpen, confirm, stashView, busy])
 
   const selectTask = (id: string, projectId?: string) => {
     const found = views.flatMap((v: any) => v.tasks).find((x: any) => x.task.id === id)
@@ -405,23 +427,24 @@ export function DemoBoardPage(props: any) {
         const first = (pf.blockers || [])[0]
         throw new Error((first && first.message) || t.failed)
       }
-      const state = previewRef.current
-      const preview = state && state.preview
       setConfirm({
         title: String(t.mergeTitle).replace('{base}', selectedTask.task.baseBranch),
         body: String(t.demoMergeConfirm).replace('{branch}', selectedTask.task.branch).replace('{base}', selectedTask.task.baseBranch),
         label: t.mergeConfirm,
         danger: true,
         run: async () => {
-          await postLong('task/merge', {
+          // The merge must lock exactly the tips the preflight inspected; the
+          // cached preview may be older than this preflight result.
+          const res: any = await postLong('task/merge', {
             id: selectedTask.task.id,
             switchToBase: !curOnBase,
             restoreTo: true,
             dirtyStrategy: 'refuse',
-            expectedTip: (preview && preview.expectedTip) || undefined,
-            expectedBase: (preview && preview.expectedBase) || undefined,
+            expectedTip: pf.tipSha || undefined,
+            expectedBase: pf.baseSha || undefined,
           })
           setConfirm(null)
+          setPartialRestore(res && res.partial && res.partial.restoreFailed ? res.partial : null)
           say(String(t.mergeDone).replace('{base}', selectedTask.task.baseBranch))
           void refresh()
         },
@@ -435,18 +458,92 @@ export function DemoBoardPage(props: any) {
 
   function runCleanup() {
     if (!selectedTask || busy) return
+    const dirty = Number(selectedTask.snapshot.worktree && selectedTask.snapshot.worktree.dirtyCount) || 0
     setConfirm({
       title: t.cleanup,
       body: t.demoCleanupConfirm,
       label: t.cleanup,
       danger: true,
-      run: async () => {
-        await postLong('task/cleanup', { id: selectedTask.task.id, force: false, deleteBranch: false, forceDeleteBranch: false })
-        setConfirm(null)
-        say(t.cleanupDone)
+      checks: [
+        { key: 'force', label: t.force, hint: t.cleanupForceHint, disabled: dirty === 0 },
+        { key: 'deleteBranch', label: t.deleteBranch, hint: t.cleanupBranchHint },
+        { key: 'forceDeleteBranch', label: t.forceDeleteBranch, hint: t.forceDeleteBranchHint, dependsOn: 'deleteBranch' },
+      ],
+      run: async (values: any) => {
+        await postLong('task/cleanup', {
+          id: selectedTask.task.id,
+          force: !!values.force,
+          deleteBranch: !!values.deleteBranch,
+          forceDeleteBranch: !!values.deleteBranch && !!values.forceDeleteBranch,
+        })
+        say(values.deleteBranch ? t.cleanupDoneBranch : t.cleanupDone)
         void refresh()
       },
     })
+  }
+
+  function runDeleteTask() {
+    if (!selectedTask || busy) return
+    const task = selectedTask.task
+    setConfirm({
+      title: t.deleteTaskTitle,
+      body: t.demoDeleteConfirm,
+      label: t.deleteRecordConfirm,
+      danger: true,
+      run: async () => {
+        await post('task/delete', { id: task.id })
+        setSelectedTaskId('')
+        setPartialRestore(null)
+        say(t.recordDeleted)
+        void refresh()
+      },
+    })
+  }
+
+  function runMergeRestore() {
+    if (!selectedTask || busy) return
+    const id = selectedTask.task.id
+    setBusy('merge-restore')
+    postLong('task/merge-restore', { id })
+      .then(() => {
+        setPartialRestore(null)
+        say(t.restoreOriginalBranch)
+      })
+      .catch((e: any) => say(String((e && e.message) || t.failed), true))
+      .finally(() => { setBusy(''); void refresh() })
+  }
+
+  const applyStash = (sha: string) => {
+    if (!selectedTask || busy) return
+    const id = selectedTask.task.id
+    void runAct('stash-apply', () => postLong('task/stash', { id, sha }), t.stashRestored)
+  }
+
+  const dropStash = (sha: string) => {
+    if (!selectedTask || busy) return
+    const id = selectedTask.task.id
+    setConfirm({
+      title: t.stashDrop,
+      body: t.demoStashDropConfirm,
+      label: t.stashDrop,
+      danger: true,
+      run: async () => {
+        await postLong('task/stash', { id, sha, action: 'drop' })
+        say(t.stashDropped)
+        void refresh()
+      },
+    })
+  }
+
+  const viewStash = async (sha: string) => {
+    if (!selectedTask) return
+    setStashView({ sha, patch: '', loading: true, error: '' })
+    try {
+      const d: any = await getJson('task/stash-diff?id=' + encodeURIComponent(selectedTask.task.id) + (sha ? '&sha=' + encodeURIComponent(sha) : ''))
+      setStashView({ sha, patch: String((d && d.patch) || ''), loading: false, error: '' })
+    } catch (e: any) {
+      setStashView({ sha, patch: '', loading: false, error: String((e && e.message) || t.failed) })
+    }
   }
 
   function runAction(action: DemoAction) {
@@ -511,6 +608,7 @@ export function DemoBoardPage(props: any) {
       h(Rail, {
         t,
         views: filtered,
+        projectCount: views.length,
         selectedTaskId,
         selectedProjectId,
         query,
@@ -522,6 +620,7 @@ export function DemoBoardPage(props: any) {
         onSelectTask: selectTask,
         onSelectProject: selectProject,
         onPublish: () => openPublish(),
+        onAddProject: () => setAddOpen(true),
         onToggleTheme: toggleTheme,
         searchRef,
       }),
@@ -592,10 +691,17 @@ export function DemoBoardPage(props: any) {
           busy,
           canArchive,
           archiveReason,
+          stashes: selectedTask.task.pendingStashes || [],
+          partialRestore,
           onCopy: (text: string) => { copyText(text); say(t.copied) },
           onArchive: () => archiveTask(false),
           onUnarchive: () => archiveTask(true),
           onCleanup: runCleanup,
+          onDelete: runDeleteTask,
+          onRestore: runMergeRestore,
+          onViewStash: (sha: string) => void viewStash(sha),
+          onApplyStash: applyStash,
+          onDropStash: dropStash,
         })
         : null),
 
@@ -605,6 +711,7 @@ export function DemoBoardPage(props: any) {
         views,
         initialProjectId: publishProjectId,
         parentId: publishParentId,
+        parentView: publishParentId ? views.flatMap((v: any) => v.tasks).find((tv: any) => tv.task.id === publishParentId) || null : null,
         onClose: () => setPublishOpen(false),
         onPublished: (task: any, project: any, warning?: string, continued?: boolean) => {
           setPublishOpen(false)
@@ -621,18 +728,55 @@ export function DemoBoardPage(props: any) {
       })
       : null,
 
+    addOpen
+      ? h(AddProjectModal, {
+        t,
+        onClose: () => setAddOpen(false),
+        onAdded: (project: any) => {
+          setAddOpen(false)
+          if (project) {
+            setSelectedProjectId(project.id)
+            setSelectedTaskId('')
+            say(String(t.projectAdded).replace('{name}', project.name || ''))
+          }
+          void refresh()
+        },
+      })
+      : null,
+
+    stashView
+      ? h('div', { className: 'dshwd-modal-backdrop', onMouseDown: (e: any) => { if (e.target === e.currentTarget) setStashView(null) } },
+        h('div', { className: 'dshwd-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': t.stashViewTitle },
+          h('div', { className: 'dshwd-modal-head' },
+            h('div', { className: 'dshwd-modal-title-group' },
+              h('div', { className: 'dshwd-modal-title' }, t.stashViewTitle),
+              h('span', { className: 'dshwd-modal-badge dshwd-mono' }, String(stashView.sha || '').slice(0, 8) || 'stash')),
+            h('button', { className: 'dshwd-btn dshwd-btn-ghost', title: t.close, onClick: () => setStashView(null) }, '×')),
+          h('div', { className: 'dshwd-modal-body' },
+            stashView.loading
+              ? h('div', { className: 'dshwd-hint' }, t.loading)
+              : stashView.error
+                ? h('div', { className: 'dshwd-alert' }, stashView.error)
+                : h('pre', { className: 'dshwd-diff-pre', style: { maxHeight: '60vh', overflow: 'auto', margin: 0 } }, stashView.patch || t.demoNoDiff)),
+          h('div', { className: 'dshwd-modal-foot' },
+            h('span', { className: 'dshwd-modal-foot-meta' }),
+            h('div', { className: 'dshwd-modal-foot-actions' },
+              h('button', { className: 'dshwd-btn', onClick: () => setStashView(null) }, t.close)))))
+      : null,
+
     confirm ? h(ConfirmDialog, {
       t,
       title: confirm.title,
       body: confirm.body,
       label: confirm.label,
       danger: !!confirm.danger,
+      checks: confirm.checks || [],
       busy: !!busy,
       onCancel: () => setConfirm(null),
-      onConfirm: () => {
+      onConfirm: (values: any) => {
         if (!confirm.run) return
         setBusy('confirm')
-        Promise.resolve(confirm.run())
+        Promise.resolve(confirm.run(values || {}))
           .catch((e: any) => say(String((e && e.message) || t.failed), true))
           .finally(() => { setBusy(''); setConfirm(null) })
       },
@@ -643,17 +787,40 @@ export function DemoBoardPage(props: any) {
 
 function ConfirmDialog(props: any) {
   const { t } = props
+  const checks: any[] = Array.isArray(props.checks) ? props.checks : []
+  const [values, setValues] = React.useState(() => {
+    const init: Record<string, boolean> = {}
+    for (const c of checks) init[c.key] = !!c.checked
+    return init
+  })
+  const enabled = (c: any) => !c.dependsOn || !!values[c.dependsOn]
+  const toggle = (c: any) => setValues((prev: any) => Object.assign({}, prev, { [c.key]: !prev[c.key] }))
   return h('div', { className: 'dshwd-modal-backdrop', onMouseDown: (e: any) => { if (e.target === e.currentTarget && !props.busy) props.onCancel() } },
     h('div', { className: 'dshwd-modal dshwd-modal-sm', role: 'dialog', 'aria-modal': 'true', 'aria-label': props.title },
       h('div', { className: 'dshwd-modal-head' },
         h('div', { className: 'dshwd-modal-title' }, props.title),
         h('button', { className: 'dshwd-btn dshwd-btn-ghost', onClick: props.onCancel, disabled: props.busy }, '×')),
       h('div', { className: 'dshwd-modal-body' },
-        h('div', { className: 'dshwd-prose', style: { fontSize: '12.5px' } }, props.body)),
+        h('div', { className: 'dshwd-prose', style: { fontSize: '12.5px' } }, props.body),
+        checks.length
+          ? h('div', { className: 'dshwd-check-list' }, checks.map((c: any) => {
+            const allowed = enabled(c) && !c.disabled
+            return h('label', { key: c.key, className: 'dshwd-check-row', style: allowed ? undefined : { opacity: 0.55 } },
+              h('input', {
+                type: 'checkbox',
+                checked: !!(values[c.key] && allowed),
+                disabled: !allowed || props.busy,
+                onChange: () => toggle(c),
+              }),
+              h('span', null,
+                h('span', { className: 'dshwd-check-label' }, c.label),
+                c.hint ? h('span', { className: 'dshwd-check-hint' }, c.hint) : null))
+          }))
+          : null),
       h('div', { className: 'dshwd-modal-foot' },
         h('span', { className: 'dshwd-modal-foot-meta' }),
         h('div', { className: 'dshwd-modal-foot-actions' },
           h('button', { className: 'dshwd-btn', disabled: props.busy, onClick: props.onCancel }, t.cancel),
-          h('button', { className: 'dshwd-btn ' + (props.danger ? 'dshwd-btn-danger' : 'dshwd-btn-cta'), disabled: props.busy, onClick: props.onConfirm },
+          h('button', { className: 'dshwd-btn ' + (props.danger ? 'dshwd-btn-danger' : 'dshwd-btn-cta'), disabled: props.busy, onClick: () => props.onConfirm(values) },
             props.busy ? t.working : props.label)))))
 }

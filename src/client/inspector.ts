@@ -13,10 +13,17 @@ export interface InspectorProps {
   busy: string
   canArchive: boolean
   archiveReason: string
+  stashes: any[]
+  partialRestore: any
   onCopy: (text: string) => void
   onArchive: () => void
   onUnarchive: () => void
   onCleanup: () => void
+  onDelete: () => void
+  onRestore: () => void
+  onViewStash: (sha: string) => void
+  onApplyStash: (sha: string) => void
+  onDropStash: (sha: string) => void
 }
 
 export function Inspector(props: InspectorProps) {
@@ -65,6 +72,16 @@ export function Inspector(props: InspectorProps) {
       h('div', { className: 'dshwd-kv' },
         h('span', { className: 'dshwd-kv-k' }, t.uncommitted),
         h('span', { className: 'dshwd-kv-v ' + (dirty ? 'dshwd-text-warn' : 'dshwd-text-ok') }, dirty ? `${dirty} ${t.changesUnit}` : t.clean)),
+      props.partialRestore
+        ? h('div', { className: 'dshwd-alert', style: { marginTop: '8px' } },
+          h('div', null, props.partialRestore.reason || t.restoreFailed),
+          h('button', {
+            className: 'dshwd-btn',
+            style: { marginTop: '6px' },
+            disabled: props.busy !== '',
+            onClick: props.onRestore,
+          }, t.restoreOriginalBranch))
+        : null,
       h('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' } },
         h('button', {
           className: 'dshwd-btn',
@@ -76,5 +93,29 @@ export function Inspector(props: InspectorProps) {
           className: 'dshwd-btn dshwd-btn-danger',
           disabled: props.busy !== '' || snap.status === 'cleaned',
           onClick: props.onCleanup,
-        }, t.cleanup))))
+        }, t.cleanup),
+        h('button', {
+          className: 'dshwd-btn dshwd-btn-danger',
+          disabled: props.busy !== '',
+          onClick: props.onDelete,
+        }, t.deleteRecord))),
+
+    Array.isArray(props.stashes) && props.stashes.length
+      ? h('section', { className: 'dshwd-insp-sec' },
+        h('div', { className: 'dshwd-insp-title' }, t.stashSection),
+        props.stashes.map((s: any, i: number) => h('div', { key: s.sha || i, className: 'dshwd-stash-card' },
+          h('div', { className: 'dshwd-kv' },
+            h('span', { className: 'dshwd-kv-k' }, s.source === 'merge' ? t.stashSourceMerge : t.stashSourceReview),
+            h('span', { className: 'dshwd-kv-v dshwd-mono' }, String(s.sha || s.ref || '').slice(0, 8) || '—')),
+          s.files && s.files.length
+            ? h('div', { className: 'dshwd-hint', style: { overflowWrap: 'anywhere' } }, s.files.slice(0, 6).join('、'))
+            : null,
+          s.unverified
+            ? h('div', { className: 'dshwd-hint dshwd-text-warn' }, t.stashUnverified)
+            : null,
+          h('div', { className: 'dshwd-stash-actions' },
+            h('button', { className: 'dshwd-btn dshwd-btn-ghost', disabled: props.busy !== '', onClick: () => props.onViewStash(s.sha) }, t.stashViewFiles),
+            h('button', { className: 'dshwd-btn dshwd-btn-ghost', disabled: props.busy !== '' || !s.sha || s.unverified, onClick: () => props.onApplyStash(s.sha) }, t.stashApply),
+            h('button', { className: 'dshwd-btn dshwd-btn-ghost dshwd-text-err', disabled: props.busy !== '', onClick: () => props.onDropStash(s.sha) }, t.stashDrop)))))
+      : null)
 }

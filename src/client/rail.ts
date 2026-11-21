@@ -6,6 +6,7 @@ import { demoBranch, demoStat, demoStatus, demoStatusLabel, type DemoFilter, typ
 export interface RailProps {
   t: any
   views: ProjectView[]
+  projectCount: number
   selectedTaskId: string
   selectedProjectId: string
   query: string
@@ -17,6 +18,7 @@ export interface RailProps {
   onSelectTask: (taskId: string, projectId: string) => void
   onSelectProject: (projectId: string) => void
   onPublish: () => void
+  onAddProject: () => void
   onToggleTheme: () => void
   searchRef: any
 }
@@ -30,7 +32,15 @@ export function Rail(props: RailProps) {
       h('div', { className: 'dshwd-logo' },
         h('span', { className: 'dshwd-logo-mark' }, 'W'),
         h('span', null, 'Worktree')),
-      h('button', { className: 'dshwd-btn dshwd-btn-cta', style: { height: '25px', padding: '0 9px', fontSize: '11.5px' }, title: String(t.demoPublishShortcut), onClick: props.onPublish }, '+ ', t.publish)),
+      h('div', { style: { display: 'flex', gap: '4px', alignItems: 'center' } },
+        h('button', {
+          className: 'dshwd-btn dshwd-btn-ghost',
+          style: { height: '25px', padding: '0 7px', fontSize: '11.5px' },
+          title: t.addProject,
+          'aria-label': t.addProject,
+          onClick: props.onAddProject,
+        }, '⊞'),
+        h('button', { className: 'dshwd-btn dshwd-btn-cta', style: { height: '25px', padding: '0 9px', fontSize: '11.5px' }, title: String(t.demoPublishShortcut), onClick: props.onPublish }, '+ ', t.publish))),
 
     h('div', { className: 'dshwd-rail-controls' },
       h('div', { className: 'dshwd-search-wrap' },
@@ -61,7 +71,10 @@ export function Rail(props: RailProps) {
           view.tasks.map((tv) => taskRow(t, tv, view, props))))
         : h('div', { className: 'dshwd-empty', style: { minHeight: '160px' } },
           h('div', { className: 'dshwd-empty-title' }, props.query ? t.demoNoMatches : t.noTasks),
-          h('div', { className: 'dshwd-hint' }, props.query ? t.demoClearSearch : t.noProjectsHint))),
+          h('div', { className: 'dshwd-hint' }, props.query ? t.demoClearSearch : t.noProjectsHint),
+          !props.query && props.projectCount === 0
+            ? h('button', { className: 'dshwd-btn dshwd-btn-cta', onClick: props.onAddProject }, t.addProject)
+            : null)),
 
     h('div', { className: 'dshwd-rail-foot' },
       h('span', { className: 'dshwd-mono', style: { fontSize: '11px', color: 'var(--text-3)' } }, `${totalRepos} repos · ${totalTasks} tasks`),
