@@ -2,7 +2,7 @@ import { PALETTE, paletteVars } from './palette'
 
 export const CSS = `
 .dshw-scope{${paletteVars(PALETTE.light)}}
-.dshw-dark .dshw-scope{${paletteVars(PALETTE.dark)}}
+.dshw-dark .dshw-scope,.dshw-scope.dshw-dark{${paletteVars(PALETTE.dark)}}
 
 .dshw-scope, .dshw-scope *, .dshw-scope *::before, .dshw-scope *::after{box-sizing:border-box}
 .dshw-scope{container-type:inline-size;container-name:dshw;font-family:"Inter",-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif;color:var(--dshw-text);font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;font-feature-settings:"cv02","cv03","cv04","cv11"}
@@ -821,6 +821,10 @@ export const DEMO_CSS = `
   --err: #dc2626; --err-soft: rgba(220,38,38,.08); --err-line: rgba(220,38,38,.22);
   --code-bg: #f6f5f0; --diff-add-bg: rgba(16,185,129,.10); --diff-del-bg: rgba(220,38,38,.08);
 }
+/* Project overview keeps the legacy .dshw-scope palette, but it must follow the
+   board theme rather than the host's dshw-dark ancestor (or lack of one). */
+.dshw-demo[data-theme="light"] .dshw-scope{${paletteVars(PALETTE.light)}}
+.dshw-demo[data-theme="dark"] .dshw-scope{${paletteVars(PALETTE.dark)}}
 .dshw-demo .dshwd-mono { font-family: "JetBrains Mono", "Cascadia Code", ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
 .dshw-demo .dshwd-app { display: grid; grid-template-columns: 272px minmax(0,1fr) 284px; height: 100%; min-height: 0; transition: grid-template-columns .18s cubic-bezier(.2,.8,.2,1); }
 .dshw-demo .dshwd-app.dshwd-hide-left { grid-template-columns: 0 minmax(0,1fr) 284px; }
@@ -984,7 +988,13 @@ export const DEMO_CSS = `
 .dshw-demo .dshwd-toast { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(8px); padding: 8px 14px; border-radius: 7px; background: var(--cta-bg); color: var(--cta-text); font-size: 12px; font-weight: 500; opacity: 0; pointer-events: none; transition: all .15s; z-index: 200; max-width: 80%; text-align: center; }
 .dshw-demo .dshwd-toast.dshwd-show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .dshw-demo .dshwd-toast.dshwd-error { background: var(--err); color: #fff; }
-.dshw-demo .dshwd-management { height: 100%; min-height: 0; overflow: hidden; }
+.dshw-demo .dshwd-management { height: 100%; min-height: 0; overflow: hidden; background: var(--bg-stage); }
+.dshw-demo .dshwd-management > .dshw-scope { height: 100%; min-height: 0; }
+.dshw-demo .dshwd-management .dshw-detail-inner.dshw-stage-grid { height: 100%; max-width: none; align-items: stretch; overflow: auto; }
+.dshw-demo .dshwd-management .dshw-stage { min-height: 100%; }
+.dshw-demo .dshwd-management .dshw-stage-body { flex: 1; min-height: 0; }
+.dshw-demo .dshwd-management .dshw-measure { max-width: none; }
+.dshw-demo .dshwd-management .dshw-inspector { position: static; align-self: stretch; overflow: auto; }
 @container dshwdemo (max-width: 980px) {
   .dshw-demo .dshwd-app { grid-template-columns: 248px minmax(0,1fr) 0; }
   .dshw-demo .dshwd-app.dshwd-hide-left { grid-template-columns: 0 minmax(0,1fr) 0; }
