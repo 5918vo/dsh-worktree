@@ -1,8 +1,8 @@
-import { React, h } from '../ui'
-import { relTime } from '../format'
-import type { TaskDiff, TaskView } from '../../models'
+import { React, h } from './ui'
+import { relTime } from './format'
+import type { TaskDiff, TaskView } from '../models'
 import { criteria, demoStatus, demoStatusLabel, diffCount, diffHeadSha, diffLineKind, shortSha, type DemoAction, type DemoCta } from './model'
-import type { TimelineEntry } from '../timeline'
+import type { TimelineEntry } from './timeline'
 
 export type DemoTab = 'overview' | 'live' | 'diff'
 

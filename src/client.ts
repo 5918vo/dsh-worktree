@@ -1,7 +1,7 @@
 import { initPrimitives, initReact, React, h } from './client/ui'
 import { setAppCtx } from './client/context'
 import { FALLBACK, pickDict } from './client/i18n'
-import { DemoBoardIcon, DemoBoardPage } from './client/demo/board'
+import { DemoBoardIcon, DemoBoardPage } from './client/board'
 import { SettingsPage } from './client/settings-page'
 
 export const MODULE_ID = '@5318vo/dsh-worktree'

@@ -168,7 +168,7 @@ Git 状态与会话状态分开显示：`review` 只表示 worktree 有待验收
 
 ## 配色
 
-看板新界面（DemoBoardPage）使用 `src/client/demo/styles.ts` 的 `DEMO_CSS`：在 `.dshw-demo` 作用域内定义 `--bg-*`、`--text-*`、`--line`、`--accent`、`--ok/--warn/--err` 等 token，明暗两套由 `[data-theme="light"]` 切换。
+看板新界面（DemoBoardPage）使用 `src/client/styles.ts` 的 `DEMO_CSS`：在 `.dshw-demo` 作用域内定义 `--bg-*`、`--text-*`、`--line`、`--accent`、`--ok/--warn/--err` 等 token，明暗两套由 `[data-theme="light"]` 切换。
 项目详情与设置页仍使用 `src/client/palette.ts` 的 `PALETTE.light` / `PALETTE.dark` 生成 `--dshw-*` CSS 变量。
 
 - 修改看板配色只需改 `DEMO_CSS` 顶部的两组 token；改设置页/项目详情配色只需改 `PALETTE`。
@@ -215,10 +215,10 @@ src/client/
 约定：
 
 - 宿主通过 `factory(require)` 注入 React，组件不要直接 `import React from 'react'`，统一从 `src/client/ui.ts` 读取代理。
-- 看板新颜色/样式只改 `src/client/demo/styles.ts`；项目详情与设置页只改 `src/client/palette.ts` 和 `src/client/styles.ts`。
+- 看板新颜色/样式只改 `src/client/styles.ts`；项目详情与设置页只改 `src/client/palette.ts` 和 `src/client/styles.ts`。
 - 新文案同时加入 `locale/en.json` 和 `locale/zh.json`，`src/client/i18n.ts` 不再维护第二份字典。
 - 新请求统一走 `src/client/context.ts` 的 `getJson` / `post`，它们带 token 刷新和 12s 超时。
-- 看板（`src/client/demo/`）按 demo.html 自绘 `dshwd-*` 控件，操作结果用 `board.ts` 内的轻量 Toast 状态；项目详情和设置页沿用 `useToast` + `Toast`。
+- 看板（`src/client/`）按 demo.html 自绘 `dshwd-*` 控件，操作结果用 `board.ts` 内的轻量 Toast 状态；项目详情和设置页沿用 `useToast` + `Toast`。
 - 项目详情和设置页的控件走 `src/client/primitives.ts`：它转调宿主共享的 `@deepseek-ai/dsh-client-ui-primitives`。该模块在浏览器构建里保持 external，由 `factory(require)` 注入；宿主缺少它时自动回落到本地实现。
 
 ## HTTP API

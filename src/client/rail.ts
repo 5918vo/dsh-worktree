@@ -1,6 +1,6 @@
-import { h } from '../ui'
-import { relTime } from '../format'
-import type { ProjectView, TaskView } from '../../models'
+import { h } from './ui'
+import { relTime } from './format'
+import type { ProjectView, TaskView } from '../models'
 import { demoBranch, demoStat, demoStatus, demoStatusLabel, type DemoFilter, type DemoTheme } from './model'
 
 export interface RailProps {

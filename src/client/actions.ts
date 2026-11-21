@@ -1,5 +1,5 @@
-import { appCtx, bindSession } from '../context'
-import { uuid } from '../format'
+import { appCtx, bindSession } from './context'
+import { uuid } from './format'
 
 /** Open the host's native conversation view for a task session. */
 export function openNativeSession(sessionId: string): boolean {

@@ -18,7 +18,7 @@ import {
   taskMatches,
   themeFor,
   type DemoStatus,
-} from '../src/client/demo/model.js'
+} from '../src/client/model.js'
 
 const T = {
   demoReady: '待开始',

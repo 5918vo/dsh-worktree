@@ -1,5 +1,5 @@
-import { h } from '../ui'
-import type { TaskView } from '../../models'
+import { h } from './ui'
+import type { TaskView } from '../models'
 import { mergeSummary, mergeSummaryText, shortSha } from './model'
 
 export interface InspectorProps {

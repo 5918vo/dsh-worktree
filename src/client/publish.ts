@@ -1,8 +1,8 @@
-import { React, h } from '../ui'
-import { appCtx, postLong, bindSession } from '../context'
-import { useBranchInfo } from '../hooks'
-import { uuid } from '../format'
-import type { ProjectView, TaskView } from '../../models'
+import { React, h } from './ui'
+import { appCtx, postLong, bindSession } from './context'
+import { useBranchInfo } from './hooks'
+import { uuid } from './format'
+import type { ProjectView, TaskView } from '../models'
 
 export interface PublishModalProps {
   t: any

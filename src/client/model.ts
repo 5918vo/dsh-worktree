@@ -1,4 +1,4 @@
-import type { ProjectView, TaskDiff, TaskSnapshot, TaskStatus, TaskView, WorktreeTask } from '../../models'
+import type { ProjectView, TaskDiff, TaskSnapshot, TaskStatus, TaskView, WorktreeTask } from '../models'
 
 export type DemoFilter = 'all' | 'review' | 'developing'
 export type DemoTheme = 'dark' | 'light'
