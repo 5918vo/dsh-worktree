@@ -119,7 +119,8 @@ export function DemoBoardPage(props: any) {
   const say = (message: string, error = false) => {
     setToast({ message, error })
     if (toastTimer.current) clearTimeout(toastTimer.current)
-    toastTimer.current = setTimeout(() => setToast(null), 2200)
+    // Failures need time to read; successes can stay brief.
+    toastTimer.current = setTimeout(() => setToast(null), error ? 6000 : 2400)
   }
 
   const refresh = React.useCallback(async (manual?: boolean) => {
@@ -782,7 +783,7 @@ export function DemoBoardPage(props: any) {
       },
     }) : null,
 
-    toast ? h('div', { className: 'dshwd-toast dshwd-show' + (toast.error ? ' dshwd-error' : ''), role: 'status' }, toast.message) : null)
+    toast ? h('div', { className: 'dshwd-toast dshwd-show' + (toast.error ? ' dshwd-error' : ''), role: toast.error ? 'alert' : 'status' }, toast.message) : null)
 }
 
 function ConfirmDialog(props: any) {
