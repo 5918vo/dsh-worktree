@@ -250,7 +250,6 @@ export function ProjectDetail(props: any) {
                     'aria-describedby': nameError ? 'dshw-project-name-error' : undefined,
                     onChange: (e: any) => { setName(e.target.value); setNameError('') },
                   }),
-                  h('div', { className: 'dshw-hint' }, t.projectNameHint),
                   nameError ? h('div', { className: 'dshw-err', id: 'dshw-project-name-error', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, nameError)) : null)),
               h('div', { className: 'dshw-form-row' },
                 h('label', { htmlFor: 'dshw-project-base' }, t.defaultBase),

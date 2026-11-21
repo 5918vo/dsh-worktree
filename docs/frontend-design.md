@@ -119,22 +119,29 @@ grid-template-columns: 272px minmax(0, 1fr) 284px;
 看板颜色集中定义在 `src/client/styles.ts` 的 `DEMO_CSS`，以 `.dshw-demo` 作用域的 CSS 变量承载：
 
 ```css
-.dshw-demo { --bg-canvas: #09090b; --bg-rail: #0d0e11; --bg-stage: #101114;
-             --text-1: #f4f4f5; --text-2: #a1a1aa; --line: rgba(255,255,255,.08);
-             --accent: #818cf8; --ok: #34d399; --warn: #fbbf24; --err: #f87171; }
-.dshw-demo[data-theme="light"] { --bg-canvas: #f2f1ec; --text-1: #141413; ... }
+.dshw-demo { --bg-canvas: #0b0b0c; --bg-rail: #070708; --bg-stage: #0b0b0c;
+             --text-1: #f2f0ec; --text-2: #a9a59d; --text-3: #807c74;
+             --line: rgba(242,240,236,.11);
+             --accent: #e0a256; --ok: #8fbf94; --warn: #d9a93f; --err: #e0776f; }
+.dshw-demo[data-theme="light"] { --bg-canvas: #f8f5ef; --text-1: #17150f; ... }
 ```
 
-项目详情与设置页仍使用 `src/client/palette.ts` 的 `PALETTE.light` / `PALETTE.dark`，由 `paletteVars()` 生成 `--dshw-*`：
+项目详情与设置页使用 `src/client/palette.ts` 的 `PALETTE.light` / `PALETTE.dark`，由 `paletteVars()` 生成 `--dshw-*`：
 
 ```css
 .dshw-scope { --dshw-bg: ...; --dshw-surface: ...; }
 .dshw-dark .dshw-scope { --dshw-bg: ...; --dshw-surface: ...; }
 ```
 
+两套取值必须一致（深色纸黑 + 铜色强调，浅色暖纸 + 深棕强调），改一处就要同步另一处。
+
+`PANEL_CSS`（`src/client/styles.ts` 顶部）是叠加层，被追加到 `CSS` 与 `DEMO_CSS` 末尾，用同一组规则同时约束两套 shell：按钮三档高度、chip 方标、分区自增编号、键值点线引导、左栏 34px 文本轴、统一焦点环。改版式规则优先进这里，而不是在两个样式表里各改一遍。
+
 规则：
 
 - 看板换色只改 `DEMO_CSS` 顶部两组 token；项目详情/设置页换色只改 `PALETTE`。
+- 强调色只用于：运行态、领先提交数、主操作、选中行左侧条。其余状态用降饱和的成功/警告/危险色。
+- 文本三级色必须满足 AA：深色 `#807c74`、浅色 `#736f64`（均 ≥4.6:1）。
 - 看板主题由 `.dshw-demo[data-theme]` 控制，默认跟随宿主亮度，用户切换后写入 `localStorage` 的 `dshw-demo:theme`。
 - 项目详情/设置页跟随宿主 `dshw-dark` 类；该类由 `useStyles()` 根据宿主文本颜色自动维护并监听主题变化。
 - 看板语义 token 包括：画布/栏底/舞台/浮层背景、悬停/激活、边框、三级文本、主 CTA、强调色、成功/警告/危险、代码块、diff 增删底色。
@@ -172,10 +179,10 @@ Git 状态与会话状态分开：
 ### 5.4 间距、圆角和层级
 
 - 看板常用间距：`4 / 8 / 10 / 12 / 14 / 16 / 18px`。
-- 看板圆角：列表项和卡片 `7px`；按钮和输入框 `6px`；弹窗 `10px`。项目详情/设置页沿用卡片 `12px`、弹窗 `14px`。
-- 看板按钮高度：常规 `28px`、紧凑 `24px`；图标按钮使用 `dshwd-btn-ghost`。
-- 选中态使用背景 + 边框 + 左侧内阴影指示，不只依赖边框颜色。
-- 阴影只用于浮层和卡片层级，不叠加装饰性阴影。
+- 圆角统一：列表项与输入 `6px`、弹窗 `8px`、chip `4px`；不再使用 10–14px 的大圆角卡片。
+- 按钮高度三档：`28px`（紧凑）、`32px`（常规）、`36px`（弹窗主操作）；图标按钮命中区不小于 `28px`。
+- 选中态使用 `box-shadow: inset 1.5px 0 0` 的左侧强调条，不加边框，避免选中时内容位移。
+- 不使用卡片投影；分区靠发丝线、编号和留白分隔。
 
 ### 5.5 动效
 
