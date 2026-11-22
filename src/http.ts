@@ -364,6 +364,7 @@ export function registerHttp(app: App): () => void {
   act('cleanup', async (id, body) => app.runtime.cleanup(id, { force: !!body.force, deleteBranch: !!body.deleteBranch, forceDeleteBranch: !!body.forceDeleteBranch }))
   act('archive', async (id) => app.runtime.archive(id))
   act('unarchive', async (id) => app.runtime.unarchive(id))
+  act('criteria', async (id, body) => app.runtime.setCriterionChecked(id, String(body.text || ''), body.checked === true))
   act('delete', async (id) => app.runtime.delete(id))
 
   const routes: RouteDef[] = []

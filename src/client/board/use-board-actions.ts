@@ -8,6 +8,7 @@ import { getJson, post, postLong } from '../context'
 import { openNativeSession, sendSessionPrompt, startTask } from '../actions'
 import { SYNC_BUSY, syncPromptText } from '../review-surfaces'
 import type { BoardAction } from '../model'
+import { criteria, criteriaProgress } from '../model'
 import type { ProjectView, TaskView } from '../../models'
 import type { ConfirmState, StashViewState } from './dialogs'
 import type { BoardTab } from '../stage'
@@ -122,15 +123,26 @@ export function useBoardActions(args: UseBoardActionsArgs) {
       const task = selectedTask.task
       const ahead = Number(selectedTask.snapshot.worktree && selectedTask.snapshot.worktree.ahead) || 0
       const dirty = Number(selectedTask.snapshot.worktree && selectedTask.snapshot.worktree.dirtyCount) || 0
+      const checklist = criteria(task, selectedTask.snapshot.status)
+      const progress = criteriaProgress(checklist)
+      const criteriaText = String(t.boardCriteriaProgress).replace('{n}', String(progress.checked)).replace('{total}', String(progress.total))
+      const details = [
+        { label: t.branchLabel, value: task.branch || '—', mono: true },
+        { label: t.boardTargetBase, value: task.baseBranch || '—', mono: true },
+        { label: t.commits, value: String(ahead) },
+        { label: t.uncommitted, value: dirty ? `${dirty} ${t.changesUnit} · ${t.mergeNoAutoStash}` : t.clean },
+      ]
+      // Only tasks that actually carry a checklist get a progress row; "0/0"
+      // would read like a broken counter.
+      if (progress.total > 0) details.push({ label: t.acceptanceCriteria, value: criteriaText, mono: false })
+      const mergeBody = String(t.boardMergeConfirm).replace('{branch}', task.branch).replace('{base}', task.baseBranch)
+        + (progress.missing > 0
+          ? ` ${String(t.boardMergeCriteriaMissing).replace('{n}', String(progress.missing))}`
+          : '')
       setConfirm({
         title: String(t.mergeTitle).replace('{base}', task.baseBranch),
-        body: String(t.boardMergeConfirm).replace('{branch}', task.branch).replace('{base}', task.baseBranch),
-        details: [
-          { label: t.branchLabel, value: task.branch || '—', mono: true },
-          { label: t.boardTargetBase, value: task.baseBranch || '—', mono: true },
-          { label: t.commits, value: String(ahead) },
-          { label: t.uncommitted, value: dirty ? `${dirty} ${t.changesUnit} · ${t.mergeNoAutoStash}` : t.clean },
-        ],
+        body: mergeBody,
+        details,
         label: t.mergeConfirm,
         danger: true,
         run: async () => {
@@ -252,6 +264,23 @@ export function useBoardActions(args: UseBoardActionsArgs) {
       .finally(() => { setBusy(''); void refresh() })
   }
 
+  /**
+   * Persist one criterion toggle. Success is silent: checking a list item by
+   * item must not stack a toast per click; only failures speak up.
+   */
+  async function runCriterion(text: string, checked: boolean) {
+    if (!selectedTask || busy) return
+    setBusy('criteria')
+    try {
+      await post('task/criteria', { id: selectedTask.task.id, text, checked })
+    } catch (e: any) {
+      say(String((e && e.message) || t.failed), true)
+    } finally {
+      setBusy('')
+      void refresh()
+    }
+  }
+
   const applyStash = (sha: string) => {
     if (!selectedTask || busy) return
     const id = selectedTask.task.id
@@ -317,6 +346,7 @@ export function useBoardActions(args: UseBoardActionsArgs) {
 
   return {
     runAction,
+    runCriterion,
     runCleanup,
     runDeleteTask,
     runMergeRestore,

@@ -165,7 +165,15 @@ export function filterProjectViews(
 
 export function criteria(task: WorktreeTask, status: TaskStatus): Array<{ text: string; checked: boolean }> {
   const done = status === 'merged' || status === 'cleaned'
-  return (task.acceptanceCriteria || []).map((text) => ({ text, checked: done }))
+  const marked = new Set(task.checkedCriteria || [])
+  return (task.acceptanceCriteria || []).map((text) => ({ text, checked: done || marked.has(text) }))
+}
+
+/** Count how many criteria are verified; `missing` drives the merge reminder. */
+export function criteriaProgress(items: Array<{ checked: boolean }>): { checked: number; total: number; missing: number } {
+  const total = items.length
+  const checked = items.filter((item) => item.checked).length
+  return { checked, total, missing: total - checked }
 }
 
 export function diffHeadSha(task: WorktreeTask, snapshot: TaskSnapshot | null | undefined): string {

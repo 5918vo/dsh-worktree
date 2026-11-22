@@ -13,12 +13,18 @@ import {
 } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
+import { normalizeCriteria } from './criteria.js'
 import { Project, WorktreeTask } from './models.js'
 
 /** Outcome of an atomic session binding; callers translate conflicts into 409s. */
 export type BindSessionResult =
   | { ok: true; task: WorktreeTask }
   | { ok: false; conflict: 'missing' | 'session-taken' | 'task-bound'; other?: WorktreeTask }
+
+/** Outcome of checking one acceptance criterion; callers map it to 404 / 400. */
+export type CriterionResult =
+  | { ok: true; task: WorktreeTask }
+  | { ok: false; reason: 'missing' | 'unknown' }
 
 /**
  * One global task store for every DSH process on this machine.
@@ -459,6 +465,31 @@ export class Store {
       if (task.sessionId) return { ok: false, conflict: 'task-bound', other: task }
       task.sessionId = sessionId
       task.startOnBind = false
+      task.updatedAt = Date.now()
+      this.saveTasks()
+      return { ok: true, task }
+    })
+  }
+
+  /**
+   * Check or uncheck one acceptance criterion under the store lock.
+   *
+   * Refresh + validate + save in one critical section: two DSH processes
+   * checking different criteria must both survive. The standard list stays
+   * authoritative, so checkedCriteria is rewritten in acceptanceCriteria order
+   * and drops entries whose criterion no longer exists.
+   */
+  setCriterionChecked(taskId: string, text: string, checked: boolean): CriterionResult {
+    return this.withLock(() => {
+      this.refreshTasks()
+      const task = this.tasks.get(taskId)
+      if (!task) return { ok: false, reason: 'missing' }
+      const standard = normalizeCriteria(task.acceptanceCriteria)
+      if (!standard.includes(text)) return { ok: false, reason: 'unknown' }
+      const marked = new Set(task.checkedCriteria || [])
+      if (checked) marked.add(text)
+      else marked.delete(text)
+      task.checkedCriteria = standard.filter((item) => marked.has(item))
       task.updatedAt = Date.now()
       this.saveTasks()
       return { ok: true, task }

@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   criteria,
+  criteriaProgress,
   boardBranch,
   boardCta,
   boardStat,
@@ -101,6 +102,33 @@ test('criteria are read-only and derive checked state from the lifecycle', () =>
   assert.deepEqual(criteria(t, 'merged'), [{ text: 'a', checked: true }, { text: 'b', checked: true }])
   assert.deepEqual(criteria(t, 'cleaned'), [{ text: 'a', checked: true }, { text: 'b', checked: true }])
   assert.deepEqual(criteria(t, 'review'), [{ text: 'a', checked: false }, { text: 'b', checked: false }])
+})
+
+test('criteria merge recorded checks with the current standards', () => {
+  const t = task({ acceptanceCriteria: ['a', 'b', 'c'], checkedCriteria: ['b', 'gone'] })
+  // Review shows only the criteria the user actually verified; a recorded text
+  // that no longer exists in the standard list never renders.
+  assert.deepEqual(criteria(t, 'review'), [
+    { text: 'a', checked: false },
+    { text: 'b', checked: true },
+    { text: 'c', checked: false },
+  ])
+  // Merged / cleaned keep the historical "all done" semantics.
+  assert.deepEqual(criteria(t, 'merged'), [
+    { text: 'a', checked: true },
+    { text: 'b', checked: true },
+    { text: 'c', checked: true },
+  ])
+  assert.deepEqual(criteria(t, 'cleaned'), [
+    { text: 'a', checked: true },
+    { text: 'b', checked: true },
+    { text: 'c', checked: true },
+  ])
+})
+
+test('criteriaProgress counts checked, total and missing', () => {
+  assert.deepEqual(criteriaProgress([]), { checked: 0, total: 0, missing: 0 })
+  assert.deepEqual(criteriaProgress([{ checked: true }, { checked: false }, { checked: true }]), { checked: 2, total: 3, missing: 1 })
 })
 
 test('rail formatting strips the worktree prefix and summarises the snapshot', () => {

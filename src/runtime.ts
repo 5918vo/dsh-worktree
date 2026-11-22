@@ -10,7 +10,7 @@ import * as gitx from './gitx.js'
 import { MergePreflight, MergePreview, Project, ProjectView, TaskDiff, TaskSnapshot, TaskStatus, TaskView, WorktreeConfig, WorktreeTask } from './models.js'
 import { Store } from './store.js'
 import { taskDiff } from './runtime/diff.js'
-import { archiveTask, bindTask, cleanupTask, deleteTask, unarchiveTask, unbindTaskBySession } from './runtime/lifecycle.js'
+import { archiveTask, bindTask, cleanupTask, deleteTask, setCriterionChecked as setCriterionCheckedTask, unarchiveTask, unbindTaskBySession } from './runtime/lifecycle.js'
 import { mergePreflight, mergePreview, mergeTask, reconcilePendingOps, restoreAfterMerge } from './runtime/merge.js'
 import { addProject, deleteProject, projectViews, publishTask, taskViews, updateProject } from './runtime/projects.js'
 import { applyStash, backPreflight, backTask, checkoutPreflight, checkoutTask, dropStash, migrateLegacyStashes, stashDiff } from './runtime/review.js'
@@ -162,6 +162,11 @@ export class Runtime {
 
   setAcceptanceCriteria(values: string[]): string[] {
     return this.ctx.store.setCriteria(normalizeCriteria(values))
+  }
+
+  /** Check or uncheck one criterion on a task; 404 / 400 on missing task / criterion. */
+  setCriterionChecked(id: string, text: string, checked: boolean): WorktreeTask {
+    return setCriterionCheckedTask(this.ctx, id, text, checked)
   }
 
   // ---- tasks, snapshots & diffs ----

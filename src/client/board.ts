@@ -455,6 +455,8 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           disabledActions: busy ? { merge: t.working, checkout: t.working, back: t.working, cleanup: t.working, open: t.working, create: t.working, start: t.working, retry: t.working, continue: t.working } : actionGate.disabled,
           actionReasons: actionGate.reasons,
           onAction: actions.runAction,
+          criteriaBusy: !!busy,
+          onToggleCriterion: actions.runCriterion,
           entries,
           entriesReady,
           live,

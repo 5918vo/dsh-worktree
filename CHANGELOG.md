@@ -2,6 +2,24 @@
 
 本文件记录 `@5318vo/dsh-worktree` 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.10.0] - 2026-11-22
+
+### 新增
+
+- 验收清单逐项勾选：任务详情「概览」中的每条验收标准变为复选项，点击标记已核对、再点取消；状态写入任务记录，刷新页面、重启 DSH 或换端口打开都不丢失。已合并 / 已清理任务保持只读并显示全部完成。
+- 进度展示：「验收标准」分区标题显示「已核对 n/total」，全部核对后显示「全部核对完成」；合并确认弹窗新增验收进度，存在未核对项时提示数量，但不阻止合并。
+- 复选项使用 `button` + `role="checkbox"` + `aria-checked`，支持键盘 Tab / Space 操作与可见焦点环；验收 / 合并等操作进行中时禁用，避免与工作区操作并发。
+
+### 接口
+
+- `WorktreeTask` 新增可选字段 `checkedCriteria?: string[]`，保存已核对的标准文本；展示时与 `acceptanceCriteria` 取交集，标准被移除后自动忽略。
+- Store 新增原子方法 `setCriterionChecked(taskId, text, checked)`：在跨进程账本锁内读取最新任务、校验标准存在、按标准顺序更新并落盘；Runtime 暴露同名方法，并映射为 `404`（任务不存在）/ `400`（该任务没有这条标准）。
+- 新增 `POST /dsh-worktree/api/task/criteria`，请求体 `{ id, text, checked }`，沿用 `task/*` 的 token 校验与统一响应（返回最新 `view`）。
+
+### 测试
+
+- 新增 Store 勾选 / 取消 / 幂等 / 未知标准 / 未知任务 / 落盘重载 / 双实例并发用例，以及 HTTP 勾选、无 token、未知任务、未知标准用例；补充 `criteria()` 勾选派生与 `criteriaProgress()` 计数断言。`npm run verify` 共 276 项测试通过。
+
 ## [1.9.3] - 2026-11-22
 
 ### 恢复（1.7.0 功能回归）

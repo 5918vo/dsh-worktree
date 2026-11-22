@@ -178,9 +178,13 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-block-label { font-size: 11.5px; font-weight: 500; color: var(--text-3); margin-bottom: 10px; }
 .dshw-board .dshwd-prose { font-size: 13.5px; line-height: 1.7; color: var(--text-2); white-space: pre-wrap; }
 .dshw-board .dshwd-check-list { display: flex; flex-direction: column; gap: 9px; }
+.dshw-board .dshwd-check-toggle { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .dshw-board .dshwd-check-item { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-1); }
 .dshw-board .dshwd-check-box { width: 15px; height: 15px; border-radius: 4px; border: 1px solid var(--ok-line); display: grid; place-items: center; font-size: 10px; color: var(--ok); background: var(--ok-soft); flex-shrink: 0; }
 .dshw-board .dshwd-check-box.dshwd-todo { background: transparent; border-color: var(--line-strong); color: transparent; }
+.dshw-board .dshwd-check-toggle:hover .dshwd-check-box { border-color: var(--accent); }
+.dshw-board .dshwd-check-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.dshw-board .dshwd-check-toggle:disabled { cursor: default; opacity: .6; }
 .dshw-board .dshwd-check-row { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: var(--text-2); cursor: pointer; }
 .dshw-board .dshwd-check-row input { margin: 2px 0 0; flex: none; accent-color: var(--accent); }
 .dshw-board .dshwd-check-label { color: var(--text-1); line-height: 1.45; }
