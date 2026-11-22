@@ -61,7 +61,9 @@ export function deriveActionGate(input: ActionGateInput): ActionGate {
     const value = String(text == null ? '' : text)
     if (!value) return
     const list = reasons[action] || (reasons[action] = [])
-    list.push(value)
+    // The same fact can arrive from the snapshot and from the server
+    // preflight; the blocker list must not say it twice.
+    if (!list.includes(value)) list.push(value)
   }
 
   const ahead = asNumber(snap.worktree && snap.worktree.ahead)
@@ -131,6 +133,11 @@ export function deriveActionGate(input: ActionGateInput): ActionGate {
     } else if (preview.checked === false && preview.supported !== false) {
       push('merge', t.mergePrecheckBlocked)
     }
+    // Server-side blockers (another task being accepted, pending operation)
+    // are part of the same decision: the merge summary and the blocker list
+    // must read from one set of reasons.
+    const blockers = preview && Array.isArray(preview.blockers) ? preview.blockers : []
+    for (const blocker of blockers) push('merge', blocker && blocker.message ? blocker.message : blocker)
   }
 
   const disabled: Partial<Record<BoardAction, string>> = {}

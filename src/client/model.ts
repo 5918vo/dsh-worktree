@@ -247,6 +247,10 @@ export function mergeSummary(preview: any, phase: string, errorMessage?: string)
     return { key: 'idle', tone: 'idle' }
   }
   if (preview.applicable === false) return { key: 'blocked', tone: 'warn' }
+  // A preflight can still answer applicable while naming blockers (another
+  // task is being accepted, the repo is busy). Those win over "safe".
+  const blockers = Array.isArray(preview.blockers) ? preview.blockers.filter(Boolean) : []
+  if (blockers.length) return { key: 'blocked', tone: 'warn' }
   const conflicts = Array.isArray(preview.conflictFiles) ? preview.conflictFiles.length : 0
   if (preview.conflict || conflicts) return { key: 'conflict', tone: 'err', n: Math.max(1, conflicts) }
   const overlap = Array.isArray(preview.overlapFiles) ? preview.overlapFiles.length : 0

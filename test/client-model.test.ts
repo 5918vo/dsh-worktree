@@ -241,6 +241,13 @@ test('taskMergeSummary keeps a cleaned, unmerged branch honest', () => {
   assert.equal(taskMergeSummary({ status: 'merged', merged: true }, {}, null, 'idle').key, 'merged')
 })
 
+test('mergeSummary treats preflight blockers as blocked, even when applicable', () => {
+  const s = mergeSummary({ applicable: true, checked: true, blockers: [{ code: 'reviewing', message: 'other task' }] }, 'ready')
+  assert.equal(s.key, 'blocked')
+  assert.equal(mergeSummaryText({ boardPreviewBlocked: 'blocked!' }, s), 'blocked!')
+  assert.equal(mergeSummary({ checked: true, blockers: [] }, 'ready').key, 'safe')
+})
+
 test('mergeSummary maps preview signals to a tone and text', () => {
   assert.equal(mergeSummary(null, 'checking').key, 'checking')
   assert.equal(mergeSummary({ conflict: true, conflictFiles: ['a'] }, 'ready').key, 'conflict')

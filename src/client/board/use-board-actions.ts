@@ -27,7 +27,11 @@ export interface UseBoardActionsArgs {
   setSelectedTaskId: (id: string) => void
   setTab: (tab: BoardTab) => void
   openPublish: (projectId?: string, parentId?: string) => void
-  say: (message: string, error?: boolean) => void
+  /** Cached merge preview, for warnings the server preflight does not repeat. */
+  previewState?: any
+  /** `sticky` false keeps a failure in the toast only (the blocker list already
+   * shows the same sentences, so an inline banner would duplicate it). */
+  say: (message: string, error?: boolean, sticky?: boolean) => void
   refresh: (manual?: boolean) => Promise<void>
 }
 
@@ -46,6 +50,7 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     setSelectedTaskId,
     setTab,
     openPublish,
+    previewState,
     say,
     refresh,
   } = args
@@ -116,7 +121,9 @@ export function useBoardActions(args: UseBoardActionsArgs) {
       if (!pf) throw new Error(t.failed)
       if (!pf.canMerge) {
         // Every blocker, not just the first: "repo dirty" and "agent running"
-        // often come together and the user needs the whole list.
+        // often come together and the user needs the whole list. The same
+        // sentences are already in the stage's blocker list, so do not also
+        // pin a red banner that survives after the blocker clears.
         const messages = (pf.blockers || []).map((b: any) => b && b.message).filter(Boolean)
         throw new Error(messages.length ? messages.join('；') : t.failed)
       }
@@ -135,6 +142,11 @@ export function useBoardActions(args: UseBoardActionsArgs) {
       // Only tasks that actually carry a checklist get a progress row; "0/0"
       // would read like a broken counter.
       if (progress.total > 0) details.push({ label: t.acceptanceCriteria, value: criteriaText, mono: false })
+      const cached = previewState && (previewState.preview || (previewState.previous && previewState.previous.preview))
+      const overlapFiles = cached && Array.isArray(cached.overlapFiles) ? cached.overlapFiles.filter(Boolean) : []
+      // The panel warned about overlapping files; the last dialog before the
+      // merge must not be the quietest surface about them.
+      if (overlapFiles.length) details.push({ label: t.mergeOverlapLabel, value: overlapFiles.join(', '), mono: true })
       const mergeBody = String(t.boardMergeConfirm).replace('{branch}', task.branch).replace('{base}', task.baseBranch)
         + (progress.missing > 0
           ? ` ${String(t.boardMergeCriteriaMissing).replace('{n}', String(progress.missing))}`
@@ -163,7 +175,9 @@ export function useBoardActions(args: UseBoardActionsArgs) {
         },
       })
     } catch (e: any) {
-      say(String((e && e.message) || t.failed), true)
+      // Preflight refusals repeat the blocker list; keep them toast-only so a
+      // stale red banner cannot outlive the blocker it describes.
+      say(String((e && e.message) || t.failed), true, false)
     } finally {
       setBusy('')
     }

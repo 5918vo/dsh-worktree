@@ -245,3 +245,16 @@ test('merge: preview errors surface their message', () => {
   const g = gate({ previewState: { phase: 'error', message: 'preview exploded' } })
   assert.deepEqual(g.reasons.merge, ['preview exploded'])
 })
+
+test('merge reasons fold in server preflight blockers without duplicates', () => {
+  const gate = deriveActionGate({
+    t: T,
+    task: TASK,
+    snapshot: makeSnap({ worktree: { ahead: 1, dirtyCount: 0 }, repo: { currentBranch: 'main', dirtyCount: 0 } }),
+    status: 'review',
+    previewState: { phase: 'ready', preview: { checked: true, supported: true, blockers: [{ code: 'busy', message: 'busy-msg' }, { code: 'again', message: 'busy-msg' }] } },
+  })
+  const list = gate.reasons.merge || []
+  assert.equal(list.filter((item) => item === 'busy-msg').length, 1)
+  assert.equal(gate.disabled.merge, 'busy-msg')
+})

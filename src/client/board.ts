@@ -122,9 +122,10 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
 
   // An error toast vanishes in 6s; the same text also becomes a sticky inline
   // banner so a refused merge/checkout stays readable after the toast is gone.
-  const say = (message: string, error = false) => {
+  // `sticky:false` opts out when the same text is already pinned elsewhere.
+  const say = (message: string, error = false, sticky = error) => {
     setToast({ message, error })
-    setNotice(error ? { message } : null)
+    setNotice(sticky ? { message } : null)
     if (toastTimer.current) clearTimeout(toastTimer.current)
     // Failures need time to read; successes can stay brief.
     toastTimer.current = setTimeout(() => setToast(null), error ? 6000 : 2400)
@@ -296,6 +297,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     setSelectedTaskId,
     setTab,
     openPublish,
+    previewState,
     say,
     refresh,
   })
@@ -511,6 +513,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           archived,
           previewState,
           live,
+          mergeReasons: actionGate.reasons.merge || [],
           baseSha,
           headSha,
           baseLabel: selectedTask.task.baseBranch,
