@@ -6,6 +6,7 @@
  */
 
 import { React, h, useStyles } from './ui'
+import { getJson } from './context'
 import { upsertPublishedTask, visibleProjectViews } from './board-data'
 import { copyText } from './format'
 import { ProjectDetail } from './project-detail'
@@ -88,6 +89,9 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
   const [compact, setCompact] = React.useState(false)
   const [busy, setBusy] = React.useState('')
   const [publishOpen, setPublishOpen] = React.useState(false)
+  const [publishDraft, setPublishDraft] = React.useState(null as any)
+  const [partialNotice, setPartialNotice] = React.useState(null as { taskId: string; message: string } | null)
+  const [environment, setEnvironment] = React.useState(null as any)
   const [addOpen, setAddOpen] = React.useState(false)
   const [publishProjectId, setPublishProjectId] = React.useState('')
   const [publishParentId, setPublishParentId] = React.useState('')
@@ -124,6 +128,14 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     // Failures need time to read; successes can stay brief.
     toastTimer.current = setTimeout(() => setToast(null), error ? 6000 : 2400)
   }
+
+  // Host capabilities are read once: they explain a merge pre-check or deep
+  // worktree path that may fail, and never change during a session.
+  React.useEffect(() => {
+    getJson('config')
+      .then((d: any) => { if (d && d.environment) setEnvironment(d.environment) })
+      .catch(() => {})
+  }, [])
 
   const data = useBoardData({
     t,
@@ -424,6 +436,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
         onAddProject: () => setAddOpen(true),
         onToggleTheme: toggleTheme,
         searchRef,
+        environment,
       }),
 
       selectedTask && projectOfTask && cta
@@ -457,6 +470,8 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           narrow,
           notice,
           onDismissNotice: () => setNotice(null),
+          partial: partialNotice && selectedTask && partialNotice.taskId === selectedTask.task.id ? partialNotice : null,
+          onDismissPartial: () => setPartialNotice(null),
           onBackToList: () => setSelectedTaskId(''),
         })
         : selectedProject
@@ -527,14 +542,23 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
         initialProjectId: publishProjectId,
         parentId: publishParentId,
         parentView: publishParentId ? views.flatMap((v: ProjectView) => v.tasks).find((tv: TaskView) => tv.task.id === publishParentId) || null : null,
+        draft: publishDraft,
+        onDraft: (draft: any) => setPublishDraft(draft),
         onClose: () => setPublishOpen(false),
         onPublished: (task: any, project: any, warning?: string, continued?: boolean) => {
           setPublishOpen(false)
+          setPublishDraft(null)
           if (task) {
             setViews((prev: ProjectView[]) => upsertPublishedTask(prev, task, project.id, continued ? 'developing' : 'ready'))
             setSelectedTaskId(task.id)
             setSelectedProjectId(project.id)
             setTab('overview')
+            // A warning means the worktree exists but the session/start step
+            // only partly succeeded: keep it visible for this task instead of
+            // letting it vanish with the toast.
+            setPartialNotice(warning ? { taskId: String(task.id), message: warning } : null)
+          } else {
+            setPartialNotice(null)
           }
           say(warning || t.published)
           void refresh()

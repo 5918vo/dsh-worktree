@@ -7,6 +7,7 @@ import { pendingLabel, postMergeLabel } from './status'
 import { AttentionFilter } from './attention-filter'
 import { AttentionSummaryBar } from './attention-summary'
 import { quickActionKey, type QuickAction, type SessionHealth, type TaskAttention } from './task-attention'
+import { environmentWarnings, type EnvironmentInfo } from './environment'
 
 export type RailEmptyKind = '' | 'search' | 'filter' | 'no-projects' | 'no-tasks'
 
@@ -40,6 +41,8 @@ export interface RailProps {
   onAddProject: () => void
   onToggleTheme: () => void
   searchRef: any
+  /** Host capabilities from `GET config`; absent while loading or after failure. */
+  environment?: EnvironmentInfo | null
 }
 
 export function Rail(props: RailProps) {
@@ -76,6 +79,14 @@ export function Rail(props: RailProps) {
         h('button', { className: 'dshwd-btn dshwd-btn-cta', style: { height: '25px', padding: '0 9px', fontSize: '11.5px' }, title: String(t.boardPublishShortcut), onClick: props.onPublish }, '+ ', t.publish))),
 
     h('div', { className: 'dshwd-rail-controls' },
+      environmentWarnings(props.environment).map((kind) => h('div', {
+        key: kind,
+        className: 'dshwd-notice dshwd-alert dshwd-alert-warn',
+        role: 'status',
+      },
+        h('div', { className: 'dshwd-notice-text' },
+          h('div', { className: 'dshwd-notice-title' }, kind === 'git' ? props.t.gitTooOldTitle : props.t.longPathsTitle),
+          h('div', { className: 'dshwd-hint' }, kind === 'git' ? props.t.gitTooOldHint : props.t.longPathsHint)))),
       h('div', { className: 'dshwd-search-wrap' },
         h('input', {
           ref: props.searchRef,

@@ -13,6 +13,7 @@ import { createPreviewController, previewAppliesTo, shouldPollPreview } from '..
 import { buildHistoryEntries } from '../timeline'
 import { diffHeadSha } from '../model'
 import { parseTurnEndHealth, type SessionHealth } from '../task-attention'
+import { findPublishedTask, type PublishCheckInfo } from '../publish-state'
 import type { ProjectView, TaskDiff, TaskView, WorktreeTask } from '../../models'
 
 /** Board poll cadence. 4s re-fetched the whole project list far too often; */
@@ -394,18 +395,22 @@ export function useBoardData(args: UseBoardDataArgs) {
     selectedTask && selectedTask.snapshot.postMergeAhead,
   ])
 
-  const checkPublished = async (): Promise<TaskView | undefined> => {
+  const checkPublished = async (info: PublishCheckInfo): Promise<TaskView | undefined> => {
     try {
       const d: any = await getJson('projects?includeArchived=1')
       const list: ProjectView[] = d.projects || []
       setViews(list)
-      const cutoff = Date.now() - 10 * 60 * 1000
-      const fresh = list.flatMap((v) => v.tasks).filter((v) => (v.task.createdAt || 0) >= cutoff)
-      fresh.sort((a, b) => (b.task.createdAt || 0) - (a.task.createdAt || 0))
-      const found = fresh[0]
+      // Never guess from "newest task in the last 10 minutes": a concurrent
+      // publish would select the wrong row. The caller names project + branch
+      // (or title) and we only look there.
+      const pv = info && info.projectId ? list.find((v) => v.project.id === info.projectId) : null
+      if (!pv) return undefined
+      const task = findPublishedTask(pv.tasks.map((tv) => tv.task), info)
+      if (!task) return undefined
+      const found = pv.tasks.find((tv) => tv.task.id === task.id)
       if (!found) return undefined
       setSelectedTaskId(found.task.id)
-      setSelectedProjectId(found.task.projectId)
+      setSelectedProjectId(found.task.projectId || pv.project.id)
       return found
     } catch {
       return undefined

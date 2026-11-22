@@ -45,6 +45,9 @@ export interface StageProps {
   narrow?: boolean
   notice?: { message: string } | null
   onDismissNotice?: () => void
+  /** Persistent note when a publish only partly succeeded (session not bound). */
+  partial?: { message: string } | null
+  onDismissPartial?: () => void
   onBackToList?: () => void
 }
 
@@ -150,6 +153,24 @@ export function Stage(props: StageProps) {
         }, t.codeChanges, h('span', { className: 'dshwd-mono', style: { fontSize: '11px', color: 'var(--text-3)' } }, String(count))))),
 
     h('div', { className: 'dshwd-stage-body' },
+      props.partial
+        ? h('div', { className: 'dshwd-notice dshwd-alert dshwd-alert-warn', role: 'status' },
+          h('div', { className: 'dshwd-notice-text' },
+            h('div', { className: 'dshwd-notice-title' }, t.publishPartialTitle),
+            h('div', { className: 'dshwd-hint' }, props.partial.message)),
+          h('div', { className: 'dshwd-notice-actions' },
+            // The worktree exists but nothing is attached: offer the missing
+            // step here instead of pretending the task is ready to open.
+            !task.sessionId
+              ? h('button', { className: 'dshwd-btn', onClick: () => props.onAction('create') }, t.createSession)
+              : null,
+            h('button', {
+              className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-copy',
+              title: t.close,
+              'aria-label': t.close,
+              onClick: props.onDismissPartial,
+            }, '×')))
+        : null,
       blockers,
       postMerge > 0
         ? h('div', { className: 'dshwd-notice dshwd-alert dshwd-alert-warn' },
