@@ -159,6 +159,8 @@
   "backToList": "返回项目列表",
   "retry": "重试",
   "loadBranchesFailed": "分支加载失败，可以手动输入分支或重试。",
+  "showAllBranches": "显示全部 {n} 个其它分支",
+  "hideOtherBranches": "只显示主干分支",
   "requiredField": "此项不能为空",
   "cancel": "取消",
   "expand": "展开",

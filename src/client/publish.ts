@@ -2,7 +2,7 @@ import { React, h } from './ui'
 import { appCtx, getJson, postLong, bindSession } from './context'
 import { useBranchInfo } from './hooks'
 import { normalizeCriteria, parseCriteriaText } from '../criteria'
-import { initialPublishForm, publishDraftDirty, type PublishCheckInfo, type PublishDraft } from './publish-state'
+import { branchChoices, initialPublishForm, publishDraftDirty, type PublishCheckInfo, type PublishDraft } from './publish-state'
 import type { ProjectView, TaskView } from '../models'
 
 export interface PublishModalProps {
@@ -63,9 +63,11 @@ export function PublishModal(props: PublishModalProps) {
   const [models, setModels] = React.useState([] as ModelRow[])
   const [modelKey, setModelKey] = React.useState('')
   const [modelError, setModelError] = React.useState('')
+  const [showAllBranches, setShowAllBranches] = React.useState(false)
 
   const titleRef = React.useRef(null)
   const rootRef = React.useRef(null)
+  const keepRef = React.useRef(null)
   const restoreFocus = React.useRef(null as any)
   // Capture the opener during render, before autoFocus moves focus into the
   // dialog; an effect would already see the focused input.
@@ -131,13 +133,18 @@ export function PublishModal(props: PublishModalProps) {
     return () => { cancelled = true }
   }, [])
 
+  // The first render already seeded base/branch from the draft; resetting on
+  // mount would wipe a restored custom branch name before it is visible.
+  const mountedRef = React.useRef(false)
   React.useEffect(() => {
     if (!project) return
+    if (!mountedRef.current) { mountedRef.current = true; return }
     // 续作发布（parentId）时 base 必须保持前序任务的真实合并目标；
     // 项目下拉已 disabled，projectId 不会变，这个重置只会把基线改回项目默认值。
     if (parentTask) return
     setBase(project.baseBranch)
     setBranch('')
+    setShowAllBranches(false)
   }, [projectId])
 
   const currentForm = (): PublishDraft => ({ title, description, manualCriteria: manual, pickedCriteria: picked, branchName: branch })
@@ -150,6 +157,13 @@ export function PublishModal(props: PublishModalProps) {
     props.onClose()
   }
   closeRef.current = handleClose
+  // The discard banner is a second layer: focus belongs to it, not to the
+  // background form the user was just typing in.
+  React.useEffect(() => {
+    if (!closeConfirm) return
+    const el: any = keepRef.current
+    if (el && typeof el.focus === 'function') el.focus()
+  }, [closeConfirm])
   const keepDraftAndClose = () => {
     if (onDraftRef.current) onDraftRef.current(currentForm())
     props.onClose()
@@ -178,10 +192,17 @@ export function PublishModal(props: PublishModalProps) {
       const root: any = rootRef.current
       if (!root) return
       const nodes = Array.from(root.querySelectorAll('input, select, textarea, button, [tabindex]:not([tabindex="-1"])'))
-        .filter((el: any) => !el.disabled)
+        .filter((el: any) => !el.disabled && el.getClientRects().length > 0)
       if (!nodes.length) return
       const first: any = nodes[0]
       const last: any = nodes[nodes.length - 1]
+      // Focus can land on the backdrop (or outside the dialog after a rerender);
+      // pull it back before deciding whether it sits on the first/last node.
+      if (!root.contains(document.activeElement)) {
+        e.preventDefault()
+        ;(e.shiftKey ? last : first).focus()
+        return
+      }
       if (e.shiftKey && document.activeElement === first) {
         e.preventDefault()
         last.focus()
@@ -285,7 +306,7 @@ export function PublishModal(props: PublishModalProps) {
   }
 
   if (!project) {
-    return modal(t, project, null, busy, start, handleClose, h('div', { className: 'dshwd-empty' },
+    return modal(t, project, null, busy, start, handleClose, rootRef, h('div', { className: 'dshwd-empty' },
       h('div', { className: 'dshwd-empty-title' }, t.noProjectsHint),
       h('div', { className: 'dshwd-hint' }, t.boardAddProjectFirst)),
     h('button', { className: 'dshwd-btn', onClick: handleClose }, t.close))
@@ -294,16 +315,18 @@ export function PublishModal(props: PublishModalProps) {
   const branchPlaceholder = `${project.branchPrefix || 'dsh-wt/'}<id8>`
   // 后端可接受任意已存在的分支；加载到的列表不含当前 base 时补一个选项，
   // 否则 <select> 会显示成第一个分支（＝悄悄改掉续作目标）。
-  const baseBranches = base && branchNames.length && !branchNames.includes(base) ? [base, ...branchNames] : branchNames
+  const choices = branchChoices(baseBranchesRaw(branchNames, base), base)
+  const baseBranches = showAllBranches ? choices.primary.concat(choices.rest) : choices.primary
+  const hiddenBranches = choices.rest.length
 
-  return modal(t, project, submit, busy, start, handleClose,
+  return modal(t, project, submit, busy, start, handleClose, rootRef,
     closeConfirm
       ? h('div', { className: 'dshwd-notice dshwd-alert dshwd-alert-warn', role: 'alert' },
         h('div', { className: 'dshwd-notice-text' },
           h('div', { className: 'dshwd-notice-title' }, t.draftConfirmTitle),
           h('div', { className: 'dshwd-hint' }, t.draftConfirmHint)),
         h('div', { className: 'dshwd-notice-actions' },
-          h('button', { className: 'dshwd-btn', disabled: busy, onClick: keepDraftAndClose }, t.draftKeep),
+          h('button', { className: 'dshwd-btn', disabled: busy, onClick: keepDraftAndClose, ref: keepRef }, t.draftKeep),
           h('button', { className: 'dshwd-btn dshwd-btn-danger', disabled: busy, onClick: discardAndClose }, t.draftDiscard)))
       : null,
 
@@ -331,7 +354,17 @@ export function PublishModal(props: PublishModalProps) {
           }),
         branchInfo.status === 'error'
           ? h('button', { className: 'dshwd-btn', title: t.retry, disabled: busy, onClick: branchInfo.retry }, '↻')
-          : null))),
+          : null)),
+      branchInfo.status === 'error'
+        ? h('div', { className: 'dshwd-hint dshwd-text-warn' }, t.loadBranchesFailed)
+        : null,
+      hiddenBranches || showAllBranches
+        ? h('button', {
+          className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini',
+          disabled: busy,
+          onClick: () => setShowAllBranches((v: boolean) => !v),
+        }, showAllBranches ? t.hideOtherBranches : String(t.showAllBranches).replace('{n}', String(hiddenBranches)))
+        : null),
 
     parentTask && !asPlain
       ? h('div', { className: 'dshwd-alert dshwd-alert-info' },
@@ -389,6 +422,20 @@ export function PublishModal(props: PublishModalProps) {
           rows: 2,
           placeholder: t.boardCriterionPlaceholder,
           onChange: (e: any) => setManual(e.target.value),
+          // The placeholder promises Enter adds an item; parse the same way the
+          // submit path does so typing and submitting cannot disagree.
+          onKeyDown: (e: any) => {
+            if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent && e.nativeEvent.isComposing) return
+            e.preventDefault()
+            const items = parseCriteriaText(manual)
+            if (!items.length) return
+            setPicked((list: string[]) => {
+              const next = list.slice()
+              for (const item of items) if (!next.includes(item)) next.push(item)
+              return next
+            })
+            setManual('')
+          },
         }))),
 
     h('button', { className: 'dshwd-adv-toggle', disabled: busy, onClick: () => setAdvanced((v: boolean) => !v) },
@@ -448,13 +495,13 @@ export function PublishModal(props: PublishModalProps) {
   }
 }
 
-function modal(t: any, project: any, onSubmit: (() => void) | null, busy: boolean, start: boolean, onClose: () => void, ...children: any[]) {
+function modal(t: any, project: any, onSubmit: (() => void) | null, busy: boolean, start: boolean, onClose: () => void, rootRef: any, ...children: any[]) {
   const close = () => { if (!busy) onClose() }
   return h('div', {
     className: 'dshwd-modal-backdrop',
     onMouseDown: (e: any) => { if (e.target === e.currentTarget) close() },
   },
-    h('div', { className: 'dshwd-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': t.publishTitle },
+    h('div', { className: 'dshwd-modal', ref: rootRef, role: 'dialog', 'aria-modal': 'true', 'aria-label': t.publishTitle, tabIndex: -1 },
       h('div', { className: 'dshwd-modal-head' },
         h('div', { className: 'dshwd-modal-title-group' },
           h('div', { className: 'dshwd-modal-title' }, t.publishTitle),
@@ -477,6 +524,12 @@ function field(t: any, label: string, input: any) {
   return h('label', { className: 'dshwd-field' },
     h('span', { className: 'dshwd-label' }, label),
     input)
+}
+
+/** Keep the selected base visible even when the fetched list omitted it. */
+function baseBranchesRaw(names: string[], base: string): string[] {
+  if (!names.length) return names
+  return base && !names.includes(base) ? [base, ...names] : names
 }
 
 function validBranch(value: string) {

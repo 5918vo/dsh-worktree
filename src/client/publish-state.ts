@@ -73,3 +73,39 @@ export function findPublishedTask<T extends { branch?: string | null; title?: st
   }
   return null
 }
+
+/** Trunk names that a task should normally branch from. */
+const TRUNK = /^(main|master|develop|development|trunk|dev)$/i
+
+/** `git branch` prints detached HEAD as `(HEAD detached at <sha>)`. */
+export function isDetachedBranchLabel(name: string): boolean {
+  return /^\(.*\)$/.test(String(name || '').trim())
+}
+
+export interface BranchChoices {
+  /** Branches to show by default: trunks plus the currently selected base. */
+  primary: string[]
+  /** Task branches / everything else, hidden behind "show all". */
+  rest: string[]
+}
+
+/**
+ * Split a raw branch list into trunks and the rest. Task branches
+ * (`dsh-wt/<id>`) and git's detached-HEAD pseudo entry never belong in the
+ * default base picker; the current base always stays visible.
+ */
+export function branchChoices(names: any, base = ''): BranchChoices {
+  const list = Array.isArray(names) ? names.map(String).filter(Boolean) : []
+  const primary: string[] = []
+  const rest: string[] = []
+  const chosen = String(base || '').trim()
+  for (const name of list) {
+    if (isDetachedBranchLabel(name)) continue
+    if (TRUNK.test(name) || name === chosen) primary.push(name)
+    else rest.push(name)
+  }
+  // The base may be missing from the list (deleted/filtered): keep a slot for
+  // it so the select cannot silently show a different branch.
+  if (chosen && !primary.includes(chosen) && !rest.includes(chosen)) primary.unshift(chosen)
+  return { primary, rest }
+}

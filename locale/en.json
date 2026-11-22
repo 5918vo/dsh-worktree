@@ -159,6 +159,8 @@
   "backToList": "Back to projects",
   "retry": "Retry",
   "loadBranchesFailed": "Could not load branches. You can enter a branch manually or retry.",
+  "showAllBranches": "Show all {n} other branches",
+  "hideOtherBranches": "Show trunk branches only",
   "requiredField": "This field is required",
   "cancel": "Cancel",
   "expand": "Expand",

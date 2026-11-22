@@ -222,7 +222,11 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
   }, [selectedTaskId])
 
   const openPublish = (projectId?: string, parentId = '') => {
-    setPublishProjectId(projectId || selectedProjectId || (views[0] && views[0].project.id) || '')
+    // Prefer what the user is looking at now; `views` is ordered by recent
+    // activity, so its first entry is the "last used" project and must not win
+    // over the current selection.
+    const taskProjectId = selectedTask && selectedTask.task.projectId ? selectedTask.task.projectId : ''
+    setPublishProjectId(projectId || selectedProjectId || taskProjectId || (views[0] && views[0].project.id) || '')
     setPublishParentId(parentId)
     setPublishOpen(true)
   }
