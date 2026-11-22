@@ -36,6 +36,7 @@ import {
   boardStatusLabel,
   diffBaseSha,
   filterProjectViews,
+  mergeGateMissing,
   railEmptyKind,
   themeFor,
   type BoardFilter,
@@ -349,7 +350,9 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     pending,
     previewState,
     otherReviewing,
-  }), [t, selectedTask, statusKey, running, pending, previewState, otherReviewing])
+    mergeGateMissing: selectedTask ? mergeGateMissing(projectOfTask && projectOfTask.project, selectedTask.task, selectedTask.snapshot.status) : 0,
+  }), [t, selectedTask, statusKey, running, pending, previewState, otherReviewing, projectOfTask])
+
   const baseSha = selectedTask
     ? diffBaseSha(selectedTask.task, selectedTask.snapshot, previewRef.current && previewRef.current.preview ? (previewRef.current.preview.expectedBase || null) : null)
     : ''
@@ -445,6 +448,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
         onSelectProject: selectProject,
         onQuick: runQuick,
         onPublish: () => openPublish(),
+        onPinTask: actions.runPin,
         onAddProject: () => setAddOpen(true),
         onToggleTheme: toggleTheme,
         searchRef,
@@ -481,6 +485,8 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           diffLoading,
           diffError,
           onRetryDiff: retryDiff,
+          onSendPrompt: actions.runPrompt,
+          promptBusy: !!busy,
           baseSha,
           headSha,
           onToggleRail: () => setRailHidden((v: boolean) => !v),

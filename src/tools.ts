@@ -137,13 +137,13 @@ export function registerTools(app: App): () => void {
     reg({
       name: 'worktree_act',
       description:
-        'Act on a worktree task: checkout (switch the main repo to the task branch for acceptance), back (switch back to the recorded original branch), merge (merge --no-ff into the base branch), cleanup (remove the worktree, optionally delete the branch), archive (hide a merged/cleaned task from the board default list), unarchive (restore it), delete (remove the record).',
+        'Act on a worktree task: checkout (switch the main repo to the task branch for acceptance), back (switch back to the recorded original branch), merge (merge --no-ff into the base branch), cleanup (remove the worktree, optionally delete the branch), archive (hide a merged/cleaned task from the board default list), unarchive (restore it), pin/unpin (pin the task to the top of the rail), delete (remove the record).',
       output: outDef(),
       parameters: {
         type: 'object',
         properties: {
           id: { type: 'string', description: 'Task id from worktree_tasks.' },
-          action: { type: 'string', enum: ['checkout', 'back', 'merge', 'merge-preflight', 'cleanup', 'archive', 'unarchive', 'delete'], description: 'Operation.' },
+          action: { type: 'string', enum: ['checkout', 'back', 'merge', 'merge-preflight', 'cleanup', 'archive', 'unarchive', 'pin', 'unpin', 'delete'], description: 'Operation.' },
           force: { type: 'boolean', description: 'For cleanup: remove even with uncommitted changes.' },
           delete_branch: { type: 'boolean', description: 'For cleanup: also delete the task branch.' },
           force_delete_branch: { type: 'boolean', description: 'For cleanup: delete an unmerged branch (data loss).' },
@@ -162,6 +162,9 @@ export function registerTools(app: App): () => void {
         try {
           if (action === 'checkout') return clean({ ok: true, task: brief(await app.runtime.view(await app.runtime.checkout(id))) })
           if (action === 'back') return clean({ ok: true, task: brief(await app.runtime.view(await app.runtime.back(id))) })
+          if (action === 'pin' || action === 'unpin') {
+            return clean({ ok: true, task: brief(await app.runtime.view(app.runtime.setTaskPinned(id, action === 'pin'))) })
+          }
           if (action === 'merge-preflight') {
             return clean({ ok: true, preflight: await app.runtime.mergePreflight(id, { switchToBase: args.switch_to_base === true }) })
           }

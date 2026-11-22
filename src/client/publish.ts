@@ -2,8 +2,8 @@ import { React, h } from './ui'
 import { appCtx, getJson, postLong, bindSession } from './context'
 import { useBranchInfo } from './hooks'
 import { normalizeCriteria, parseCriteriaText } from '../criteria'
-import { branchChoices, initialPublishForm, publishDraftDirty, type PublishCheckInfo, type PublishDraft } from './publish-state'
-import type { ProjectView, TaskView } from '../models'
+import { applyPublishTemplate, branchChoices, initialPublishForm, publishDraftDirty, type PublishCheckInfo, type PublishDraft } from './publish-state'
+import type { ProjectView, TaskView, TaskTemplate } from '../models'
 
 export interface PublishModalProps {
   t: any
@@ -62,6 +62,8 @@ export function PublishModal(props: PublishModalProps) {
   const [unknown, setUnknown] = React.useState(false)
   const [closeConfirm, setCloseConfirm] = React.useState(false)
   const [library, setLibrary] = React.useState([] as string[])
+  const [templates, setTemplates] = React.useState([] as TaskTemplate[])
+  const [templateId, setTemplateId] = React.useState('')
   const [picked, setPicked] = React.useState(form0.pickedCriteria)
   const [manual, setManual] = React.useState(form0.manualCriteria)
   const [models, setModels] = React.useState([] as ModelRow[])
@@ -97,7 +99,27 @@ export function PublishModal(props: PublishModalProps) {
     getJson('acceptance-criteria')
       .then((d: any) => setLibrary(Array.isArray(d.items) ? d.items.map(String) : []))
       .catch(() => {})
+    getJson('templates')
+      .then((d: any) => setTemplates(Array.isArray(d.templates) ? d.templates : []))
+      .catch(() => {})
   }, [])
+
+  // Applying a template replaces the fields it owns and nothing else: project,
+  // base, custom branch, model and start options stay exactly as chosen.
+  const applyTemplate = (id: string) => {
+    setTemplateId(id)
+    const item = templates.find((x: TaskTemplate) => x.id === id)
+    if (!item) return
+    const next = applyPublishTemplate(item, library)
+    // Replace unconditionally: switching templates must not leave the previous
+    // template's title/description behind.
+    setTitle(next.title)
+    setDescription(next.description)
+    setPicked(next.picked)
+    setManual(next.manual)
+    clearField('title')
+    clearField('description')
+  }
 
   // Model list comes from the host's session catalog — the same source the
   // official conversation model dropdown reads.
@@ -395,6 +417,17 @@ export function PublishModal(props: PublishModalProps) {
       onChange: (e: any) => { setTitle(e.target.value); clearField('title') },
     }), true),
     fieldErrors.title ? h('div', { className: 'dshwd-alert', role: 'alert' }, fieldErrors.title) : null,
+
+    templates.length
+      ? field(t, t.template, h('select', {
+        className: 'dshwd-select',
+        value: templateId,
+        disabled: busy,
+        onChange: (e: any) => applyTemplate(e.target.value),
+      },
+      h('option', { value: '' }, t.templateSelect),
+      templates.map((item: TaskTemplate) => h('option', { key: item.id, value: item.id }, item.name))))
+      : h('div', { className: 'dshwd-hint' }, t.templateEmpty),
 
     field(t, t.taskDescription, h('textarea', {
       'aria-required': 'true',

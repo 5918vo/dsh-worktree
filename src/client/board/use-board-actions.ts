@@ -8,7 +8,7 @@ import { getJson, post, postLong } from '../context'
 import { openNativeSession, sendSessionPrompt, startTask } from '../actions'
 import { SYNC_BUSY, syncPromptText } from '../review-surfaces'
 import type { BoardAction } from '../model'
-import { cleanupPrimaryLabel, criteria, criteriaProgress, switchConfirmText } from '../model'
+import { cleanupPrimaryLabel, criteria, criteriaProgress, mergeGateMissing, switchConfirmText } from '../model'
 import { copyText } from '../format'
 import { buildAcceptanceReport, reportFilename } from '../report'
 import type { ProjectView, TaskDiff, TaskView } from '../../models'
@@ -121,6 +121,13 @@ export function useBoardActions(args: UseBoardActionsArgs) {
   async function runMerge() {
     if (!selectedTask || busy) return
     const snap = selectedTask.snapshot
+    // Project gate first: a blocked merge needs no Git preflight, and the toast
+    // names the exact number of unchecked criteria.
+    const gateMissing = mergeGateMissing(projectOfTask && projectOfTask.project, selectedTask.task, snap.status)
+    if (gateMissing > 0) {
+      say(String(t.mergeGateBlocked).replace('{n}', String(gateMissing)), true)
+      return
+    }
     const curOnBase = snap.repo.currentBranch === selectedTask.task.baseBranch
     setBusy('merge-pre')
     try {
@@ -434,6 +441,45 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     )
   }
 
+  /** Pin / unpin from the rail without opening the task. */
+  async function runPin(taskId: string, pinned: boolean) {
+    if (busy) return
+    setBusy('pin')
+    try {
+      await post('task/pin', { id: taskId, pinned })
+      say(pinned ? t.taskPinned : t.taskUnpinned)
+    } catch (e: any) {
+      say(String((e && e.message) || t.failed), true)
+    } finally {
+      setBusy('')
+      void refresh()
+    }
+  }
+
+  /**
+   * Send a free-form instruction into the selected task's session. The same
+   * queue-mode prompt path as the sync action, so no new session is created and
+   * the task binding stays untouched.
+   */
+  async function runPrompt(text: string) {
+    const value = String(text || '').trim()
+    if (!selectedTask || !selectedTask.task.sessionId) throw new Error(t.quickPromptNoSession)
+    if (busy) throw new Error(t.failed)
+    if (!remotes || !remotes.session) throw new Error(t.failed)
+    if (!value) return
+    setBusy('prompt')
+    try {
+      await sendSessionPrompt(remotes, String(selectedTask.task.sessionId), value)
+      say(t.quickPromptSent)
+    } catch (e: any) {
+      say(String((e && e.message) || t.failed), true)
+      throw e
+    } finally {
+      setBusy('')
+      void refresh()
+    }
+  }
+
   return {
     runAction,
     runCriterion,
@@ -443,6 +489,8 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     runDeleteTask,
     runMergeRestore,
     runSyncBaseline,
+    runPin,
+    runPrompt,
     applyStash,
     dropStash,
     viewStash,

@@ -25,6 +25,8 @@ export interface ActionGateInput {
   previewState?: any
   /** Another uncleaned task the main repo is currently accepting. */
   otherReviewing?: any
+  /** Unchecked acceptance criteria remaining under the project's merge gate. */
+  mergeGateMissing?: number
 }
 
 export interface ActionGate {
@@ -53,7 +55,7 @@ function previewOf(previewState: any): any {
 }
 
 export function deriveActionGate(input: ActionGateInput): ActionGate {
-  const { t, task, snapshot: snap, status = '', running = false, pending = false, previewState, otherReviewing } = input
+  const { t, task, snapshot: snap, status = '', running = false, pending = false, previewState, otherReviewing, mergeGateMissing = 0 } = input
   const reasons: Partial<Record<BoardAction, string[]>> = {}
   if (!snap) return { disabled: {}, reasons }
 
@@ -112,6 +114,7 @@ export function deriveActionGate(input: ActionGateInput): ActionGate {
     push('merge', t.acceptNoCommits)
   } else {
     if (dirty > 0) push('merge', fill(t.acceptWorktreeDirtyCommit, 'n', String(dirty)))
+    if (mergeGateMissing > 0) push('merge', fill(t.mergeGateBlocked, 'n', String(mergeGateMissing)))
     // Being on another branch is fine: the merge switches to the base itself.
     // A detached/unknown HEAD is not, so name the branch we could not resolve.
     if (!onBase && !currentBranch) push('merge', fill(t.acceptNotOnBase, 'branch', currentBranch || '—'))

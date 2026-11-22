@@ -29,6 +29,11 @@ export interface Project {
   /** Project-level overrides; empty falls back to the global config. */
   dirName?: string
   branchPrefix?: string
+  /**
+   * Merge gate: `criteria` refuses to merge while acceptance criteria are
+   * unchecked. Omitted/`off` keeps the historical behaviour.
+   */
+  mergeGate?: 'off' | 'criteria'
   createdAt: number
 }
 
@@ -91,8 +96,21 @@ export interface WorktreeTask {
   cleanedAt?: number
   /** Set when the task is archived: hidden from the board by default, but not deleted. */
   archivedAt?: number
+  /** Set when the task is pinned in the rail; pinned tasks sort first. */
+  pinnedAt?: number
   createdAt: number
   updatedAt: number
+}
+
+/** A reusable publish template (title/description/criteria presets). */
+export interface TaskTemplate {
+  id: string
+  name: string
+  title: string
+  description: string
+  criteria: string[]
+  createdAt: number
+  updatedAt?: number
 }
 
 /** Per-task git snapshot; the source of truth for board status. */

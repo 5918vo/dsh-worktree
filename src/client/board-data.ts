@@ -73,7 +73,8 @@ export function upsertPublishedTask(
     // Drop any stale duplicate (e.g. one a poll already delivered) before adding.
     const without = v.tasks.filter((t) => t.task.id !== task.id)
     if (v.project.id !== target.project.id) return { ...v, tasks: without }
-    const tasks = [view, ...without].sort((a, b) => (b.task.createdAt || 0) - (a.task.createdAt || 0))
+    // Same order as the server: pinned first, then newest created.
+    const tasks = [view, ...without].sort((a, b) => (Number(b.task.pinnedAt) || 0) - (Number(a.task.pinnedAt) || 0) || (b.task.createdAt || 0) - (a.task.createdAt || 0))
     return { ...v, tasks, stats: { ...v.stats, tasks: tasks.length } }
   })
 }

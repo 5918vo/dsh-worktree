@@ -130,6 +130,9 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-more-item svg { width: 12px; height: 12px; flex: none; color: var(--warn); }
 .dshw-board .dshwd-more-item-err svg { color: var(--err); }
 .dshw-board .dshwd-item-row1 { display: flex; align-items: center; gap: 8px; }
+.dshw-board .dshwd-pin-mark { display: inline-flex; flex: none; color: var(--accent); }
+.dshw-board .dshwd-pin-mark svg { width: 11px; height: 11px; }
+.dshw-board .dshwd-item-action-on { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
 .dshw-board .dshwd-item-title { flex: 1; font-size: 12.5px; font-weight: 500; color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dshw-board .dshwd-item-stat { font-size: 11px; color: var(--text-3); flex-shrink: 0; }
 .dshw-board .dshwd-item-row2 { margin-top: 4px; padding-left: 15px; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--text-3); }
@@ -216,6 +219,18 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-live-grid { display: grid; grid-template-columns: minmax(0,1fr) 216px; border: 1px solid var(--line); border-radius: 0 0 8px 8px; background: var(--code-bg); overflow: hidden; }
 .dshw-board .dshwd-live-log { padding: 8px; display: flex; flex-direction: column; gap: 2px; max-height: 56vh; overflow-y: auto; font-size: 12px; }
 .dshw-board .dshwd-live-side { border-left: 1px solid var(--line); padding: 12px; display: flex; flex-direction: column; gap: 16px; background: var(--bg-stage); min-width: 0; }
+/* Quick prompts: chips fill the box, Ctrl/Cmd+Enter sends into the queue. */
+.dshw-board .dshwd-prompt { margin-top: 10px; display: flex; flex-direction: column; gap: 7px; }
+.dshw-board .dshwd-prompt-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.dshw-board .dshwd-prompt-title { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); margin-right: 2px; }
+.dshw-board .dshwd-prompt-chip { border: 1px solid var(--line); background: var(--bg-elevated); color: var(--text-2); border-radius: 999px; padding: 2px 9px; font-size: 11px; cursor: pointer; }
+.dshw-board .dshwd-prompt-chip:hover:not(:disabled) { color: var(--text-1); border-color: var(--line-strong); background: var(--bg-hover); }
+.dshw-board .dshwd-prompt-chip:disabled { opacity: .5; cursor: not-allowed; }
+.dshw-board .dshwd-prompt-box { border: 1px solid var(--line); border-radius: 8px; background: var(--code-bg); overflow: hidden; }
+.dshw-board .dshwd-prompt-input { display: block; width: 100%; box-sizing: border-box; border: 0; background: transparent; color: var(--text-1); font: inherit; font-size: 12px; line-height: 1.5; padding: 8px 10px; resize: vertical; min-height: 56px; }
+.dshw-board .dshwd-prompt-input:focus { outline: none; }
+.dshw-board .dshwd-prompt-box:focus-within { border-color: var(--accent-line); }
+.dshw-board .dshwd-prompt-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; border-top: 1px solid var(--line); background: var(--bg-stage); }
 .dshw-board .dshwd-live-side-block { display: flex; flex-direction: column; gap: 6px; }
 .dshw-board .dshwd-live-side-title { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
 .dshw-board .dshwd-step { border-radius: 5px; }

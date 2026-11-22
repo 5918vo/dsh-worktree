@@ -14,6 +14,8 @@ export function ProjectDetail(props: any) {
     const [baseBranch, setBaseBranch] = React.useState(project.baseBranch || '')
     const [dirName, setDirName] = React.useState(project.dirName || '')
     const [branchPrefix, setBranchPrefix] = React.useState(project.branchPrefix || '')
+    // Opt-in gate: only an explicit 'criteria' blocks merges; absent means off.
+    const [mergeGateOn, setMergeGateOn] = React.useState(project.mergeGate === 'criteria')
     const branches = useBranchInfo(project.repoPath)
     const [deleteTarget, setDeleteTarget] = React.useState(null as { id: string; name: string; baseBranch: string; total: number } | null)
     const [withTasks, setWithTasks] = React.useState(false)
@@ -85,6 +87,7 @@ export function ProjectDetail(props: any) {
           baseBranch,
           dirName,
           branchPrefix,
+          mergeGate: mergeGateOn ? 'criteria' : 'off',
         })
         setMsg(t.saved)
         if (saveTimer.current) window.clearTimeout(saveTimer.current)
@@ -318,7 +321,17 @@ export function ProjectDetail(props: any) {
                     placeholder: '.dsh-worktrees',
                     onChange: (e: any) => setDirName(e.target.value),
                   }),
-                  h('div', { className: 'dshw-hint' }, t.worktreeDirHint)))),
+                  h('div', { className: 'dshw-hint' }, t.worktreeDirHint))),
+              h('div', { className: 'dshw-form-row' },
+                h('div', { className: 'dshw-form-label' }, t.mergeGate),
+                h('div', null,
+                  h(Checkbox, {
+                    className: 'dshw-check',
+                    checked: mergeGateOn,
+                    onChange: (next: boolean) => setMergeGateOn(next),
+                    label: h('span', { className: 'dshw-check-copy' }, t.mergeGateCriteria),
+                  }),
+                  h('div', { className: 'dshw-hint' }, t.mergeGateHint)))),
             h('div', { className: 'dshw-form-foot' },
               h(Btn, { variant: 'primary', type: 'submit', disabled: busy !== '' }, busy === 'save' ? h(Spinner) : null, busy === 'save' ? t.saving : t.save),
               h('span', { className: 'dshw-save-state', role: 'status' }, msg ? [h(Icon, { key: 'i', name: 'check' }), h('span', { key: 's' }, msg)] : null)),
