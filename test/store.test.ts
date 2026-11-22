@@ -214,3 +214,59 @@ test('a refresh drops fields another process cleared and writes keep them clear'
     await rmrf(dir)
   }
 })
+
+// Binding is read-modify-write on a shared file: it must be atomic across
+// processes and must never point two tasks at one session (or overwrite a
+// binding another process just made).
+test('bindSession is atomic across store instances and refuses duplicate bindings', async () => {
+  const dir = await fs.mkdtemp(join(tmpdir(), 'dshw-store-'))
+  const a = new Store(dir)
+  const b = new Store(dir)
+  await a.load()
+  await b.load()
+  try {
+    a.putTask(task('t1', 'p'))
+    a.putTask(task('t2', 'p'))
+    // Snapshot before the binding: a later stale write must not clear it.
+    const stale = { ...a.getTask('t1')! }
+
+    assert.equal(b.bindSession('t1', 's1').ok, true)
+    assert.equal(a.getTask('t1')!.sessionId, 's1')
+    assert.equal(a.getTask('t1')!.startOnBind, false)
+    stale.title = 'renamed'
+    a.putTask(stale as any)
+    assert.equal(a.getTask('t1')!.sessionId, 's1', 'a stale snapshot must not clear the binding')
+    assert.equal(a.getTask('t1')!.startOnBind, false, 'a stale snapshot must not reopen start-on-bind')
+    assert.equal(a.getTask('t1')!.title, 'renamed')
+
+    const taken = b.bindSession('t2', 's1')
+    assert.equal(taken.ok, false)
+    assert.equal((taken as any).conflict, 'session-taken')
+    assert.equal((taken as any).other.id, 't1')
+
+    const rebound = b.bindSession('t1', 's2')
+    assert.equal(rebound.ok, false)
+    assert.equal((rebound as any).conflict, 'task-bound')
+    assert.equal(a.getTask('t1')!.sessionId, 's1', 'the first binding must win')
+
+    assert.equal(b.bindSession('t1', 's1').ok, true, 'binding the same pair is idempotent')
+
+    // Deleting the conversation unbinds atomically, freeing the session for a
+    // later task; the old task stays unbound (no resurrection).
+    assert.equal(b.unbindSession('s1')?.id, 't1')
+    assert.equal(a.getTask('t1')!.sessionId, null)
+    assert.equal(a.getTask('t1')!.startOnBind, false)
+    assert.equal(b.bindSession('t2', 's1').ok, true)
+    assert.equal(a.getTask('t2')!.sessionId, 's1')
+
+    const missing = b.bindSession('missing', 's9')
+    assert.equal(missing.ok, false)
+    assert.equal((missing as any).conflict, 'missing')
+  } finally {
+    a.dispose()
+    b.dispose()
+    await a.flush()
+    await b.flush()
+    await rmrf(dir)
+  }
+})

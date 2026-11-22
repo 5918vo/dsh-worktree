@@ -15,6 +15,11 @@ import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { Project, WorktreeTask } from './models.js'
 
+/** Outcome of an atomic session binding; callers translate conflicts into 409s. */
+export type BindSessionResult =
+  | { ok: true; task: WorktreeTask }
+  | { ok: false; conflict: 'missing' | 'session-taken' | 'task-bound'; other?: WorktreeTask }
+
 /**
  * One global task store for every DSH process on this machine.
  *
@@ -410,11 +415,67 @@ export class Store {
     }
     this.withLock(() => {
       this.refreshTasks()
+      // Session binding is owned by bindSession/unbindSession. A caller that
+      // read the task before another process bound it must not write its stale
+      // null over the fresh binding (and must not reopen start-on-bind).
+      const current = this.tasks.get(task.id)
+      if (current) {
+        if (current.sessionId && !next.sessionId) next.sessionId = current.sessionId
+        if (current.startOnBind === false && next.startOnBind !== false) next.startOnBind = false
+      }
       // 显式清空：刷新可能把磁盘上的旧值写回同一个对象，必须再删一次。
       for (const key of cleared) delete (task as any)[key]
       Object.assign(task, next)
       this.tasks.set(task.id, task)
       this.saveTasks()
+    })
+  }
+
+  /**
+   * Bind one session to one task under the cross-process store lock.
+   *
+   * Binding used to be read-modify-write outside the lock, so two DSH processes
+   * could bind different sessions to one task, or one session to two tasks, and
+   * the last writer silently won. Refresh + validate + save in one critical
+   * section makes the shared file the single source of truth. Rebinding an
+   * existing task to a different session is refused: the client only binds
+   * tasks with no session, so an overwrite means two callers raced.
+   */
+  bindSession(taskId: string, sessionId: string): BindSessionResult {
+    return this.withLock(() => {
+      this.refreshTasks()
+      const task = this.tasks.get(taskId)
+      if (!task) return { ok: false, conflict: 'missing' }
+      if (task.sessionId === sessionId) {
+        if (task.startOnBind !== false) {
+          task.startOnBind = false
+          task.updatedAt = Date.now()
+          this.saveTasks()
+        }
+        return { ok: true, task }
+      }
+      const other = [...this.tasks.values()].find((t) => t.id !== taskId && t.sessionId === sessionId)
+      if (other) return { ok: false, conflict: 'session-taken', other }
+      if (task.sessionId) return { ok: false, conflict: 'task-bound', other: task }
+      task.sessionId = sessionId
+      task.startOnBind = false
+      task.updatedAt = Date.now()
+      this.saveTasks()
+      return { ok: true, task }
+    })
+  }
+
+  /** Clear the task bound to a session (conversation deleted) atomically. */
+  unbindSession(sessionId: string): WorktreeTask | null {
+    return this.withLock(() => {
+      this.refreshTasks()
+      const task = [...this.tasks.values()].find((t) => t.sessionId === sessionId)
+      if (!task) return null
+      task.sessionId = null
+      task.startOnBind = false // the user removed the conversation; do not resurrect it
+      task.updatedAt = Date.now()
+      this.saveTasks()
+      return task
     })
   }
 

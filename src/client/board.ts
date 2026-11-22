@@ -301,6 +301,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
 
   const archived = !!(selectedTask && selectedTask.task.archivedAt)
   const running = selectedTask ? runningOf(selectedTask.task) : false
+  const pending = !!(selectedTask && selectedTask.task.sessionId && pendingMap[selectedTask.task.sessionId])
   const status = selectedTask ? boardStatus(selectedTask.snapshot.status, running) : null
   const statusKey = status ? status.key : ''
   const cta = selectedTask && status ? boardCta(status, !!selectedTask.task.sessionId) : null
@@ -332,9 +333,10 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     snapshot: selectedTask ? selectedTask.snapshot : null,
     status: statusKey,
     running,
+    pending,
     previewState,
     otherReviewing,
-  }), [t, selectedTask, statusKey, running, previewState, otherReviewing])
+  }), [t, selectedTask, statusKey, running, pending, previewState, otherReviewing])
   const baseSha = selectedTask
     ? diffBaseSha(selectedTask.task, selectedTask.snapshot, previewRef.current && previewRef.current.preview ? (previewRef.current.preview.expectedBase || null) : null)
     : ''

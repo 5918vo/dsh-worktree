@@ -1,6 +1,6 @@
 {
   "name": "@5318vo/dsh-worktree",
-  "version": "1.9.2",
+  "version": "1.9.3",
   "description": "DeepSeek Worktree task plugin — publish git-worktree-backed tasks; each task is a real DSH session bound to its worktree.",
   "type": "module",
   "main": "./dist/index.js",
@@ -45,7 +45,7 @@
     "test": "node scripts/test.mjs",
     "verify": "npm run typecheck && npm run check:locale && npm test && npm run build",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true}); require('fs').rmSync('.test-dist',{recursive:true,force:true})\"",
-    "prepublishOnly": "npm run typecheck && npm run build",
+    "prepublishOnly": "npm run verify",
     "pack:check": "npm pack --dry-run",
     "publish:dry": "npm publish --dry-run"
   },

@@ -6,6 +6,7 @@ import { promises as fs } from 'node:fs'
 import { isAbsolute, join, resolve } from 'node:path'
 import * as gitx from '../gitx.js'
 import { MergePreview, ModelSelection, PendingStash, Project, TaskSnapshot, WorktreeConfig, WorktreeTask } from '../models.js'
+import { acquireRepoLock, RepoLockBusyError, type RepoLockHandle } from '../repo-lock.js'
 import { Store } from '../store.js'
 
 export interface PublishInput {
@@ -107,6 +108,8 @@ export interface RuntimeContext {
   readonly gitPath: string
   /** One in-flight git action per main repo, shared by chat/board/tool callers. */
   readonly gitOps: Map<string, string>
+  /** Directory for cross-process repo lock files (shared by every DSH process). */
+  readonly repoLockDir: string
   /** Transient (non-persisted) warnings for the next action response. */
   readonly opWarnings: Map<string, string>
   /** Transient partial-success markers (200 but not fully done), e.g. restore-failed. */
@@ -198,9 +201,22 @@ export async function withRepoLock<T>(ctx: RuntimeContext, repoPath: string, lab
   const active = ctx.gitOps.get(key)
   if (active) throw new TaskError(`主仓库正在执行「${active}」，请等待完成后再操作`, 409, 'repo-busy')
   ctx.gitOps.set(key, label)
+  let handle: RepoLockHandle | null = null
   try {
+    // The common git dir is stable across every worktree of the same repo, so
+    // unrelated DSH processes contend on one lock instead of racing.
+    const identity = await repoIdentity(ctx, repoPath).catch(() => key)
+    try {
+      handle = acquireRepoLock(ctx.repoLockDir, identity, label)
+    } catch (error) {
+      if (error instanceof RepoLockBusyError) {
+        throw new TaskError(`主仓库正在执行「${error.label}」，请等待完成后再操作`, 409, 'repo-busy')
+      }
+      throw error
+    }
     return await fn()
   } finally {
+    if (handle) handle.release()
     if (ctx.gitOps.get(key) === label) ctx.gitOps.delete(key)
   }
 }

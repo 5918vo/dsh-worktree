@@ -4,6 +4,7 @@
  * Implementation submodules live under `./runtime/*`.
  */
 
+import { join } from 'node:path'
 import { normalizeCriteria } from './criteria.js'
 import * as gitx from './gitx.js'
 import { MergePreflight, MergePreview, Project, ProjectView, TaskDiff, TaskSnapshot, TaskStatus, TaskView, WorktreeConfig, WorktreeTask } from './models.js'
@@ -45,7 +46,13 @@ export class Runtime {
   readonly gitPath: string
   private envInfo: { gitVersion: string | null; mergeTreeSupported: boolean; longPaths: boolean | null } | null = null
 
-  constructor(deps: { store: Store; config: WorktreeConfig; sessionState?: (sessionId: string) => 'running' | 'idle' | 'unknown' }) {
+  constructor(deps: {
+    store: Store
+    config: WorktreeConfig
+    sessionState?: (sessionId: string) => 'running' | 'idle' | 'unknown'
+    /** Override for tests; defaults next to the shared task store. */
+    repoLockDir?: string
+  }) {
     this.gitPath = deps.config.gitPath
     const gitOps = new Map<string, string>()
     const opWarnings = new Map<string, string>()
@@ -57,6 +64,7 @@ export class Runtime {
       config: deps.config,
       gitPath: deps.config.gitPath,
       gitOps,
+      repoLockDir: deps.repoLockDir || join(deps.store.directory(), 'repo-locks'),
       opWarnings,
       partials,
       previewCache,

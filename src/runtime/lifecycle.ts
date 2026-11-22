@@ -101,18 +101,19 @@ export async function deleteTask(ctx: RuntimeContext, id: string): Promise<void>
 }
 
 export function bindTask(ctx: RuntimeContext, id: string, sessionId: string): WorktreeTask {
-  const task = needTask(ctx, id)
-  task.sessionId = sessionId
-  task.startOnBind = false
-  ctx.store.putTask(task)
-  return task
+  const result = ctx.store.bindSession(id, sessionId)
+  if (!result.ok) {
+    if (result.conflict === 'missing') throw new TaskError(`任务不存在：${id}`, 404)
+    if (result.conflict === 'session-taken') {
+      const title = (result.other && result.other.title) || ''
+      throw new TaskError(`该会话已绑定到任务「${title}」，请刷新后再试`, 409, 'session-taken')
+    }
+    const title = (result.other && result.other.title) || id
+    throw new TaskError(`任务「${title}」已绑定其他会话，请刷新后再试`, 409, 'task-bound')
+  }
+  return result.task
 }
 
 export function unbindTaskBySession(ctx: RuntimeContext, sessionId: string): WorktreeTask | null {
-  const task = ctx.store.listTasks().find((t) => t.sessionId === sessionId)
-  if (!task) return null
-  task.sessionId = null
-  task.startOnBind = false // the user removed the conversation; do not resurrect it
-  ctx.store.putTask(task)
-  return task
+  return ctx.store.unbindSession(sessionId)
 }
