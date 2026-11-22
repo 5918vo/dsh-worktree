@@ -116,6 +116,18 @@ export function boardBranch(branch: string): string {
   return String(branch || '').replace(/^dsh-wt\//, '')
 }
 
+/**
+ * Footer counts with correct singular/plural forms. English cannot say
+ * "1 repos", and zh/en must not be mixed in one line.
+ */
+export function railStatsText(t: any, repos: number, tasks: number): string {
+  const pick = (n: number, one: string, many: string) =>
+    String(t[n === 1 ? one : many]).replace('{n}', String(n))
+  return String(t.railStatsJoin)
+    .replace('{repos}', pick(repos, 'railRepoOne', 'railRepoMany'))
+    .replace('{tasks}', pick(tasks, 'railTaskOne', 'railTaskMany'))
+}
+
 export function boardStat(snapshot: TaskSnapshot | null | undefined): string {
   if (!snapshot) return ''
   const ahead = Number(snapshot.worktree && snapshot.worktree.ahead) || 0
@@ -164,22 +176,44 @@ export function filterProjectViews(
 }
 
 /**
- * What the rail's empty state should say. Search and filter only claim "no
- * matches" when the filtered list really is empty; with a hit the list wins.
+ * Which empty state the rail should show. A search or filter may report no
+ * matches without widening to the generic "no tasks" copy: only an actually
+ * empty filtered list earns an empty state, and the query wins over the filter
+ * because it is the more specific thing the user just typed. `loaded` guards
+ * the first paint, when an empty project list is not yet authoritative.
  */
-export function boardEmptyKind(input: {
-  loaded: boolean
-  projectCount: number
-  query: string
-  filter: BoardFilter
-  taskCount: number
-}): '' | 'no-projects' | 'search' | 'filter' {
-  if (!input.loaded) return ''
-  if (!input.projectCount) return 'no-projects'
-  const q = String(input.query || '').trim()
-  if (q && input.taskCount === 0) return 'search'
-  if (input.filter !== 'all' && input.taskCount === 0) return 'filter'
-  return ''
+export function railEmptyKind(
+  projects: ProjectView[],
+  filtered: ProjectView[],
+  query: string,
+  filter: BoardFilter,
+  loaded = true,
+): '' | 'no-projects' | 'search' | 'filter' {
+  if (!loaded) return ''
+  if (!projects.length) return 'no-projects'
+  if (filtered.length) return ''
+  if (String(query || '').trim()) return 'search'
+  return filter === 'all' ? '' : 'filter'
+}
+
+/** Body copy for the checkout/back confirm; checkout always explains the
+ * detached HEAD it creates, whether or not the repo also needs a stash. */
+export function switchConfirmText(t: any, action: 'checkout' | 'back', obstacleCount: number): string {
+  const parts: string[] = []
+  if (action === 'checkout') parts.push(String(t.boardCheckoutDetached))
+  const n = Number(obstacleCount) || 0
+  if (n > 0) parts.push(String(t.boardSwitchDirty).replace('{n}', String(n)))
+  return parts.filter(Boolean).join(' ')
+}
+
+/**
+ * Primary button label for the cleanup dialog. Force-deleting a branch with
+ * unmerged commits is a different act than removing a worktree, so the label
+ * has to state the commit count instead of repeating "cleanup".
+ */
+export function cleanupPrimaryLabel(t: any, values: Record<string, boolean>, ahead: number): string {
+  if (!values || !values.deleteBranch || !values.forceDeleteBranch || !(ahead > 0)) return t.cleanup
+  return String(t.forceDeleteBranchConfirm).replace('{n}', String(ahead))
 }
 
 export function criteria(task: WorktreeTask, status: TaskStatus): Array<{ text: string; checked: boolean }> {
@@ -235,6 +269,32 @@ export function diffBaseSha(task: WorktreeTask, snapshot: TaskSnapshot | null | 
   return String(mergeBase || '')
 }
 
+/**
+ * Subtitle range for a task. A missing head means the agent has not committed
+ * yet ("base..—" reads like corruption); a merged task is described as merged
+ * instead of printing base..head, which looks inverted once base contains head.
+ */
+export function commitRangeText(t: any, opts: { baseSha?: string | null; headSha?: string | null; merged?: boolean; baseBranch?: string }): string {
+  const base = String(opts.baseSha || '')
+  const head = String(opts.headSha || '')
+  const mergedInto = String(t.rangeMergedInto || '').replace('{base}', opts.baseBranch || '').replace('{sha}', shortSha(base))
+  if (opts.merged && base) return mergedInto
+  if (!head) return t.rangeNoCommits
+  if (!base) return shortSha(head)
+  if (base === head) return String(t.rangeSameAsBase || '').replace('{base}', opts.baseBranch || shortSha(base))
+  return shortSha(base) + '..' + shortSha(head)
+}
+
+/** Tooltip for the rail's "↑n" / "n•" marker. */
+export function boardStatTitle(t: any, snapshot: TaskSnapshot | null | undefined): string {
+  if (!snapshot) return ''
+  const ahead = Number(snapshot.worktree && snapshot.worktree.ahead) || 0
+  if (ahead > 0) return String(t.statAhead).replace('{n}', String(ahead))
+  const dirty = Number(snapshot.worktree && snapshot.worktree.dirtyCount) || 0
+  if (dirty > 0) return String(t.statDirty).replace('{n}', String(dirty))
+  return ''
+}
+
 export function shortSha(value: string | null | undefined): string {
   const s = String(value || '')
   return s ? s.slice(0, 7) : '—'
@@ -251,8 +311,8 @@ export function diffLineKind(line: string): DiffLineKind {
 }
 
 export interface MergeSummary {
-  tone: 'idle' | 'ok' | 'warn' | 'err' | 'neutral'
-  key: 'idle' | 'checking' | 'error' | 'blocked' | 'conflict' | 'overlap' | 'baseAhead' | 'safe' | 'merged' | 'cleaned'
+  tone: 'idle' | 'ok' | 'warn' | 'err'
+  key: 'idle' | 'checking' | 'error' | 'blocked' | 'conflict' | 'overlap' | 'baseAhead' | 'safe' | 'merged' | 'cleaned' | 'cleanedMerged'
   n?: number
   message?: string
 }
@@ -264,12 +324,32 @@ export function mergeSummary(preview: any, phase: string, errorMessage?: string)
     return { key: 'idle', tone: 'idle' }
   }
   if (preview.applicable === false) return { key: 'blocked', tone: 'warn' }
+  // A preflight can still answer applicable while naming blockers (another
+  // task is being accepted, the repo is busy). Those win over "safe".
+  const blockers = Array.isArray(preview.blockers) ? preview.blockers.filter(Boolean) : []
+  if (blockers.length) return { key: 'blocked', tone: 'warn' }
   const conflicts = Array.isArray(preview.conflictFiles) ? preview.conflictFiles.length : 0
   if (preview.conflict || conflicts) return { key: 'conflict', tone: 'err', n: Math.max(1, conflicts) }
   const overlap = Array.isArray(preview.overlapFiles) ? preview.overlapFiles.length : 0
   if (overlap) return { key: 'overlap', tone: 'warn', n: overlap }
   if (Number(preview.baseAhead) > 0) return { key: 'baseAhead', tone: 'ok', n: Number(preview.baseAhead) }
   return { key: 'safe', tone: 'ok' }
+}
+
+/**
+ * Merge-state summary for the inspector. `snap.merged` cannot see a branch that
+ * cleanup already deleted, so the stored `mergedAt` backs it up: a cleaned
+ * worktree whose branch was never merged must not claim it is mergeable.
+ */
+export function taskMergeSummary(snap: any, task: any, preview: any, phase: string, errorMessage?: string): MergeSummary {
+  const status = (snap && snap.status) || ''
+  const cleaned = status === 'cleaned'
+  const merged = !!(snap && snap.merged === true) || status === 'merged' || (cleaned && !!(task && task.mergedAt))
+  if (!preview && phase !== 'checking' && phase !== 'error') {
+    if (cleaned) return merged ? { key: 'cleanedMerged', tone: 'ok' } : { key: 'cleaned', tone: 'warn' }
+    if (merged) return { key: 'merged', tone: 'ok' }
+  }
+  return mergeSummary(preview, phase, errorMessage)
 }
 
 export function mergeSummaryText(t: any, summary: MergeSummary): string {
@@ -282,7 +362,8 @@ export function mergeSummaryText(t: any, summary: MergeSummary): string {
     case 'baseAhead': return String(t.boardPreviewBaseAhead).replace('{n}', String(summary.n || 0))
     case 'safe': return t.boardPreviewSafe
     case 'merged': return t.boardPreviewMerged
-    case 'cleaned': return t.acceptanceHintClean
+    case 'cleaned': return t.boardPreviewCleaned
+    case 'cleanedMerged': return t.boardPreviewCleanedMerged
     default: return t.boardPreviewIdle
   }
 }

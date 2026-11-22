@@ -402,3 +402,7 @@ npm run build       # 生产构建
 - worktree 父目录为 `<repo>/.dsh-worktrees/<id8>`，并幂等写入 `.git/info/exclude` 的 `/.dsh-worktrees/`。
 - 会话被删除后，host 通过 `session/disposed` 解绑，看板可重新创建会话，不会自动重启旧会话。
 - 插件不接管会话内容，Agent 的审批、追问和中止继续均使用 DSH 原生能力。
+
+## 已知限制
+
+- 工作台的项目、任务选择和筛选只保存在插件状态里，没有写进 URL。宿主刷新页面会回到新会话首页，需要重新打开「Worktree 任务」再找回任务；这是宿主的插件路由限制，插件侧无法拦截刷新，重启后也没有可恢复的入口。

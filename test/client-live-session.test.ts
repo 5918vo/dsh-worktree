@@ -5,6 +5,8 @@ import {
   entryTitle,
   liveStatsText,
   modelLabel,
+  modelLabelFull,
+  shortModelLabel,
   pressurePercent,
   readLive,
   stepStatusLabel,
@@ -79,14 +81,20 @@ test('readLive survives malformed JSON and non-array todos', () => {
   assert.deepEqual(live.todos, [])
 })
 
-test('modelLabel prefers next, then current, then bare strings', () => {
-  assert.equal(modelLabel({ current: { provider: 'a', model: 'b' }, next: { provider: 'c', model: 'd' } }), 'c/d')
-  assert.equal(modelLabel({ current: { provider: 'a', model: 'b' } }), 'a/b')
+test('modelLabel shows the short name while modelLabelFull keeps the raw id', () => {
+  const pending = { current: { provider: 'a', model: 'b' }, next: { provider: 'c', model: 'd' } }
+  assert.equal(modelLabel(pending), 'd')
+  assert.equal(modelLabelFull(pending), 'c/d')
+  assert.equal(modelLabel({ current: { provider: 'a', model: 'b' } }), 'b')
   assert.equal(modelLabel({ current: 'plain-model' }), 'plain-model')
   assert.equal(modelLabel({ current: { model: 'only' } }), 'only')
+  assert.equal(modelLabel({ current: { provider: 'magpie', model: 'mm/auto/deepseek-v4.1-flash' } }), 'deepseek-v4.1-flash')
   assert.equal(modelLabel({ current: {} }), null)
   assert.equal(modelLabel(null), null)
   assert.equal(modelLabel(undefined), null)
+  assert.equal(shortModelLabel('a/b/c'), 'c')
+  assert.equal(shortModelLabel('solo'), 'solo')
+  assert.equal(shortModelLabel('   '), null)
 })
 
 test('pressurePercent clamps to 0..100 and reports unknown windows as null', () => {

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { findPublishedTask, initialPublishForm, publishDraftDirty } from '../src/client/publish-state.js'
+import { branchChoices, findPublishedTask, initialPublishForm, isDetachedBranchLabel, publishDraftDirty } from '../src/client/publish-state.js'
 
 const draft = (extra = {}) => ({
   title: '',
@@ -83,4 +83,21 @@ test('findPublishedTask returns null for empty or malformed input', () => {
   assert.equal(findPublishedTask(null, { branchName: 'x' }), null)
   assert.equal(findPublishedTask(undefined, null), null)
   assert.equal(findPublishedTask([task('a')], {}), null)
+})
+
+test('branchChoices keeps trunks and the base, hides task branches', () => {
+  const list = ['main', 'master', 'develop', 'feature/login', 'dsh-wt/ab12cd34', '(HEAD detached at 1a2b3c4)']
+  const primary = branchChoices(list, 'develop')
+  assert.deepEqual(primary.primary, ['main', 'master', 'develop'])
+  assert.deepEqual(primary.rest, ['feature/login', 'dsh-wt/ab12cd34'])
+  // A missing base still gets a slot so the select cannot silently retarget.
+  const missing = branchChoices(['main', 'dsh-wt/ab12cd34'], 'release/1.0')
+  assert.ok(missing.primary.includes('release/1.0'))
+  assert.deepEqual(branchChoices(null, ''), { primary: [], rest: [] })
+})
+
+test('isDetachedBranchLabel recognises git pseudo entries only', () => {
+  assert.equal(isDetachedBranchLabel('(HEAD detached at 1a2b3c4)'), true)
+  assert.equal(isDetachedBranchLabel('main'), false)
+  assert.equal(isDetachedBranchLabel(''), false)
 })

@@ -8,7 +8,7 @@ import { getJson, post, postLong } from '../context'
 import { openNativeSession, sendSessionPrompt, startTask } from '../actions'
 import { SYNC_BUSY, syncPromptText } from '../review-surfaces'
 import type { BoardAction } from '../model'
-import { criteria, criteriaProgress } from '../model'
+import { cleanupPrimaryLabel, criteria, criteriaProgress, switchConfirmText } from '../model'
 import { copyText } from '../format'
 import { buildAcceptanceReport, reportFilename } from '../report'
 import type { ProjectView, TaskDiff, TaskView } from '../../models'
@@ -33,7 +33,11 @@ export interface UseBoardActionsArgs {
   setSelectedTaskId: (id: string) => void
   setTab: (tab: BoardTab) => void
   openPublish: (projectId?: string, parentId?: string) => void
-  say: (message: string, error?: boolean) => void
+  /** Cached merge preview, for warnings the server preflight does not repeat. */
+  previewState?: any
+  /** `sticky` false keeps a failure in the toast only (the blocker list already
+   * shows the same sentences, so an inline banner would duplicate it). */
+  say: (message: string, error?: boolean, sticky?: boolean) => void
   refresh: (manual?: boolean) => Promise<void>
 }
 
@@ -54,6 +58,7 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     setSelectedTaskId,
     setTab,
     openPublish,
+    previewState,
     say,
     refresh,
   } = args
@@ -95,15 +100,15 @@ export function useBoardActions(args: UseBoardActionsArgs) {
       const r: any = await post(action === 'checkout' ? 'task/checkout-preflight' : 'task/back-preflight', { id: selectedTask.task.id })
       const pre = r && r.preflight
       if (!pre) throw new Error(t.failed)
-      if (pre.safe) {
+      if (pre.safe && action !== 'checkout') {
         await executeSwitch(action, undefined, pre)
       } else {
         const count = (pre.obstacles || []).length
         setConfirm({
           title: action === 'checkout' ? t.checkoutTitle : t.backTitle,
-          body: String(t.boardSwitchDirty).replace('{n}', String(count)),
+          body: switchConfirmText(t, action, count),
           label: action === 'checkout' ? t.checkout : t.back,
-          run: () => executeSwitch(action, 'stash', pre),
+          run: () => executeSwitch(action, pre.safe ? undefined : 'stash', pre),
         })
       }
     } catch (e: any) {
@@ -124,7 +129,9 @@ export function useBoardActions(args: UseBoardActionsArgs) {
       if (!pf) throw new Error(t.failed)
       if (!pf.canMerge) {
         // Every blocker, not just the first: "repo dirty" and "agent running"
-        // often come together and the user needs the whole list.
+        // often come together and the user needs the whole list. The same
+        // sentences are already in the stage's blocker list, so do not also
+        // pin a red banner that survives after the blocker clears.
         const messages = (pf.blockers || []).map((b: any) => b && b.message).filter(Boolean)
         throw new Error(messages.length ? messages.join('；') : t.failed)
       }
@@ -143,6 +150,11 @@ export function useBoardActions(args: UseBoardActionsArgs) {
       // Only tasks that actually carry a checklist get a progress row; "0/0"
       // would read like a broken counter.
       if (progress.total > 0) details.push({ label: t.acceptanceCriteria, value: criteriaText, mono: false })
+      const cached = previewState && (previewState.preview || (previewState.previous && previewState.previous.preview))
+      const overlapFiles = cached && Array.isArray(cached.overlapFiles) ? cached.overlapFiles.filter(Boolean) : []
+      // The panel warned about overlapping files; the last dialog before the
+      // merge must not be the quietest surface about them.
+      if (overlapFiles.length) details.push({ label: t.mergeOverlapLabel, value: overlapFiles.join(', '), mono: true })
       const mergeBody = String(t.boardMergeConfirm).replace('{branch}', task.branch).replace('{base}', task.baseBranch)
         + (progress.missing > 0
           ? ` ${String(t.boardMergeCriteriaMissing).replace('{n}', String(progress.missing))}`
@@ -152,7 +164,8 @@ export function useBoardActions(args: UseBoardActionsArgs) {
         body: mergeBody,
         details,
         label: t.mergeConfirm,
-        danger: true,
+        // Merging is additive and reversible with a revert; red reads as delete.
+        danger: false,
         run: async () => {
           // The merge must lock exactly the tips the preflight inspected; the
           // cached preview may be older than this preflight result.
@@ -171,7 +184,9 @@ export function useBoardActions(args: UseBoardActionsArgs) {
         },
       })
     } catch (e: any) {
-      say(String((e && e.message) || t.failed), true)
+      // Preflight refusals repeat the blocker list; keep them toast-only so a
+      // stale red banner cannot outlive the blocker it describes.
+      say(String((e && e.message) || t.failed), true, false)
     } finally {
       setBusy('')
     }
@@ -181,10 +196,17 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     if (!selectedTask || busy) return
     const taskId = selectedTask.task.id
     const dirty = Number(selectedTask.snapshot.worktree && selectedTask.snapshot.worktree.dirtyCount) || 0
+    const ahead = Number(selectedTask.snapshot.worktree && selectedTask.snapshot.worktree.ahead) || 0
     setConfirm({
       title: t.cleanup,
       body: t.boardCleanupConfirm,
       label: t.cleanup,
+      details: ahead > 0
+        ? [{ label: t.cleanupDiscardLabel, value: String(t.cleanupDiscardValue).replace('{n}', String(ahead)), mono: true }]
+        : [],
+      // Ticking "force delete branch" turns the action from "remove a worktree"
+      // into "throw away commits"; the primary button must say so.
+      labelFor: (values: Record<string, boolean>) => cleanupPrimaryLabel(t, values, ahead),
       danger: true,
       checks: [
         { key: 'force', label: t.force, hint: t.cleanupForceHint, disabled: dirty === 0 },

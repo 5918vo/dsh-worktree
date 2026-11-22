@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { App } from './app.js'
 import { TaskError } from './runtime.js'
+import { absPath } from './runtime/types.js'
 
 const PREFIX = '/dsh-worktree/api'
 const MAX_BODY = 64 * 1024
@@ -187,6 +188,10 @@ export function registerHttp(app: App): () => void {
     requireToken(req)
     const body = await readJson(req)
     try {
+      // Re-adding the same repo is idempotent on the backend; tell the client
+      // so the dialog can say "already added" instead of claiming a new project.
+      const wanted = body.repoPath ? absPath(String(body.repoPath)) : ''
+      const already = wanted ? app.store.findProjectByRepo(wanted) : undefined
       const project = await app.runtime.addProject({
         repoPath: String(body.repoPath || ''),
         name: body.name ? String(body.name) : undefined,
@@ -194,7 +199,7 @@ export function registerHttp(app: App): () => void {
         dirName: body.dirName ? String(body.dirName) : undefined,
         branchPrefix: body.branchPrefix ? String(body.branchPrefix) : undefined,
       })
-      send(res, 200, { project })
+      send(res, 200, { project, existing: !!already })
     } catch (error) {
       if (error instanceof TaskError) return send(res, error.status, { error: error.message })
       send(res, 500, { error: error instanceof Error ? error.message : String(error) })
