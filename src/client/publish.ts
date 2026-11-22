@@ -111,6 +111,9 @@ export function PublishModal(props: PublishModalProps) {
 
   React.useEffect(() => {
     if (!project) return
+    // 续作发布（parentId）时 base 必须保持前序任务的真实合并目标；
+    // 项目下拉已 disabled，projectId 不会变，这个重置只会把基线改回项目默认值。
+    if (parentTask) return
     setBase(project.baseBranch)
     setBranch('')
   }, [projectId])
@@ -235,6 +238,9 @@ export function PublishModal(props: PublishModalProps) {
   }
 
   const branchPlaceholder = `${project.branchPrefix || 'dsh-wt/'}<id8>`
+  // 后端可接受任意已存在的分支；加载到的列表不含当前 base 时补一个选项，
+  // 否则 <select> 会显示成第一个分支（＝悄悄改掉续作目标）。
+  const baseBranches = base && branchNames.length && !branchNames.includes(base) ? [base, ...branchNames] : branchNames
 
   return modal(t, props, project, submit, busy,
     h('div', { className: 'dshwd-field-row-2' },
@@ -251,7 +257,7 @@ export function PublishModal(props: PublishModalProps) {
             value: base,
             disabled: busy,
             onChange: (e: any) => setBase(e.target.value),
-          }, branchNames.map((name: string) => h('option', { key: name, value: name }, name)))
+          }, baseBranches.map((name: string) => h('option', { key: name, value: name }, name)))
           : h('input', {
             className: 'dshwd-input dshwd-mono',
             value: base,

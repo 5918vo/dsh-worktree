@@ -197,14 +197,14 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
         if (searchRef.current) searchRef.current.focus()
         return
       }
-      if (!typing && e.key.toLowerCase() === 'n') { e.preventDefault(); openPublish(); return }
+      if (!typing && !e.metaKey && !e.ctrlKey && e.key.toLowerCase() === 'n') { e.preventDefault(); openPublish(); return }
       if (!typing && e.key === '[') { e.preventDefault(); setRailHidden((v: boolean) => !v); return }
       if (!typing && e.key === ']') { e.preventDefault(); setInspectorHidden((v: boolean) => !v); return }
       if (e.key === 'Escape' && active === searchRef.current && query) setQuery('')
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [query, publishOpen, addOpen, confirm, stashView, busy])
+  }, [query, publishOpen, addOpen, confirm, stashView, busy, selectedProjectId, views])
 
   const selectTask = (id: string, projectId?: string) => {
     const found = views.flatMap((v: ProjectView) => v.tasks).find((x: TaskView) => x.task.id === id)

@@ -295,16 +295,21 @@ export async function applyStash(ctx: RuntimeContext, id: string, sha?: string):
   const entry = pickStash(task, sha)
   if (!entry) throw new TaskError('没有可恢复的暂存', 404, 'stash-missing')
   if (!entry.sha) throw new TaskError('暂存记录无法唯一匹配到 stash，无法自动恢复；请手动处理', 409, 'stash-unverified')
-  try {
-    await gitx.stashApplyBySha(ctx.gitPath, task.repoPath, entry.sha)
-  } catch (error) {
-    const text = (error as any)?.stderr || (error instanceof Error ? error.message : String(error))
-    const files = conflictFiles(String(text))
-    const detail = files.length ? files.join('、') : '未知文件'
-    throw new TaskError(`恢复暂存产生冲突：${detail}。暂存记录已保留，请解决冲突后再恢复或丢弃。`, 409, 'stash-apply-conflict')
-  }
-  // Apply succeeded; keep the record (only an explicit drop removes it).
-  return task
+  // stash apply 会改主仓库工作树/索引，必须和 checkout/merge 共用同一把仓库锁，
+  // 并拒绝在未完成的合并/切换中执行（否则索引会被交错污染）。
+  return withRepoLock(ctx, task.repoPath, '恢复暂存', async () => {
+    await assertNoInProgress(ctx, task.repoPath)
+    try {
+      await gitx.stashApplyBySha(ctx.gitPath, task.repoPath, entry.sha)
+    } catch (error) {
+      const text = (error as any)?.stderr || (error instanceof Error ? error.message : String(error))
+      const files = conflictFiles(String(text))
+      const detail = files.length ? files.join('、') : '未知文件'
+      throw new TaskError(`恢复暂存产生冲突：${detail}。暂存记录已保留，请解决冲突后再恢复或丢弃。`, 409, 'stash-apply-conflict')
+    }
+    // Apply succeeded; keep the record (only an explicit drop removes it).
+    return task
+  })
 }
 
 /** Read-only unified patch of a recorded stash. */

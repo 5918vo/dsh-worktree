@@ -348,6 +348,49 @@ test('17b startup reconcile aborts a partial merge and restores the branch', asy
   }
 })
 
+// 17c. reconcile finds the merge committed but cannot restore the original
+// branch: the journal must survive so restoreAfterMerge can retry.
+test('17c reconcile keeps the journal when the original branch restore fails', async () => {
+  const f = await fixture()
+  try {
+    const task = await mergedTask(f)
+    const tip = (await git(f.repo, ['rev-parse', task.branch])).trim()
+    await git(f.repo, ['checkout', 'main'])
+    await git(f.repo, ['merge', '--no-ff', '--no-edit', tip])
+    const t = f.store.getTask(task.id)!
+    t.pendingOp = {
+      operationId: 'op-17c',
+      kind: 'merge',
+      taskId: t.id,
+      repoIdentity: await f.runtime.repoIdentity(f.repo),
+      step: 'verify',
+      originalRef: { branch: 'gone-branch', sha: null },
+      expectedTip: tip,
+      expectedBase: null,
+      recoveryStatus: 'pending',
+      startedAt: Date.now(),
+    }
+    f.store.putTask(t)
+
+    const results = await f.runtime.reconcilePendingOps()
+    assert.equal(results[0]!.status, 'needs-manual')
+    const kept = f.store.getTask(task.id)!
+    assert.ok(kept.pendingOp, 'the journal must survive a failed restore')
+    assert.equal(kept.pendingOp!.step, 'merge-committed')
+    assert.equal(kept.pendingOp!.recoveryStatus, 'needs-manual')
+    assert.ok(kept.pendingOp!.mergeCommit, 'the merge commit is recorded for the retry')
+    assert.equal(await branchOf(f.repo), 'main')
+
+    // Once the original branch exists again, the explicit retry succeeds.
+    await git(f.repo, ['branch', 'gone-branch', 'HEAD'])
+    await f.runtime.restoreAfterMerge(task.id)
+    assert.equal(await branchOf(f.repo), 'gone-branch')
+    assert.equal(f.store.getTask(task.id)!.pendingOp, undefined)
+  } finally {
+    await teardown(f)
+  }
+})
+
 // 18. model tool and runtime/HTTP merge share behaviour (both succeed).
 test('18 the merge tool and the runtime path behave consistently', async () => {
   const f = await fixture()
@@ -384,6 +427,30 @@ test('19 stash apply conflict keeps the stash record', async () => {
     f.store.putTask(t)
     await assert.rejects(() => f.runtime.applyStash(task.id, sha), (e: any) => e.status === 409 && e.code === 'stash-apply-conflict')
     assert.equal((f.store.getTask(task.id)!.pendingStashes || []).length, 1)
+  } finally {
+    await teardown(f)
+  }
+})
+
+// 19b. stash apply takes the same repo lock as merge (no interleaving).
+test('19b applyStash is refused while a merge holds the repo lock', async () => {
+  const f = await fixture()
+  try {
+    const task = await mergedTask(f)
+    await fs.writeFile(join(f.repo, 'README.md'), '# stashed\n', 'utf8')
+    await git(f.repo, ['stash', 'push', '-m', 'dsh-wt:test:review'])
+    const entries = await git(f.repo, ['stash', 'list', '--format=%H'])
+    const sha = entries.split(/\r?\n/).filter(Boolean)[0]!.trim()
+    const t = f.store.getTask(task.id)!
+    t.pendingStashes = [{ sha, source: 'review', ref: 'dsh-wt:test:review', createdAt: Date.now(), files: ['README.md'] }]
+    f.store.putTask(t)
+
+    const pf = await f.runtime.mergePreflight(task.id)
+    const merging = f.runtime.merge(task.id, { expectedTip: pf.tipSha || undefined, expectedBase: pf.baseSha || undefined })
+    await assert.rejects(() => f.runtime.applyStash(task.id, sha), (e: any) => e.status === 409 && e.code === 'repo-busy')
+    const merged = await merging
+    assert.ok(merged.mergedAt)
+    assert.equal((f.store.getTask(task.id)!.pendingStashes || []).length, 1, 'the record is untouched')
   } finally {
     await teardown(f)
   }

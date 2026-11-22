@@ -440,11 +440,22 @@ async function reconcileOne(ctx: RuntimeContext, task: WorktreeTask): Promise<{ 
     const head = await gitx.revParse(ctx.gitPath, repoPath, task.baseBranch)
     if (head) task.mergedCommit = head
     const restored = await tryRestoreOriginal(ctx, task, op.originalRef)
+    if (!restored) {
+      // 合并已补记，但切回原分支失败：journal 必须保留，
+      // 否则 restoreAfterMerge 再也无法重试，主仓库会留在 base 上。
+      task.pendingOp = {
+        ...op,
+        step: 'merge-committed',
+        mergeCommit: task.mergedCommit || head || op.mergeCommit || null,
+        recoveryStatus: 'needs-manual',
+        updatedAt: Date.now(),
+      }
+      ctx.store.putTask(task)
+      return { status: 'needs-manual', message: '已补记合并结果，但未能切回原分支，需人工切回' }
+    }
     task.pendingOp = undefined
     ctx.store.putTask(task)
-    return restored
-      ? { status: 'recovered', message: '补记合并结果并恢复原分支' }
-      : { status: 'needs-manual', message: '已补记合并结果，但未能切回原分支' }
+    return { status: 'recovered', message: '补记合并结果并恢复原分支' }
   }
 
   const restored = await tryRestoreOriginal(ctx, task, op.originalRef)

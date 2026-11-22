@@ -193,7 +193,7 @@ export function registerTools(app: App): () => void {
           if (action === 'archive') return clean({ ok: true, task: brief(await app.runtime.view(await app.runtime.archive(id))) })
           if (action === 'unarchive') return clean({ ok: true, task: brief(await app.runtime.view(app.runtime.unarchive(id))) })
           if (action === 'delete') {
-            app.runtime.delete(id)
+            await app.runtime.delete(id)
             return clean({ ok: true })
           }
           return clean({ ok: false, error: `unknown action ${action}` })

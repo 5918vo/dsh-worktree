@@ -29,6 +29,21 @@ function task(id: string, projectId: string, createdAt = 1): WorktreeTask {
   }
 }
 
+function pendingOp(taskId: string): any {
+  return {
+    operationId: 'op-' + taskId,
+    kind: 'merge',
+    taskId,
+    repoIdentity: 'C:/repo',
+    step: 'switch',
+    originalRef: { branch: 'main', sha: null },
+    expectedTip: null,
+    expectedBase: null,
+    recoveryStatus: 'pending',
+    startedAt: 1,
+  }
+}
+
 async function freshStore(): Promise<{ store: Store; dir: string }> {
   const dir = await fs.mkdtemp(join(tmpdir(), 'dshw-store-'))
   const store = new Store(dir)
@@ -138,6 +153,64 @@ test('store persists a task parentId across reload', async () => {
     assert.equal(reloaded.getTask('child')!.parentId, 'parent')
   } finally {
     await new Promise((resolve) => setTimeout(resolve, 100))
+    await rmrf(dir)
+  }
+})
+
+// F1: dispose/flush must never overwrite the shared ledger with local memory.
+test('dispose/flush from one process keeps tasks written by another', async () => {
+  const dir = await fs.mkdtemp(join(tmpdir(), 'dshw-store-'))
+  const a = new Store(dir)
+  const b = new Store(dir)
+  await a.load()
+  await b.load()
+  try {
+    b.putTask(task('from-b', 'p'))
+    a.dispose()
+    let disk = JSON.parse(await fs.readFile(join(dir, 'tasks.json'), 'utf8'))
+    assert.ok(disk['from-b'], 'dispose must not drop another process task')
+
+    b.putTask(task('from-b-2', 'p'))
+    await a.flush()
+    disk = JSON.parse(await fs.readFile(join(dir, 'tasks.json'), 'utf8'))
+    assert.ok(disk['from-b'], 'flush must keep the first task')
+    assert.ok(disk['from-b-2'], 'flush must keep the second task')
+  } finally {
+    await rmrf(dir)
+  }
+})
+
+// F2: refresh must drop keys removed on disk, and a later write must not
+// resurrect them (a journal would otherwise make merges permanently pending).
+test('a refresh drops fields another process cleared and writes keep them clear', async () => {
+  const dir = await fs.mkdtemp(join(tmpdir(), 'dshw-store-'))
+  const a = new Store(dir)
+  const b = new Store(dir)
+  await a.load()
+  await b.load()
+  try {
+    const first = task('shared', 'p')
+    ;(first as any).pendingOp = pendingOp('shared')
+    a.putTask(first)
+    assert.ok(a.getTask('shared')!.pendingOp, 'A caches the journal')
+
+    const seenByB = b.getTask('shared')!
+    seenByB.pendingOp = undefined
+    b.putTask(seenByB)
+
+    assert.equal(a.getTask('shared')!.pendingOp, undefined, 'A must see the cleared journal')
+    const seenByA = a.getTask('shared')!
+    seenByA.title = 'renamed'
+    a.putTask(seenByA)
+
+    const disk = JSON.parse(await fs.readFile(join(dir, 'tasks.json'), 'utf8'))
+    assert.equal(disk.shared.title, 'renamed')
+    assert.equal(disk.shared.pendingOp, undefined, 'a later write must not resurrect the journal')
+
+    const reloaded = new Store(dir)
+    await reloaded.load()
+    assert.equal(reloaded.getTask('shared')!.pendingOp, undefined)
+  } finally {
     await rmrf(dir)
   }
 })

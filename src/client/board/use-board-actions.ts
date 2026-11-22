@@ -85,10 +85,10 @@ export function useBoardActions(args: UseBoardActionsArgs) {
       if (pre.safe) {
         await executeSwitch(action, undefined, pre)
       } else {
-        const dirty = Number(pre.dirty) || 0
+        const count = (pre.obstacles || []).length
         setConfirm({
           title: action === 'checkout' ? t.checkoutTitle : t.backTitle,
-          body: String(t.demoSwitchDirty).replace('{n}', String(dirty)),
+          body: String(t.demoSwitchDirty).replace('{n}', String(count)),
           label: action === 'checkout' ? t.checkout : t.back,
           run: () => executeSwitch(action, 'stash', pre),
         })

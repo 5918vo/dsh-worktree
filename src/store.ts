@@ -106,12 +106,20 @@ export class Store {
     return Array.isArray(value) ? value.filter((item) => typeof item === 'string' && item.trim()).map((item) => item.trim()) : []
   }
 
+  /**
+   * 以磁盘为基线刷新：磁盘上已不存在的键必须删掉。
+   * JSON 会丢弃 undefined，只做 Object.assign 会让旧字段（如 pendingOp）
+   * 在本进程内存里复活，并在下一次写入时被写回共享文件。
+   */
   private refreshProjects(): void {
     const disk = this.readProjects()
     const next = new Map<string, Project>()
     for (const [id, project] of Object.entries(disk)) {
       const current = this.projects.get(id)
       if (current) {
+        for (const key of Object.keys(current)) {
+          if (!(key in project)) delete (current as any)[key]
+        }
         Object.assign(current, project)
         next.set(id, current)
       } else {
@@ -127,6 +135,9 @@ export class Store {
     for (const [id, task] of Object.entries(disk)) {
       const current = this.tasks.get(id)
       if (current) {
+        for (const key of Object.keys(current)) {
+          if (!(key in task)) delete (current as any)[key]
+        }
         Object.assign(current, task)
         next.set(id, current)
       } else {
@@ -341,9 +352,18 @@ export class Store {
   }
 
   putProject(project: Project): void {
-    const next = { ...project }
+    // 快照必须在加锁前拍下；锁内刷新磁盘可能改写同一个对象。
+    const next: any = { ...project }
+    const cleared: string[] = []
+    for (const key of Object.keys(next)) {
+      if (next[key] !== undefined) continue
+      cleared.push(key)
+      delete next[key]
+    }
     this.withLock(() => {
       this.refreshProjects()
+      // 显式清空：刷新可能把磁盘上的旧值写回同一个对象，必须再删一次。
+      for (const key of cleared) delete (project as any)[key]
       Object.assign(project, next)
       this.projects.set(project.id, project)
       this.saveProjects()
@@ -379,9 +399,19 @@ export class Store {
     task.updatedAt = Date.now()
     // Snapshot after the caller's mutation: refreshing from disk below may
     // update this same object, and must not erase fields like sessionId.
-    const next = { ...task }
+    // undefined 键要显式丢弃，锁内刷新已删掉磁盘上不存在的字段，
+    // 这样“清空字段”才不会被旧值替代。
+    const next: any = { ...task }
+    const cleared: string[] = []
+    for (const key of Object.keys(next)) {
+      if (next[key] !== undefined) continue
+      cleared.push(key)
+      delete next[key]
+    }
     this.withLock(() => {
       this.refreshTasks()
+      // 显式清空：刷新可能把磁盘上的旧值写回同一个对象，必须再删一次。
+      for (const key of cleared) delete (task as any)[key]
       Object.assign(task, next)
       this.tasks.set(task.id, task)
       this.saveTasks()
@@ -470,16 +500,21 @@ export class Store {
   }
 
   async flush(): Promise<void> {
-    this.withLock(() => {
-      this.saveAll()
-    })
+    // 所有 put*/delete* 已在锁内同步落盘；这里绝不能用本进程内存全量覆盖
+    // 共享文件，否则会抹掉其他进程刚写的任务。刷新内存即可（等价 no-op）。
+    this.refreshProjects()
+    this.refreshTasks()
+    this.refreshRecents()
+    this.refreshCriteria()
   }
 
   dispose(): void {
     try {
-      this.withLock(() => {
-        this.saveAll()
-      })
+      // 退出时同样不回写全量缓存：其他 DSH 进程共用这些文件。
+      this.refreshProjects()
+      this.refreshTasks()
+      this.refreshRecents()
+      this.refreshCriteria()
     } catch {
       /* shutdown must never throw */
     }
