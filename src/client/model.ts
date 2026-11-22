@@ -3,20 +3,13 @@ import type { ProjectView, TaskDiff, TaskSnapshot, TaskStatus, TaskView, Worktre
 export type BoardFilter = 'all' | 'review' | 'developing'
 export type BoardTheme = 'dark' | 'light'
 
-/** @deprecated Prefer BoardFilter. */
-export type DemoFilter = BoardFilter
-/** @deprecated Prefer BoardTheme. */
-export type DemoTheme = BoardTheme
-
 export interface BoardStatus {
   key: 'ready' | 'developing' | 'running' | 'review' | 'reviewing' | 'merged' | 'cleaned' | 'broken'
   dot: 'ready' | 'developing' | 'review' | 'merged' | 'broken'
   chip: '' | 'warn' | 'accent' | 'ok' | 'err'
 }
-/** @deprecated Prefer BoardStatus. */
-export type DemoStatus = BoardStatus
 
-const STATUS: Record<TaskStatus, DemoStatus> = {
+const STATUS: Record<TaskStatus, BoardStatus> = {
   ready: { key: 'ready', dot: 'ready', chip: '' },
   developing: { key: 'developing', dot: 'developing', chip: 'accent' },
   review: { key: 'review', dot: 'review', chip: 'warn' },
@@ -26,24 +19,24 @@ const STATUS: Record<TaskStatus, DemoStatus> = {
   broken: { key: 'broken', dot: 'broken', chip: 'err' },
 }
 
-/** Resolve the status the demo shows: an active review session reads as developing. */
-export function demoStatus(status: TaskStatus, running: boolean): DemoStatus {
+/** Resolve the status the board shows: an active review session reads as developing. */
+export function boardStatus(status: TaskStatus, running: boolean): BoardStatus {
   if (status === 'review' && running) return { key: 'running', dot: 'developing', chip: 'accent' }
   if (status === 'developing' && running) return { key: 'running', dot: 'developing', chip: 'accent' }
   return STATUS[status] || STATUS.ready
 }
 
-export function demoStatusLabel(t: any, status: DemoStatus): string {
+export function boardStatusLabel(t: any, status: BoardStatus): string {
   switch (status.key) {
-    case 'ready': return t.demoReady
+    case 'ready': return t.boardReady
     case 'developing': return t.developing
-    case 'running': return t.demoAgentRunning
+    case 'running': return t.boardAgentRunning
     case 'review': return t.review
     case 'reviewing': return t.reviewing
     case 'merged': return t.merged
     case 'cleaned': return t.cleaned
     case 'broken': return t.broken
-    default: return t.demoReady
+    default: return t.boardReady
   }
 }
 
@@ -60,69 +53,64 @@ export type BoardAction =
   | 'retry'
   | 'none'
 
-/** @deprecated Prefer BoardAction. */
-export type DemoAction = BoardAction
-
 export interface BoardCta {
   secondary?: { action: BoardAction; label: string }
   primary: { action: BoardAction; label: string; disabled?: boolean }
 }
-/** @deprecated Prefer BoardCta. */
-export type DemoCta = BoardCta
 
-/** Exact demo CTA copy and action for a task. */
-export function demoCta(status: DemoStatus, hasSession: boolean): DemoCta {
+/** Exact board CTA copy and action for a task. */
+export function boardCta(status: BoardStatus, hasSession: boolean): BoardCta {
   switch (status.key) {
     case 'review':
       return {
-        secondary: { action: 'merge', label: 'demoDirectMerge' },
-        primary: { action: 'checkout', label: 'demoCheckoutReview' },
+        secondary: { action: 'merge', label: 'boardDirectMerge' },
+        primary: { action: 'checkout', label: 'boardCheckoutReview' },
       }
     case 'reviewing':
       return {
-        secondary: { action: 'logs', label: 'demoViewLogs' },
-        primary: { action: 'back', label: 'demoBack' },
+        secondary: { action: 'logs', label: 'boardViewLogs' },
+        primary: { action: 'back', label: 'boardBack' },
       }
     case 'developing':
       return {
-        secondary: { action: 'logs', label: 'demoViewLogs' },
+        secondary: { action: 'logs', label: 'boardViewLogs' },
         primary: hasSession
-          ? { action: 'open', label: 'demoOpenSession' }
-          : { action: 'create', label: 'demoCreateSession' },
+          ? { action: 'open', label: 'boardOpenSession' }
+          : { action: 'create', label: 'boardCreateSession' },
       }
     case 'running':
       return {
-        secondary: { action: 'logs', label: 'demoViewLogs' },
-        primary: { action: 'open', label: 'demoOpenSession' },
+        secondary: { action: 'logs', label: 'boardViewLogs' },
+        primary: { action: 'open', label: 'boardOpenSession' },
       }
     case 'ready':
       return {
-        secondary: { action: 'logs', label: 'demoViewLogs' },
-        primary: { action: 'start', label: 'demoStartAgent' },
+        secondary: { action: 'logs', label: 'boardViewLogs' },
+        primary: { action: 'start', label: 'boardStartAgent' },
       }
     case 'merged':
       return {
-        secondary: { action: 'continue', label: 'demoFollowUp' },
-        primary: { action: 'cleanup', label: 'demoCleanup' },
+        secondary: { action: 'continue', label: 'boardFollowUp' },
+        primary: { action: 'cleanup', label: 'boardCleanup' },
       }
     case 'cleaned':
       return {
-        secondary: { action: 'continue', label: 'demoFollowUp' },
+        secondary: { action: 'continue', label: 'boardFollowUp' },
         primary: { action: 'none', label: 'cleaned', disabled: true },
       }
     case 'broken':
       return {
-        secondary: { action: 'logs', label: 'demoViewLogs' },
+        secondary: { action: 'logs', label: 'boardViewLogs' },
         primary: { action: 'retry', label: 'retry' },
       }
   }
 }
 
-export function demoBranch(branch: string): string {
+export function boardBranch(branch: string): string {
   return String(branch || '').replace(/^dsh-wt\//, '')
 }
 
-export function demoStat(snapshot: TaskSnapshot | null | undefined): string {
+export function boardStat(snapshot: TaskSnapshot | null | undefined): string {
   if (!snapshot) return ''
   const ahead = Number(snapshot.worktree && snapshot.worktree.ahead) || 0
   if (ahead > 0) return '↑' + ahead
@@ -131,8 +119,8 @@ export function demoStat(snapshot: TaskSnapshot | null | undefined): string {
   return ''
 }
 
-export function taskMatches(task: TaskView, filter: DemoFilter, query: string, running: boolean): boolean {
-  const status = demoStatus(task.snapshot ? task.snapshot.status : 'ready', running)
+export function taskMatches(task: TaskView, filter: BoardFilter, query: string, running: boolean): boolean {
+  const status = boardStatus(task.snapshot ? task.snapshot.status : 'ready', running)
   if (filter === 'review' && status.key !== 'review') return false
   if (filter === 'developing' && status.key !== 'developing' && status.key !== 'running' && status.key !== 'reviewing') return false
   const q = String(query || '').trim().toLowerCase()
@@ -141,7 +129,7 @@ export function taskMatches(task: TaskView, filter: DemoFilter, query: string, r
 }
 
 /** Filter tasks but keep project groups (with empty task lists removed). */
-export function filterViews(views: ProjectView[], filter: DemoFilter, query: string, runningOf: (task: WorktreeTask) => boolean): ProjectView[] {
+export function filterViews(views: ProjectView[], filter: BoardFilter, query: string, runningOf: (task: WorktreeTask) => boolean): ProjectView[] {
   const q = String(query || '').trim()
   // With no active filter, keep every project so a freshly added repository
   // stays selectable even before its first task exists. Searching or filtering
@@ -213,19 +201,19 @@ export function mergeSummary(preview: any, phase: string, errorMessage?: string)
 
 export function mergeSummaryText(t: any, summary: MergeSummary): string {
   switch (summary.key) {
-    case 'checking': return t.demoPreviewChecking
+    case 'checking': return t.boardPreviewChecking
     case 'error': return summary.message || t.failed
-    case 'blocked': return t.demoPreviewBlocked
-    case 'conflict': return String(t.demoPreviewConflict).replace('{n}', String(summary.n || 1))
-    case 'overlap': return String(t.demoPreviewOverlap).replace('{n}', String(summary.n || 0))
-    case 'baseAhead': return String(t.demoPreviewBaseAhead).replace('{n}', String(summary.n || 0))
-    case 'safe': return t.demoPreviewSafe
-    case 'merged': return t.demoPreviewMerged
-    default: return t.demoPreviewIdle
+    case 'blocked': return t.boardPreviewBlocked
+    case 'conflict': return String(t.boardPreviewConflict).replace('{n}', String(summary.n || 1))
+    case 'overlap': return String(t.boardPreviewOverlap).replace('{n}', String(summary.n || 0))
+    case 'baseAhead': return String(t.boardPreviewBaseAhead).replace('{n}', String(summary.n || 0))
+    case 'safe': return t.boardPreviewSafe
+    case 'merged': return t.boardPreviewMerged
+    default: return t.boardPreviewIdle
   }
 }
 
-export function themeFor(stored: string | null | undefined, hostDark: boolean, prefersDark: boolean): DemoTheme {
+export function themeFor(stored: string | null | undefined, hostDark: boolean, prefersDark: boolean): BoardTheme {
   if (stored === 'dark' || stored === 'light') return stored
   return hostDark || prefersDark ? 'dark' : 'light'
 }

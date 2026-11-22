@@ -130,7 +130,7 @@ export function StashDiffModal(props: StashDiffModalProps) {
         ? h('div', { className: 'dshwd-hint' }, t.loading)
         : stashView.error
           ? h('div', { className: 'dshwd-alert' }, stashView.error)
-          : h('pre', { className: 'dshwd-diff-pre', style: { maxHeight: '60vh', overflow: 'auto', margin: 0 } }, stashView.patch || t.demoNoDiff)),
+          : h('pre', { className: 'dshwd-diff-pre', style: { maxHeight: '60vh', overflow: 'auto', margin: 0 } }, stashView.patch || t.boardNoDiff)),
     h('div', { className: 'dshwd-modal-foot' },
       h('span', { className: 'dshwd-modal-foot-meta' }),
       h('div', { className: 'dshwd-modal-foot-actions' },

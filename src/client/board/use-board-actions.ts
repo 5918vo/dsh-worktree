@@ -9,7 +9,7 @@ import { openNativeSession, startTask } from '../actions'
 import type { BoardAction } from '../model'
 import type { ProjectView, TaskView } from '../../models'
 import type { ConfirmState, StashViewState } from './dialogs'
-import type { DemoTab } from '../stage'
+import type { BoardTab } from '../stage'
 
 export interface UseBoardActionsArgs {
   t: Record<string, any>
@@ -23,7 +23,7 @@ export interface UseBoardActionsArgs {
   setStashView: (state: StashViewState | null) => void
   setPartialRestore: (state: { restoreFailed: boolean; reason: string } | null) => void
   setSelectedTaskId: (id: string) => void
-  setTab: (tab: DemoTab) => void
+  setTab: (tab: BoardTab) => void
   openPublish: (projectId?: string, parentId?: string) => void
   say: (message: string, error?: boolean) => void
   refresh: (manual?: boolean) => Promise<void>
@@ -91,7 +91,7 @@ export function useBoardActions(args: UseBoardActionsArgs) {
         const count = (pre.obstacles || []).length
         setConfirm({
           title: action === 'checkout' ? t.checkoutTitle : t.backTitle,
-          body: String(t.demoSwitchDirty).replace('{n}', String(count)),
+          body: String(t.boardSwitchDirty).replace('{n}', String(count)),
           label: action === 'checkout' ? t.checkout : t.back,
           run: () => executeSwitch(action, 'stash', pre),
         })
@@ -123,10 +123,10 @@ export function useBoardActions(args: UseBoardActionsArgs) {
       const dirty = Number(selectedTask.snapshot.worktree && selectedTask.snapshot.worktree.dirtyCount) || 0
       setConfirm({
         title: String(t.mergeTitle).replace('{base}', task.baseBranch),
-        body: String(t.demoMergeConfirm).replace('{branch}', task.branch).replace('{base}', task.baseBranch),
+        body: String(t.boardMergeConfirm).replace('{branch}', task.branch).replace('{base}', task.baseBranch),
         details: [
           { label: t.branchLabel, value: task.branch || '—', mono: true },
-          { label: t.demoTargetBase, value: task.baseBranch || '—', mono: true },
+          { label: t.boardTargetBase, value: task.baseBranch || '—', mono: true },
           { label: t.commits, value: String(ahead) },
           { label: t.uncommitted, value: dirty ? `${dirty} ${t.changesUnit} · ${t.mergeNoAutoStash}` : t.clean },
         ],
@@ -162,7 +162,7 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     const dirty = Number(selectedTask.snapshot.worktree && selectedTask.snapshot.worktree.dirtyCount) || 0
     setConfirm({
       title: t.cleanup,
-      body: t.demoCleanupConfirm,
+      body: t.boardCleanupConfirm,
       label: t.cleanup,
       danger: true,
       checks: [
@@ -189,7 +189,7 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     const cleaned = selectedTask.snapshot.status === 'cleaned'
     setConfirm({
       title: t.deleteTaskTitle,
-      body: cleaned ? t.demoDeleteConfirmCleaned : t.demoDeleteConfirm,
+      body: cleaned ? t.boardDeleteConfirmCleaned : t.boardDeleteConfirm,
       label: t.deleteRecordConfirm,
       danger: true,
       run: async () => {
@@ -226,7 +226,7 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     const id = selectedTask.task.id
     setConfirm({
       title: t.stashDrop,
-      body: t.demoStashDropConfirm,
+      body: t.boardStashDropConfirm,
       label: t.stashDrop,
       danger: true,
       run: async () => {

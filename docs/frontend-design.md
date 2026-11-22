@@ -11,8 +11,8 @@
 - `src/client-entry.ts`：the agent harness 客户端模块注册入口。
 - `src/client.ts`：factory、locale 注册和 slot 接线。
 - `src/client/`：React 视图、配色、样式、国际化和数据交互的模块化实现。
-- `src/client/`：按 `demo.html` 1:1 重构的三栏看板（Rail / Stage / Inspector）。
-- `src/client/styles.ts`：看板 `DEMO_CSS` 与明暗 token。
+- `src/client/`：按参考原型 1:1 重构的三栏看板（Rail / Stage / Inspector）。
+- `src/client/styles.ts`：看板 `WORKBENCH_CSS` 与明暗 token。
 - `src/client/palette.ts`：项目详情和设置页的明暗色板。
 - 构建产物：`dist/client.js`。
 
@@ -30,7 +30,7 @@
 - 合并策略单选（merge / rebase / fast-forward）：当前后端只提供 no-ff 合并。
 - 原型中的示例工具日志：插件只能读取会话投影（轮次、执行清单、上下文），不伪造工具输出。
 
-`demo.html` 的 Rail / Stage / Inspector 三栏结构已按 1:1 落地，包括 Rail 底部主题切换（持久化到 `dshw-demo:theme`）和左右栏折叠按钮。
+参考原型的 Rail / Stage / Inspector 三栏结构已按 1:1 落地，包括 Rail 底部主题切换（持久化到 `dshw-board:theme`）和左右栏折叠按钮。
 
 ## 2. 设计目标
 
@@ -40,7 +40,7 @@
 4. **密集但不拥挤**：保持开发者工具的信息密度，同时让标题、状态和辅助信息有清晰层级。
 5. **嵌入式自适应**：三栏在宽容器展开，窄容器收起 Rail、把 Inspector 变成覆盖层。
 6. **反馈可靠**：加载、空、失败、成功和进行中状态必须可见且不可重复提交。
-7. **配色可替换**：看板颜色集中在 `DEMO_CSS` 的 token，项目详情/设置页集中在 `PALETTE`。
+7. **配色可替换**：看板颜色集中在 `WORKBENCH_CSS` 的 token，项目详情/设置页集中在 `PALETTE`。
 
 ### 非目标
 
@@ -94,7 +94,7 @@ grid-template-columns: 272px minmax(0, 1fr) 284px;
 
 ### 4.2 容器断点
 
-看板使用容器查询（`container: dshwdemo`）判断**自身可用宽度**，而不是视口宽度：插件位于宿主侧栏右侧，页面缩放或宿主侧栏变化时视口宽度并不能代表看板宽度。
+看板使用容器查询（`container: dshwboard`）判断**自身可用宽度**，而不是视口宽度：插件位于宿主侧栏右侧，页面缩放或宿主侧栏变化时视口宽度并不能代表看板宽度。
 
 | 宽度 | 行为 |
 | --- | --- |
@@ -116,14 +116,14 @@ grid-template-columns: 272px minmax(0, 1fr) 284px;
 
 ### 5.1 配色管理
 
-看板颜色集中定义在 `src/client/styles.ts` 的 `DEMO_CSS`，以 `.dshw-demo` 作用域的 CSS 变量承载：
+看板颜色集中定义在 `src/client/styles.ts` 的 `WORKBENCH_CSS`，以 `.dshw-board` 作用域的 CSS 变量承载：
 
 ```css
-.dshw-demo { --bg-canvas: #0b0b0c; --bg-rail: #070708; --bg-stage: #0b0b0c;
+.dshw-board { --bg-canvas: #0b0b0c; --bg-rail: #070708; --bg-stage: #0b0b0c;
              --text-1: #f2f0ec; --text-2: #a9a59d; --text-3: #807c74;
              --line: rgba(242,240,236,.11);
              --accent: #e0a256; --ok: #8fbf94; --warn: #d9a93f; --err: #e0776f; }
-.dshw-demo[data-theme="light"] { --bg-canvas: #f8f5ef; --text-1: #17150f; ... }
+.dshw-board[data-theme="light"] { --bg-canvas: #f8f5ef; --text-1: #17150f; ... }
 ```
 
 项目详情与设置页使用 `src/client/palette.ts` 的 `PALETTE.light` / `PALETTE.dark`，由 `paletteVars()` 生成 `--dshw-*`：
@@ -135,14 +135,14 @@ grid-template-columns: 272px minmax(0, 1fr) 284px;
 
 两套取值必须一致（深色纸黑 + 铜色强调，浅色暖纸 + 深棕强调），改一处就要同步另一处。
 
-`PANEL_CSS`（`src/client/styles.ts` 顶部）是叠加层，被追加到 `CSS` 与 `DEMO_CSS` 末尾，用同一组规则同时约束两套 shell：按钮三档高度、chip 方标、分区自增编号、键值点线引导、左栏 34px 文本轴、统一焦点环。改版式规则优先进这里，而不是在两个样式表里各改一遍。
+`PANEL_CSS`（`src/client/styles.ts` 顶部）是叠加层，被追加到 `CSS` 与 `WORKBENCH_CSS` 末尾，用同一组规则同时约束两套 shell：按钮三档高度、chip 方标、分区自增编号、键值点线引导、左栏 34px 文本轴、统一焦点环。改版式规则优先进这里，而不是在两个样式表里各改一遍。
 
 规则：
 
-- 看板换色只改 `DEMO_CSS` 顶部两组 token；项目详情/设置页换色只改 `PALETTE`。
+- 看板换色只改 `WORKBENCH_CSS` 顶部两组 token；项目详情/设置页换色只改 `PALETTE`。
 - 强调色只用于：运行态、领先提交数、主操作、选中行左侧条。其余状态用降饱和的成功/警告/危险色。
 - 文本三级色必须满足 AA：深色 `#807c74`、浅色 `#736f64`（均 ≥4.6:1）。
-- 看板主题由 `.dshw-demo[data-theme]` 控制，默认跟随宿主亮度，用户切换后写入 `localStorage` 的 `dshw-demo:theme`。
+- 看板主题由 `.dshw-board[data-theme]` 控制，默认跟随宿主亮度，用户切换后写入 `localStorage` 的 `dshw-board:theme`。
 - 项目详情/设置页跟随宿主 `dshw-dark` 类；该类由 `useStyles()` 根据宿主文本颜色自动维护并监听主题变化。
 - 看板语义 token 包括：画布/栏底/舞台/浮层背景、悬停/激活、边框、三级文本、主 CTA、强调色、成功/警告/危险、代码块、diff 增删底色。
 - 看板状态点、chip 和验收操作共用 `src/client/model.ts` 的状态映射，不单独维护近似色。
@@ -169,7 +169,7 @@ Git 状态与会话状态分开：
 
 ### 5.3 字体
 
-- 看板使用 `Inter` / 系统字体栈（`-apple-system`、`SF Pro Text`、`PingFang SC`），与 `demo.html` 保持一致；项目详情/设置页继承宿主字体。
+- 看板使用 `Inter` / 系统字体栈（`-apple-system`、`SF Pro Text`、`PingFang SC`），与参考原型保持一致；项目详情/设置页继承宿主字体。
 - 页面基础字号 `13px`。
 - 标题和主要操作使用 `600–650` 字重。
 - Stage 正文 `13px`，辅助信息 `11–12px`，Rail 任务项标题 `12.5px`。
@@ -495,7 +495,7 @@ Git 状态与会话状态分开：
 当前 UI 已按职责拆分到 `src/client/`，`src/client.ts` 只保留宿主模块注册、factory 和 slot 接线。后续扩展遵循：
 
 - 新组件优先复用 `src/client/primitives.ts` 的 `Btn`、`IconBtn`、`Chip`、`Dot`、`Card`、`CardHead`、`KV`、`Field`、`Modal`、`Banner`、`Stat`、`Toast`。
-- 看板新颜色必须加入 `src/client/styles.ts` 的 `DEMO_CSS` token；项目详情/设置页新颜色必须加入 `src/client/palette.ts` 的 `PALETTE`，组件里不写十六进制、`rgb()` 或命名颜色。
+- 看板新颜色必须加入 `src/client/styles.ts` 的 `WORKBENCH_CSS` token；项目详情/设置页新颜色必须加入 `src/client/palette.ts` 的 `PALETTE`，组件里不写十六进制、`rgb()` 或命名颜色。
 - 新状态必须进入 `src/client/status.ts` 的 `STATUS_TONE`，不能单独定义近似色。
 - 新文案必须加入 `locale/en.json` 和 `locale/zh.json`；`src/client/i18n.ts` 直接引用这两个文件，不再维护第二份字典。
 - 新表单必须使用 `Field` 或等价的 label / error / aria 关联。
@@ -503,7 +503,7 @@ Git 状态与会话状态分开：
 - 复制、刷新、操作结果在看板走 `board.ts` 的轻量 Toast 状态，在项目详情/设置页走 `useToast` + `Toast`，不要重复实现计时器。
 - 请求统一走 `src/client/context.ts` 的 `getJson` / `post`，它们带 token 刷新、12s 超时和重试语义。
 - 组件内不要直接 `import React from 'react'`：宿主通过 `factory(require)` 注入 React，统一从 `src/client/ui.ts` 读取代理。
-- 看板样式只改 `src/client/styles.ts` 的 `DEMO_CSS`，遵循 `dshwd-*` 前缀和 `.dshw-demo` 作用域；项目详情/设置页样式改同一文件的 `CSS`。主题探测和 `<style>` 单例引用计数在 `ui.ts`。
+- 看板样式只改 `src/client/styles.ts` 的 `WORKBENCH_CSS`，遵循 `dshwd-*` 前缀和 `.dshw-board` 作用域；项目详情/设置页样式改同一文件的 `CSS`。主题探测和 `<style>` 单例引用计数在 `ui.ts`。
 - 修改交互后同时更新本文件和 `README.md`。
 
 当前边界：
@@ -514,7 +514,7 @@ src/client/
 ├─ ui.ts                      # 宿主 React 代理、h、useStyles
 ├─ context.ts                 # appCtx、token、请求、bindSession
 ├─ palette.ts
-├─ styles.ts                  # 看板 DEMO_CSS + 项目详情/设置页 CSS
+├─ styles.ts                  # 看板 WORKBENCH_CSS + 项目详情/设置页 CSS
 ├─ i18n.ts                    # 直接引用 locale/*.json
 ├─ icons.ts
 ├─ format.ts                  # 时间、路径、文本、diff、复制
@@ -522,7 +522,7 @@ src/client/
 ├─ status.ts
 ├─ primitives.ts              # 基础组件与 Modal/Field/Toast
 ├─ hooks.ts                   # useBranchInfo、useToast
-├─ board.ts                   # DemoBoardPage、DemoBoardIcon、数据轮询
+├─ board.ts                   # WorkbenchBoardPage、WorkbenchBoardIcon、数据轮询
 ├─ rail.ts                    # 左栏 Rail
 ├─ stage.ts                   # 中栏 Stage（概览/实时会话/diff）
 ├─ inspector.ts               # 右栏 Inspector
@@ -578,7 +578,7 @@ src/client/
 
 ### 视觉
 
-- [ ] 修改 `DEMO_CSS` 顶部 token 能整体改变看板明暗两套配色。
+- [ ] 修改 `WORKBENCH_CSS` 顶部 token 能整体改变看板明暗两套配色。
 - [ ] 修改 `PALETTE` 能改变项目详情/设置页的明暗配色。
 - [ ] 明暗主题下状态色、路径文本和危险按钮对比度可读，主题切换持久化。
 - [ ] 复制、刷新、发布、清理均有明确反馈。

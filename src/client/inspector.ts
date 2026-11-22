@@ -49,7 +49,7 @@ export function Inspector(props: InspectorProps) {
   return h('aside', { className: 'dshwd-inspector' },
     props.narrow && props.onClose
       ? h('div', { className: 'dshwd-insp-narrow-head' },
-        h('span', { className: 'dshwd-insp-narrow-title' }, t.demoInspector),
+        h('span', { className: 'dshwd-insp-narrow-title' }, t.boardInspector),
         h('button', {
           className: 'dshwd-btn dshwd-btn-ghost',
           title: t.close,
@@ -62,20 +62,20 @@ export function Inspector(props: InspectorProps) {
       h('div', { style: { fontSize: '12px', color: summary.tone === 'err' ? 'var(--err)' : summary.tone === 'warn' ? 'var(--warn)' : 'var(--text-2)', lineHeight: '1.5' } },
         mergeSummaryText(t, summary)),
       h('div', { className: 'dshwd-kv', style: { marginTop: '8px' } },
-        h('span', { className: 'dshwd-kv-k' }, t.demoTargetBase),
+        h('span', { className: 'dshwd-kv-k' }, t.boardTargetBase),
         h('span', { className: 'dshwd-kv-v dshwd-mono', title: props.baseSha }, `${props.baseLabel} @ ${shortSha(props.baseSha)}`)),
       h('div', { className: 'dshwd-kv' },
-        h('span', { className: 'dshwd-kv-k' }, t.demoTaskHead),
+        h('span', { className: 'dshwd-kv-k' }, t.boardTaskHead),
         h('span', { className: 'dshwd-kv-v dshwd-mono', title: props.headSha }, shortSha(props.headSha))),
       // Blockers stay visible until they clear: a toast disappears before the
       // user can act on "repo dirty" / "agent running" and left them guessing.
       blockers.length
         ? h('div', { className: 'dshwd-blocker-box' },
-          h('div', { className: 'dshwd-blocker-title' }, t.demoBlockersTitle),
+          h('div', { className: 'dshwd-blocker-title' }, t.boardBlockersTitle),
           h('ul', { className: 'dshwd-blocker-list' }, blockers.map((b: any, i: number) => h('li', { key: (b && b.code) || i }, (b && b.message) || String(b)))))
         : null,
       preview && Array.isArray(preview.conflictFiles) && preview.conflictFiles.length
-        ? h('div', { className: 'dshwd-hint', style: { marginTop: '6px', overflowWrap: 'anywhere' } }, t.demoFiles + '：' + preview.conflictFiles.slice(0, 8).join('、'))
+        ? h('div', { className: 'dshwd-hint', style: { marginTop: '6px', overflowWrap: 'anywhere' } }, t.boardFiles + '：' + preview.conflictFiles.slice(0, 8).join('、'))
         : null),
 
     h('section', { className: 'dshwd-insp-sec' },
@@ -97,8 +97,8 @@ export function Inspector(props: InspectorProps) {
             ? null
             : h('button', {
               className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-copy',
-              title: t.demoCopyPath,
-              'aria-label': t.demoCopyPath,
+              title: t.boardCopyPath,
+              'aria-label': t.boardCopyPath,
               onClick: () => props.onCopy(task.worktreePath),
             }, '⧉')))),
 

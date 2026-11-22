@@ -12,7 +12,7 @@ import { ProjectDetail } from './project-detail'
 import type { ProjectView, TaskView } from '../models'
 import { WORKBENCH_CSS } from './styles'
 import { Rail } from './rail'
-import { Stage, type DemoTab } from './stage'
+import { Stage, type BoardTab } from './stage'
 import { Inspector } from './inspector'
 import { PublishModal } from './publish'
 import { AddProjectModal } from './add-project'
@@ -21,15 +21,15 @@ import { ConfirmDialog, StashDiffModal, type ConfirmState, type StashViewState }
 import { useBoardData } from './board/use-board-data'
 import { useBoardActions } from './board/use-board-actions'
 import {
-  demoCta,
-  demoStatus,
+  boardCta,
+  boardStatus,
   diffBaseSha,
   filterViews,
   themeFor,
   type BoardFilter,
 } from './model'
 
-const THEME_KEY = 'dshw-demo:theme'
+const THEME_KEY = 'dshw-board:theme'
 let boardStyleEl: HTMLStyleElement | null = null
 let boardStyleRefs = 0
 
@@ -51,7 +51,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     boardStyleRefs += 1
     if (!boardStyleEl || !boardStyleEl.isConnected) {
       boardStyleEl = document.createElement('style')
-      boardStyleEl.setAttribute('data-dshw-demo', '1')
+      boardStyleEl.setAttribute('data-dshw-board', '1')
       boardStyleEl.textContent = WORKBENCH_CSS
       document.head.appendChild(boardStyleEl)
     }
@@ -73,7 +73,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
   const [showArchived, setShowArchived] = React.useState(false)
   const [selectedTaskId, setSelectedTaskId] = React.useState('')
   const [selectedProjectId, setSelectedProjectId] = React.useState('')
-  const [tab, setTab] = React.useState('overview' as DemoTab)
+  const [tab, setTab] = React.useState('overview' as BoardTab)
   const [railHidden, setRailHidden] = React.useState(false)
   const [inspectorHidden, setInspectorHidden] = React.useState(false)
   const [compact, setCompact] = React.useState(false)
@@ -277,7 +277,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
 
   const archived = !!(selectedTask && selectedTask.task.archivedAt)
   const cta = selectedTask
-    ? demoCta(demoStatus(selectedTask.snapshot.status, runningOf(selectedTask.task)), !!selectedTask.task.sessionId)
+    ? boardCta(boardStatus(selectedTask.snapshot.status, runningOf(selectedTask.task)), !!selectedTask.task.sessionId)
     : null
   const baseSha = selectedTask
     ? diffBaseSha(selectedTask.task, selectedTask.snapshot, previewRef.current && previewRef.current.preview ? (previewRef.current.preview.expectedBase || null) : null)
@@ -287,7 +287,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
   const archivedCount = views.reduce((n: number, v: ProjectView) => n + v.tasks.filter((x: TaskView) => x.task.archivedAt).length, 0)
   const filtered = filterViews(visibleProjectViews(views, showArchived), filter, query, runningOf)
 
-  return h('div', { ref: rootRef, className: 'dshw-demo', 'data-theme': theme },
+  return h('div', { ref: rootRef, className: 'dshw-board', 'data-theme': theme },
     h('div', {
       className: 'dshwd-app'
         + (railHidden ? ' dshwd-hide-left' : '')
@@ -369,10 +369,10 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
             h('div', { className: 'dshwd-topbar' },
               h('div', { className: 'dshwd-topbar-left' },
                 h('button', { className: 'dshwd-btn dshwd-btn-ghost', onClick: () => setRailHidden((v: boolean) => !v) }, '◧'),
-                h('span', { className: 'dshwd-breadcrumb' }, err || (loaded ? t.demoSelectTask : t.loading)))),
+                h('span', { className: 'dshwd-breadcrumb' }, err || (loaded ? t.boardSelectTask : t.loading)))),
             h('div', { className: 'dshwd-empty', style: { flex: '1' } },
-              h('div', { className: 'dshwd-empty-title' }, err ? t.connectionLost : loaded ? t.demoSelectTask : t.loading),
-              h('div', { className: 'dshwd-hint' }, err ? err : t.demoSelectTaskHint),
+              h('div', { className: 'dshwd-empty-title' }, err ? t.connectionLost : loaded ? t.boardSelectTask : t.loading),
+              h('div', { className: 'dshwd-hint' }, err ? err : t.boardSelectTaskHint),
               err ? h('button', { className: 'dshwd-btn', onClick: () => void refresh(true) }, t.retry) : null)),
 
       selectedTask
@@ -464,8 +464,3 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
 
     toast ? h('div', { className: 'dshwd-toast dshwd-show' + (toast.error ? ' dshwd-error' : ''), role: toast.error ? 'alert' : 'status' }, toast.message) : null)
 }
-
-/** @deprecated Prefer WorkbenchBoardIcon. */
-export const DemoBoardIcon = WorkbenchBoardIcon
-/** @deprecated Prefer WorkbenchBoardPage. */
-export const DemoBoardPage = WorkbenchBoardPage

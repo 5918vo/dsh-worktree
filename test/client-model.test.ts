@@ -2,10 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   criteria,
-  demoBranch,
-  demoCta,
-  demoStat,
-  demoStatus,
+  boardBranch,
+  boardCta,
+  boardStat,
+  boardStatus,
   diffBaseSha,
   diffCount,
   diffHeadSha,
@@ -17,34 +17,34 @@ import {
   shortSha,
   taskMatches,
   themeFor,
-  type DemoStatus,
+  type BoardStatus,
 } from '../src/client/model.js'
 
 const T = {
-  demoReady: '待开始',
+  boardReady: '待开始',
   developing: '进行中',
-  demoAgentRunning: 'Agent 正在运行',
+  boardAgentRunning: 'Agent 正在运行',
   review: '待验收',
   reviewing: '验收中',
   merged: '已合并',
   cleaned: '已清理',
   broken: '异常',
-  demoDirectMerge: '直接合并',
-  demoCheckoutReview: '切到主仓库验收',
-  demoViewLogs: '查看日志',
-  demoBack: '返回原分支',
-  demoOpenSession: '打开原生会话',
-  demoCreateSession: '创建并启动会话',
-  demoStartAgent: '启动 Agent 会话',
-  demoFollowUp: '派生后续任务',
-  demoCleanup: '清理 Worktree',
-  demoPreviewChecking: '检查中',
-  demoPreviewConflict: '冲突 {n}',
-  demoPreviewOverlap: '同文件 {n}',
-  demoPreviewBaseAhead: '基线前进 {n}',
-  demoPreviewSafe: '安全',
-  demoPreviewIdle: '等待',
-  demoPreviewBlocked: '阻塞',
+  boardDirectMerge: '直接合并',
+  boardCheckoutReview: '切到主仓库验收',
+  boardViewLogs: '查看日志',
+  boardBack: '返回原分支',
+  boardOpenSession: '打开原生会话',
+  boardCreateSession: '创建并启动会话',
+  boardStartAgent: '启动 Agent 会话',
+  boardFollowUp: '派生后续任务',
+  boardCleanup: '清理 Worktree',
+  boardPreviewChecking: '检查中',
+  boardPreviewConflict: '冲突 {n}',
+  boardPreviewOverlap: '同文件 {n}',
+  boardPreviewBaseAhead: '基线前进 {n}',
+  boardPreviewSafe: '安全',
+  boardPreviewIdle: '等待',
+  boardPreviewBlocked: '阻塞',
 }
 
 const task = (over: any = {}) => ({
@@ -77,23 +77,23 @@ const view = (over: any = {}) => ({
   },
 })
 
-test('demoStatus promotes a running review to the running state', () => {
-  assert.equal(demoStatus('review', true).key, 'running')
-  assert.equal(demoStatus('review', false).key, 'review')
-  assert.equal(demoStatus('developing', true).key, 'running')
-  assert.equal(demoStatus('merged', false).chip, 'ok')
+test('boardStatus promotes a running review to the running state', () => {
+  assert.equal(boardStatus('review', true).key, 'running')
+  assert.equal(boardStatus('review', false).key, 'review')
+  assert.equal(boardStatus('developing', true).key, 'running')
+  assert.equal(boardStatus('merged', false).chip, 'ok')
 })
 
-test('demoCta mirrors the demo primary/secondary actions', () => {
-  const review: DemoStatus = demoStatus('review', false)
-  assert.equal(demoCta(review, false).primary.action, 'checkout')
-  assert.equal(demoCta(review, false).secondary?.action, 'merge')
-  assert.equal(demoCta(demoStatus('reviewing', false), true).primary.action, 'back')
-  assert.equal(demoCta(demoStatus('developing', false), false).primary.action, 'create')
-  assert.equal(demoCta(demoStatus('developing', false), true).primary.action, 'open')
-  assert.equal(demoCta(demoStatus('merged', false), true).secondary?.action, 'continue')
-  assert.equal(demoCta(demoStatus('cleaned', false), true).primary.action, 'none')
-  assert.equal(demoCta(demoStatus('broken', false), true).primary.action, 'retry')
+test('boardCta mirrors the board primary/secondary actions', () => {
+  const review: BoardStatus = boardStatus('review', false)
+  assert.equal(boardCta(review, false).primary.action, 'checkout')
+  assert.equal(boardCta(review, false).secondary?.action, 'merge')
+  assert.equal(boardCta(boardStatus('reviewing', false), true).primary.action, 'back')
+  assert.equal(boardCta(boardStatus('developing', false), false).primary.action, 'create')
+  assert.equal(boardCta(boardStatus('developing', false), true).primary.action, 'open')
+  assert.equal(boardCta(boardStatus('merged', false), true).secondary?.action, 'continue')
+  assert.equal(boardCta(boardStatus('cleaned', false), true).primary.action, 'none')
+  assert.equal(boardCta(boardStatus('broken', false), true).primary.action, 'retry')
 })
 
 test('criteria are read-only and derive checked state from the lifecycle', () => {
@@ -104,11 +104,11 @@ test('criteria are read-only and derive checked state from the lifecycle', () =>
 })
 
 test('rail formatting strips the worktree prefix and summarises the snapshot', () => {
-  assert.equal(demoBranch('dsh-wt/fix-login'), 'fix-login')
-  assert.equal(demoBranch('feat/x'), 'feat/x')
-  assert.equal(demoStat(view().snapshot), '↑2')
-  assert.equal(demoStat(view({ snapshot: { worktree: { ahead: 0, dirtyCount: 3 } } }).snapshot), '3•')
-  assert.equal(demoStat(view({ snapshot: { worktree: { ahead: 0, dirtyCount: 0 } } }).snapshot), '')
+  assert.equal(boardBranch('dsh-wt/fix-login'), 'fix-login')
+  assert.equal(boardBranch('feat/x'), 'feat/x')
+  assert.equal(boardStat(view().snapshot), '↑2')
+  assert.equal(boardStat(view({ snapshot: { worktree: { ahead: 0, dirtyCount: 3 } } }).snapshot), '3•')
+  assert.equal(boardStat(view({ snapshot: { worktree: { ahead: 0, dirtyCount: 0 } } }).snapshot), '')
   assert.equal(shortSha('abcdef123456'), 'abcdef1')
   assert.equal(shortSha(''), '—')
 })
@@ -184,6 +184,6 @@ test('pathPreview uses the project worktree directory', () => {
 
 test('snapshot-less task rows still resolve their CTA', () => {
   const bare = { task: task(), snapshot: null } as any
-  assert.equal(demoStatus('ready', false).key, 'ready')
+  assert.equal(boardStatus('ready', false).key, 'ready')
   assert.equal(taskMatches(bare, 'all', '', false), true)
 })

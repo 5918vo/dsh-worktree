@@ -10,7 +10,7 @@ export interface AddProjectModalProps {
 }
 
 /**
- * New-project dialog for the demo board. The board previously had no entry for
+ * New-project dialog for the board. The board previously had no entry for
  * `projects/add`, which left a fresh install with no way past "add a project
  * first"; this dialog restores that path with the same field rules as the
  * backend (repo path, default base branch).

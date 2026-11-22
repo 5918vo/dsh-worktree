@@ -84,7 +84,7 @@ export function probeSessionState(host: any, sessionId: string): 'running' | 'id
 
 /**
  * Host half of the deepseek-worktree plugin: git worktree task lifecycle plus
- * a board board. Each task is a real DSH session bound to its worktree — the
+ * a task board. Each task is a real DSH session bound to its worktree — the
  * client creates that session via remote.session; the host only records the
  * binding and does the git work.
  */

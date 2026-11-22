@@ -725,7 +725,7 @@ export const CSS = `
   .dshw-sk-line{animation:none;background:var(--dshw-surface-3)}
 }
 
-/* ---- demo.html parity: rail group-head + item rows ---------------------- */
+/* ---- reference prototype parity: rail group-head + item rows ---------------------- */
 .dshw-sidebar .dshw-project{display:flex;align-items:center;gap:4px;margin-top:6px;padding:6px 8px 4px;border-radius:6px;background:transparent;border:0;box-shadow:none;transition:background .12s}
 .dshw-sidebar .dshw-project:hover{background:var(--dshw-hover)}
 .dshw-sidebar .dshw-project--on{background:transparent;box-shadow:none}
@@ -770,7 +770,7 @@ export const CSS = `
 .dshw-inspector-hidden .dshw-inspector{display:none}
 .dshw-inspector-hidden .dshw-detail-inner.dshw-stage-grid{grid-template-columns:minmax(0,1fr)!important}
 
-/* ---- demo.html parity: modal shell ------------------------------------- */
+/* ---- reference prototype parity: modal shell ------------------------------------- */
 .dshw-modal{width:min(580px,100%);max-height:90vh;border-radius:11px;background:var(--dshw-surface);border:1px solid var(--dshw-border);box-shadow:var(--dshw-modal-shadow),var(--dshw-specular)}
 .dshw-modal--lg{width:min(680px,100%)}
 .dshw-modal-head{padding:15px 20px;border-bottom:1px solid var(--dshw-border);align-items:center}

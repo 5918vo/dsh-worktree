@@ -131,7 +131,7 @@ Git 状态与会话状态分开显示：`review` 只表示 worktree 有待验收
 
 ## 工作台与交互
 
-- 看板按 `demo.html` 的 「Rail / Stage / Inspector」 三栏组织：左栏 `272px`、中栏自适应、右栏 `284px`。
+- 看板按参考原型的 「Rail / Stage / Inspector」 三栏组织：左栏 `272px`、中栏自适应、右栏 `284px`。
 - 左栏 Rail：Logo、新增项目（`⊞`）、发布任务、搜索、状态过滤 pills（全部 / 待验收 / 进行中）、按项目分组的任务列表，底部显示仓库/任务计数和明暗主题切换；无项目时列表内直接给出「新增项目」按钮。
 - 中栏 Stage：顶部面包屑（项目 / 任务分支 → 基线）和左右栏折叠按钮；标题区显示任务名、状态 chip、`基线..HEAD` 与更新时间、主/次操作；下方为「概览 / 实时会话 / 代码改动」三个标签页。
 - 右栏 Inspector：合并预检结论、目标基线、任务 HEAD、技术信息（分支、会话 ID、worktree、路径）、生命周期操作（归档/取消归档、清理、删除记录）以及待处理暂存区。
@@ -169,11 +169,11 @@ Git 状态与会话状态分开显示：`review` 只表示 worktree 有待验收
 
 ## 配色
 
-看板新界面（DemoBoardPage）使用 `src/client/styles.ts` 的 `DEMO_CSS`：在 `.dshw-demo` 作用域内定义 `--bg-*`、`--text-*`、`--line`、`--accent`、`--ok/--warn/--err` 等 token，明暗两套由 `[data-theme="light"]` 切换。
+看板新界面（WorkbenchBoardPage）使用 `src/client/styles.ts` 的 `WORKBENCH_CSS`：在 `.dshw-board` 作用域内定义 `--bg-*`、`--text-*`、`--line`、`--accent`、`--ok/--warn/--err` 等 token，明暗两套由 `[data-theme="light"]` 切换。
 项目详情与设置页仍使用 `src/client/palette.ts` 的 `PALETTE.light` / `PALETTE.dark` 生成 `--dshw-*` CSS 变量。
 
-- 修改看板配色只需改 `DEMO_CSS` 顶部的两组 token；改设置页/项目详情配色只需改 `PALETTE`。
-- 看板主题由 `.dshw-demo[data-theme]` 控制并持久化到 `dshw-demo:theme`；项目详情/设置页跟随宿主 `dshw-dark` 类。
+- 修改看板配色只需改 `WORKBENCH_CSS` 顶部的两组 token；改设置页/项目详情配色只需改 `PALETTE`。
+- 看板主题由 `.dshw-board[data-theme]` 控制并持久化到 `dshw-board:theme`；项目详情/设置页跟随宿主 `dshw-dark` 类。
 - 状态色、终端面板、Toast、阴影和焦点环同样来自配色表。
 - 控件自身的配色由共享原语的 `--dsw-*` token 提供；`--dshw-*` 只负责看板自有布局、状态色和回落控件。
 
@@ -187,7 +187,7 @@ src/client/
 ├─ ui.ts                      # 宿主 React 代理、h、useStyles
 ├─ context.ts                 # appCtx、token、请求、bindSession
 ├─ palette.ts                 # 项目详情/设置页明暗色板
-├─ styles.ts                  # 项目详情/设置页 CSS + 看板 DEMO_CSS
+├─ styles.ts                  # 项目详情/设置页 CSS + 看板 WORKBENCH_CSS
 ├─ i18n.ts                    # 直接引用 locale/*.json
 ├─ icons.ts
 ├─ format.ts                  # 时间、路径、文本、diff、复制
@@ -199,7 +199,7 @@ src/client/
 ├─ merge-preview.ts           # 合并预检控制器
 ├─ project-detail.ts          # 项目详情（Stage 中显示）
 ├─ settings-page.ts
-├─ board.ts                   # DemoBoardPage、DemoBoardIcon、数据轮询（按 demo.html 1:1）
+├─ board.ts                   # WorkbenchBoardPage、WorkbenchBoardIcon、数据轮询（按参考原型 1:1）
 ├─ rail.ts                    # 左栏：搜索/过滤/项目任务列表/主题
 ├─ stage.ts                   # 中栏：面包屑、标题、标签页、概览/会话/diff
 ├─ inspector.ts               # 右栏：合并预检、技术信息、生命周期
@@ -215,7 +215,7 @@ src/client/
 - 看板新颜色/样式只改 `src/client/styles.ts`；项目详情与设置页只改 `src/client/palette.ts` 和 `src/client/styles.ts`。
 - 新文案同时加入 `locale/en.json` 和 `locale/zh.json`，`src/client/i18n.ts` 不再维护第二份字典。
 - 新请求统一走 `src/client/context.ts` 的 `getJson` / `post`，它们带 token 刷新和 12s 超时。
-- 看板（`src/client/`）按 demo.html 自绘 `dshwd-*` 控件，操作结果用 `board.ts` 内的轻量 Toast 状态；项目详情和设置页沿用 `useToast` + `Toast`。
+- 看板（`src/client/`）按参考原型自绘 `dshwd-*` 控件，操作结果用 `board.ts` 内的轻量 Toast 状态；项目详情和设置页沿用 `useToast` + `Toast`。
 - 项目详情和设置页的控件走 `src/client/primitives.ts`：它转调宿主共享的 `@deepseek-ai/dsh-client-ui-primitives`。该模块在浏览器构建里保持 external，由 `factory(require)` 注入；宿主缺少它时自动回落到本地实现。
 
 ## HTTP API

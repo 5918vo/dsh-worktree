@@ -233,7 +233,7 @@ export function PublishModal(props: PublishModalProps) {
   if (!project) {
     return modal(t, props, project, null, busy, start, h('div', { className: 'dshwd-empty' },
       h('div', { className: 'dshwd-empty-title' }, t.noProjectsHint),
-      h('div', { className: 'dshwd-hint' }, t.demoAddProjectFirst)),
+      h('div', { className: 'dshwd-hint' }, t.boardAddProjectFirst)),
     h('button', { className: 'dshwd-btn', onClick: props.onClose }, t.close))
   }
 
@@ -244,7 +244,7 @@ export function PublishModal(props: PublishModalProps) {
 
   return modal(t, props, project, submit, busy, start,
     h('div', { className: 'dshwd-field-row-2' },
-      field(t, t.demoProject, h('select', {
+      field(t, t.boardProject, h('select', {
         className: 'dshwd-select',
         value: projectId,
         disabled: !!parentTask || busy,
@@ -271,7 +271,7 @@ export function PublishModal(props: PublishModalProps) {
 
     parentTask && !asPlain
       ? h('div', { className: 'dshwd-alert dshwd-alert-info' },
-        h('span', null, String(t.demoContinueHint).replace('{branch}', parentTask.baseBranch || '—')))
+        h('span', null, String(t.boardContinueHint).replace('{branch}', parentTask.baseBranch || '—')))
       : null,
 
     field(t, t.taskTitle, h('input', {
@@ -280,7 +280,7 @@ export function PublishModal(props: PublishModalProps) {
       value: title,
       autoFocus: true,
       disabled: busy,
-      placeholder: t.demoTitlePlaceholder,
+      placeholder: t.boardTitlePlaceholder,
       'aria-invalid': fieldErrors.title ? 'true' : 'false',
       onChange: (e: any) => { setTitle(e.target.value); clearField('title') },
     })),
@@ -290,7 +290,7 @@ export function PublishModal(props: PublishModalProps) {
       className: 'dshwd-textarea' + (fieldErrors.description ? ' dshwd-invalid' : ''),
       value: description,
       disabled: busy,
-      placeholder: t.demoDescriptionPlaceholder,
+      placeholder: t.boardDescriptionPlaceholder,
       'aria-invalid': fieldErrors.description ? 'true' : 'false',
       onChange: (e: any) => { setDescription(e.target.value); clearField('description') },
     })),
@@ -323,15 +323,15 @@ export function PublishModal(props: PublishModalProps) {
           value: manual,
           disabled: busy,
           rows: 2,
-          placeholder: t.demoCriterionPlaceholder,
+          placeholder: t.boardCriterionPlaceholder,
           onChange: (e: any) => setManual(e.target.value),
         }))),
 
     h('button', { className: 'dshwd-adv-toggle', disabled: busy, onClick: () => setAdvanced((v: boolean) => !v) },
-      advanced ? '▾ ' : '▸ ', t.demoAdvanced),
+      advanced ? '▾ ' : '▸ ', t.boardAdvanced),
     advanced
       ? h('div', { className: 'dshwd-adv-panel dshwd-open' },
-        field(t, t.demoCustomBranch, h('input', {
+        field(t, t.boardCustomBranch, h('input', {
           className: 'dshwd-input dshwd-mono' + (fieldErrors.branch ? ' dshwd-invalid' : ''),
           value: branch,
           disabled: busy,
@@ -355,19 +355,19 @@ export function PublishModal(props: PublishModalProps) {
     parentTask
       ? h('label', { className: 'dshwd-check-row' },
         h('input', { type: 'checkbox', checked: asPlain, disabled: busy, onChange: (e: any) => setAsPlain(e.target.checked) }),
-        h('span', { className: 'dshwd-check-label' }, t.demoPublishAsPlain))
+        h('span', { className: 'dshwd-check-label' }, t.boardPublishAsPlain))
       : null,
     parentTask && !asPlain && parentAhead > 0
       ? h('label', { className: 'dshwd-check-row' },
         h('input', { type: 'checkbox', checked: carryLeftover, disabled: busy, onChange: (e: any) => setCarryLeftover(e.target.checked) }),
-        h('span', { className: 'dshwd-check-label' }, String(t.demoCarryLeftover).replace('{n}', String(parentAhead))))
+        h('span', { className: 'dshwd-check-label' }, String(t.boardCarryLeftover).replace('{n}', String(parentAhead))))
       : null,
 
     h('div', { className: 'dshwd-adv-panel dshwd-open' },
       h('div', { className: 'dshwd-switch-row' },
         h('div', null,
-          h('div', { className: 'dshwd-switch-title' }, t.demoStartAfterPublish),
-          h('div', { className: 'dshwd-switch-desc' }, t.demoStartAfterPublishHint)),
+          h('div', { className: 'dshwd-switch-title' }, t.boardStartAfterPublish),
+          h('div', { className: 'dshwd-switch-desc' }, t.boardStartAfterPublishHint)),
         h('label', { className: 'dshwd-switch' },
           h('input', { type: 'checkbox', checked: start, disabled: busy, onChange: (e: any) => setStart(e.target.checked) }),
           h('span', { className: 'dshwd-slider' })))),
@@ -404,7 +404,7 @@ function modal(t: any, props: PublishModalProps, project: any, onSubmit: (() => 
         h('div', { className: 'dshwd-modal-foot-actions' },
           h('button', { className: 'dshwd-btn', disabled: busy, onClick: close }, t.cancel),
           onSubmit
-            ? h('button', { className: 'dshwd-btn dshwd-btn-cta', disabled: busy, onClick: onSubmit }, busy ? t.publishing : (start ? t.demoCreatePublish : t.demoCreateTask))
+            ? h('button', { className: 'dshwd-btn dshwd-btn-cta', disabled: busy, onClick: onSubmit }, busy ? t.publishing : (start ? t.boardCreatePublish : t.boardCreateTask))
             : h('button', { className: 'dshwd-btn', disabled: busy, onClick: close }, t.close))))
   )
 }

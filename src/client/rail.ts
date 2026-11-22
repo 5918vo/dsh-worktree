@@ -1,7 +1,7 @@
 import { h } from './ui'
 import { relTime, taskStamp } from './format'
 import type { ProjectView, TaskView } from '../models'
-import { demoBranch, demoStat, demoStatus, demoStatusLabel, type DemoFilter, type DemoTheme } from './model'
+import { boardBranch, boardStat, boardStatus, boardStatusLabel, type BoardFilter, type BoardTheme } from './model'
 
 export interface RailProps {
   t: any
@@ -10,13 +10,13 @@ export interface RailProps {
   selectedTaskId: string
   selectedProjectId: string
   query: string
-  filter: DemoFilter
+  filter: BoardFilter
   showArchived: boolean
   archivedCount: number
-  theme: DemoTheme
+  theme: BoardTheme
   runningOf: (task: any) => boolean
   onQuery: (value: string) => void
-  onFilter: (filter: DemoFilter) => void
+  onFilter: (filter: BoardFilter) => void
   onToggleArchived: () => void
   onSelectTask: (taskId: string, projectId: string) => void
   onSelectProject: (projectId: string) => void
@@ -43,7 +43,7 @@ export function Rail(props: RailProps) {
           'aria-label': t.addProject,
           onClick: props.onAddProject,
         }, '⊞'),
-        h('button', { className: 'dshwd-btn dshwd-btn-cta', style: { height: '25px', padding: '0 9px', fontSize: '11.5px' }, title: String(t.demoPublishShortcut), onClick: props.onPublish }, '+ ', t.publish))),
+        h('button', { className: 'dshwd-btn dshwd-btn-cta', style: { height: '25px', padding: '0 9px', fontSize: '11.5px' }, title: String(t.boardPublishShortcut), onClick: props.onPublish }, '+ ', t.publish))),
 
     h('div', { className: 'dshwd-rail-controls' },
       h('div', { className: 'dshwd-search-wrap' },
@@ -51,14 +51,14 @@ export function Rail(props: RailProps) {
           ref: props.searchRef,
           className: 'dshwd-search',
           value: props.query,
-          placeholder: t.demoSearch,
-          'aria-label': t.demoSearch,
+          placeholder: t.boardSearch,
+          'aria-label': t.boardSearch,
           onInput: (e: any) => props.onQuery(e.target.value),
         }),
         h('span', { className: 'dshwd-search-kbd dshwd-mono' }, '/')),
       h('div', { className: 'dshwd-pills' },
         pill(t, 'all', t.all, props),
-        pill(t, 'review', t.demoWaitingReview, props),
+        pill(t, 'review', t.boardWaitingReview, props),
         pill(t, 'developing', t.running, props)),
       props.archivedCount > 0 || props.showArchived
         ? h('div', { style: { display: 'flex', justifyContent: 'flex-end' } },
@@ -77,7 +77,7 @@ export function Rail(props: RailProps) {
         ? props.views.map((view) => h('div', { key: view.project.id },
           h('button', {
             className: 'dshwd-group-head',
-            title: t.demoOpenProject,
+            title: t.boardOpenProject,
             onClick: () => props.onSelectProject(view.project.id),
           },
             h('span', null, view.project.name),
@@ -86,8 +86,8 @@ export function Rail(props: RailProps) {
             ? view.tasks.map((tv) => taskRow(t, tv, view, props))
             : h('div', { className: 'dshwd-hint', style: { padding: '0 8px 8px 24px', fontSize: '11px' } }, t.noTasks)))
         : h('div', { className: 'dshwd-empty', style: { minHeight: '160px' } },
-          h('div', { className: 'dshwd-empty-title' }, props.query ? t.demoNoMatches : t.noTasks),
-          h('div', { className: 'dshwd-hint' }, props.query ? t.demoClearSearch : t.noProjectsHint),
+          h('div', { className: 'dshwd-empty-title' }, props.query ? t.boardNoMatches : t.noTasks),
+          h('div', { className: 'dshwd-hint' }, props.query ? t.boardClearSearch : t.noProjectsHint),
           !props.query && props.projectCount === 0
             ? h('button', { className: 'dshwd-btn dshwd-btn-cta', onClick: props.onAddProject }, t.addProject)
             : null)),
@@ -95,10 +95,10 @@ export function Rail(props: RailProps) {
     h('div', { className: 'dshwd-rail-foot' },
       h('span', { className: 'dshwd-mono', style: { fontSize: '11px', color: 'var(--text-3)' } }, `${totalRepos} repos · ${totalTasks} tasks`),
       h('button', { className: 'dshwd-btn dshwd-btn-ghost', style: { height: '24px', fontSize: '11px' }, onClick: props.onToggleTheme },
-        props.theme === 'dark' ? t.demoThemeLight : t.demoThemeDark)))
+        props.theme === 'dark' ? t.boardThemeLight : t.boardThemeDark)))
 }
 
-function pill(t: any, filter: DemoFilter, label: string, props: RailProps) {
+function pill(t: any, filter: BoardFilter, label: string, props: RailProps) {
   return h('button', {
     key: filter,
     className: 'dshwd-pill' + (props.filter === filter ? ' dshwd-active' : ''),
@@ -110,7 +110,7 @@ function pill(t: any, filter: DemoFilter, label: string, props: RailProps) {
 function taskRow(t: any, tv: TaskView, view: ProjectView, props: RailProps) {
   const task = tv.task
   const running = props.runningOf(task)
-  const status = demoStatus(tv.snapshot.status, running)
+  const status = boardStatus(tv.snapshot.status, running)
   return h('div', {
     key: task.id,
     className: 'dshwd-item' + (props.selectedTaskId === task.id ? ' dshwd-active' : ''),
@@ -127,8 +127,8 @@ function taskRow(t: any, tv: TaskView, view: ProjectView, props: RailProps) {
     h('div', { className: 'dshwd-item-row1' },
       h('span', { className: 'dshwd-dot dshwd-' + status.dot, 'aria-hidden': 'true' }),
       h('span', { className: 'dshwd-item-title' }, task.title),
-      h('span', { className: 'dshwd-item-stat dshwd-mono' }, demoStat(tv.snapshot))),
+      h('span', { className: 'dshwd-item-stat dshwd-mono' }, boardStat(tv.snapshot))),
     h('div', { className: 'dshwd-item-row2' },
-      h('span', { className: 'dshwd-mono' }, demoBranch(task.branch)),
+      h('span', { className: 'dshwd-mono' }, boardBranch(task.branch)),
       h('span', null, task.archivedAt ? t.archived : relTime(taskStamp(task, tv.snapshot), t))))
 }
