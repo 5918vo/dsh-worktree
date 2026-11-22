@@ -176,6 +176,9 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-block { padding-bottom: 24px; margin-bottom: 24px; border-bottom: 1px solid var(--line); }
 .dshw-board .dshwd-block:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
 .dshw-board .dshwd-block-label { font-size: 11.5px; font-weight: 500; color: var(--text-3); margin-bottom: 10px; }
+.dshw-board .dshwd-block-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.dshw-board .dshwd-block-head .dshwd-block-label { margin-bottom: 0; min-width: 0; }
+.dshw-board .dshwd-block-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .dshw-board .dshwd-prose { font-size: 13.5px; line-height: 1.7; color: var(--text-2); white-space: pre-wrap; }
 .dshw-board .dshwd-check-list { display: flex; flex-direction: column; gap: 9px; }
 .dshw-board .dshwd-check-toggle { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
