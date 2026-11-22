@@ -577,13 +577,15 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     addOpen
       ? h(AddProjectModal, {
         t,
+        projects: views.map((v: any) => v.project),
         onClose: () => setAddOpen(false),
-        onAdded: (project: any) => {
+        onAdded: (project: any, existing?: boolean) => {
           setAddOpen(false)
           if (project) {
             setSelectedProjectId(project.id)
             setSelectedTaskId('')
-            say(String(t.projectAdded).replace('{name}', project.name || ''))
+            const copy = existing ? t.projectExistsOpened : t.projectAdded
+            say(String(copy).replace('{name}', project.name || ''))
           }
           void refresh()
         },

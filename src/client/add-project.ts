@@ -2,24 +2,23 @@ import { React, h } from './ui'
 import { appCtx, post } from './context'
 import { useBranchInfo } from './hooks'
 import { baseName } from './format'
+import { sameRepoPath, submitBlockedReason } from './project-form'
 
 export interface AddProjectModalProps {
   t: any
+  /** Known projects, used to flag a repository that is already registered. */
+  projects?: any[]
   onClose: () => void
-  onAdded: (project: any) => void
+  onAdded: (project: any, existing?: boolean) => void
 }
 
-/**
- * New-project dialog for the board. The board previously had no entry for
- * `projects/add`, which left a fresh install with no way past "add a project
- * first"; this dialog restores that path with the same field rules as the
- * backend (repo path, default base branch).
- */
 export function AddProjectModal(props: AddProjectModalProps) {
   const { t } = props
   const remotes = appCtx && appCtx.remote
   const [repoPath, setRepoPath] = React.useState('')
   const [name, setName] = React.useState('')
+  // Typing in the name field opts out of the directory-name autofill.
+  const nameEdited = React.useRef(false)
   const [baseBranch, setBaseBranch] = React.useState('')
   const [picking, setPicking] = React.useState(false)
   const pickingRef = React.useRef(false)
@@ -70,8 +69,15 @@ export function AddProjectModal(props: AddProjectModalProps) {
 
   React.useEffect(() => {
     setBaseBranch('')
+    if (!nameEdited.current) setName(baseName(repoPath) || '')
     setFieldErrors((prev: any) => (prev.baseBranch ? Object.assign({}, prev, { baseBranch: '' }) : prev))
   }, [repoPath])
+
+  const duplicate = React.useMemo(() => {
+    if (!repoPath.trim()) return null
+    const list = Array.isArray(props.projects) ? props.projects : []
+    return list.find((project: any) => project && sameRepoPath(project.repoPath, repoPath)) || null
+  }, [repoPath, props.projects])
 
   React.useEffect(() => {
     const d = branches.data
@@ -139,7 +145,7 @@ export function AddProjectModal(props: AddProjectModalProps) {
         name: name.trim() || undefined,
         baseBranch: baseBranch.trim(),
       })
-      props.onAdded(r && r.project)
+      props.onAdded(r && r.project, !!(r && r.existing))
     } catch (e: any) {
       setErr((e && e.message) || t.failed)
     } finally {
@@ -227,14 +233,23 @@ export function AddProjectModal(props: AddProjectModalProps) {
             value: name,
             placeholder: baseName(repoPath) || t.projectName,
             autoComplete: 'off',
-            onChange: (e: any) => setName(e.target.value),
+            onChange: (e: any) => { nameEdited.current = true; setName(e.target.value) },
           })),
+
+        duplicate
+          ? h('div', { className: 'dshwd-notice dshwd-alert dshwd-alert-warn', role: 'status' },
+            h('div', { className: 'dshwd-notice-text' },
+              h('div', { className: 'dshwd-notice-title' }, String(t.projectExists).replace('{name}', duplicate.name || '')),
+              h('div', { className: 'dshwd-hint' }, t.projectExistsHint)),
+            h('div', { className: 'dshwd-notice-actions' },
+              h('button', { className: 'dshwd-btn', disabled: busy, onClick: () => props.onAdded(duplicate, true) }, t.openProject)))
+          : null,
 
         h('label', { className: 'dshwd-field' },
           h('span', { className: 'dshwd-label' }, t.defaultBase),
           branchControl),
         branches.status === 'error'
-          ? h('div', { className: 'dshwd-hint' }, t.loadBranchesFailed)
+          ? h('div', { className: 'dshwd-hint dshwd-text-warn' }, branches.error === 'empty' ? t.notGitRepo : t.loadBranchesFailed)
           : null,
         fieldErrors.baseBranch ? h('div', { className: 'dshwd-alert', role: 'alert' }, fieldErrors.baseBranch) : null,
         err ? h('div', { className: 'dshwd-alert', role: 'alert' }, err) : null),
@@ -245,7 +260,8 @@ export function AddProjectModal(props: AddProjectModalProps) {
           h('button', { className: 'dshwd-btn', disabled: busy, onClick: props.onClose }, t.cancel),
           h('button', {
             className: 'dshwd-btn dshwd-btn-cta',
-            disabled: busy || !repoPath.trim() || !baseBranch.trim() || branches.status === 'loading',
+            title: submitBlockedReason(t, repoPath, baseBranch, branches.status),
+            disabled: busy || !!duplicate || !repoPath.trim() || !baseBranch.trim() || branches.status === 'loading',
             onClick: () => void submit(),
           }, busy ? t.loading : t.addProject)))))
 }

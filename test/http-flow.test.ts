@@ -130,6 +130,24 @@ test('main flow over HTTP: publish -> bind -> execute -> merge -> cleanup', asyn
   assert.equal(finalList.body.tasks.find((v: any) => v.task.id === task.id).snapshot.status, 'cleaned')
 })
 
+test('projects/add reports whether the repository was already registered', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const fresh = join(root, 'repo-existing')
+  await fs.mkdir(fresh, { recursive: true })
+  await initRepo(fresh)
+  await commitFile(fresh, 'readme.md', 'x')
+
+  const first = await call('projects/add', { body: { repoPath: fresh, name: 'dup-check' }, headers: auth })
+  assert.equal(first.status, 200, JSON.stringify(first.body))
+  assert.equal(first.body.existing, false)
+
+  const again = await call('projects/add', { body: { repoPath: fresh + '/', name: 'renamed' }, headers: auth })
+  assert.equal(again.status, 200, JSON.stringify(again.body))
+  assert.equal(again.body.existing, true)
+  assert.equal(again.body.project.id, first.body.project.id)
+  assert.equal(again.body.project.name, 'dup-check')
+})
+
 test('publish validation errors surface as 400, not 500', async () => {
   const auth = { 'x-dsh-worktree-token': token }
   const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
