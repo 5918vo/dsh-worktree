@@ -1,5 +1,5 @@
 import { React, h } from './ui'
-import { relTime } from './format'
+import { relTime, taskStamp } from './format'
 import type { TaskDiff, TaskView } from '../models'
 import { criteria, demoStatus, demoStatusLabel, diffCount, diffHeadSha, diffLineKind, shortSha, type DemoAction, type DemoCta } from './model'
 import type { TimelineEntry } from './timeline'
@@ -29,18 +29,25 @@ export interface StageProps {
   headSha: string
   onToggleRail: () => void
   onToggleInspector: () => void
+  /** Narrow container: labelled back-to-list entry, rail is an overlay. */
+  narrow?: boolean
+  notice?: { message: string } | null
+  onDismissNotice?: () => void
+  onBackToList?: () => void
 }
 
 export function Stage(props: StageProps) {
   const { t, taskView, ctas } = props
   const task = taskView.task
   const status = demoStatus(taskView.snapshot.status, props.running)
-  const updated = taskView.snapshot.worktree.lastCommitAt || task.updatedAt || task.createdAt
+  const updated = taskStamp(task, taskView.snapshot)
   const count = diffCount(props.diff)
   return h('main', { className: 'dshwd-stage' },
     h('div', { className: 'dshwd-topbar' },
       h('div', { className: 'dshwd-topbar-left' },
-        h('button', { className: 'dshwd-btn dshwd-btn-ghost', title: t.demoCollapseLeft, onClick: props.onToggleRail }, '◧'),
+        props.narrow
+          ? h('button', { className: 'dshwd-btn dshwd-btn-ghost', title: t.backToList, onClick: props.onBackToList || props.onToggleRail }, '‹ ', t.backToList)
+          : h('button', { className: 'dshwd-btn dshwd-btn-ghost', title: t.demoCollapseLeft, onClick: props.onToggleRail }, '◧'),
         h('div', { className: 'dshwd-breadcrumb' },
           h('span', null, props.projectName),
           h('span', null, '/'),
@@ -74,6 +81,18 @@ export function Stage(props: StageProps) {
         }, t.codeChanges, h('span', { className: 'dshwd-mono', style: { fontSize: '11px', color: 'var(--text-3)' } }, String(count))))),
 
     h('div', { className: 'dshwd-stage-body' },
+      // Errors from checkout/merge/cleanup keep living here after the toast is
+      // gone, so a refused action stays explainable.
+      props.notice
+        ? h('div', { className: 'dshwd-notice dshwd-alert', role: 'alert' },
+          h('span', { className: 'dshwd-notice-text' }, props.notice.message),
+          h('button', {
+            className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-copy',
+            title: t.close,
+            'aria-label': t.close,
+            onClick: props.onDismissNotice,
+          }, '×'))
+        : null,
       props.tab === 'overview' ? h(Overview, props)
         : props.tab === 'live' ? h(Live, props)
           : h(Diff, props)))

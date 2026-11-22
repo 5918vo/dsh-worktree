@@ -246,8 +246,78 @@ async function backLocked(
     })
   }
   if (!task.originalBranch && target.ref) task.originalBranch = target.ref
+  // A stash created by this back-switch means the repo was dirty on the review
+  // commit; applying the earlier review stash on top of it would mix two sets
+  // of edits, so only a clean return auto-restores.
+  if (!stash) {
+    const pending = lastReviewStash(task)
+    if (pending) await restoreReviewStashAfterBack(ctx, task, pending)
+  }
   ctx.store.putTask(task)
   return task
+}
+
+/** Latest still-recorded review stash that can be applied automatically. */
+function lastReviewStash(task: WorktreeTask): PendingStash | undefined {
+  const list = Array.isArray(task.pendingStashes) ? task.pendingStashes : []
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    const entry = list[i]
+    if (entry.source === 'review') return entry
+  }
+  return undefined
+}
+
+/** Drop one stash record once its change is back in the working tree. */
+function consumeStash(task: WorktreeTask, entry: PendingStash): void {
+  task.pendingStashes = (task.pendingStashes || []).filter((s) => s !== entry)
+  if (entry.ref && task.reviewStash === entry.ref) task.reviewStash = undefined
+}
+
+/**
+ * The stash entry itself is also spent once it has been applied: leaving it in
+ * `git stash list` only shows the user a duplicate that no screen can drop.
+ * Failing to drop is not fatal — the work is already in the working tree.
+ */
+async function dropSpentStash(ctx: RuntimeContext, task: WorktreeTask, entry: PendingStash): Promise<void> {
+  if (!entry.sha) return
+  try {
+    await gitx.stashDropBySha(ctx.gitPath, task.repoPath, entry.sha)
+  } catch {
+    /* keep the restored worktree even if the stash entry cannot be dropped */
+  }
+}
+
+/**
+ * `back` restores what the review checkout stashed away.
+ *
+ * The user stashed the main repo only to be able to review the task commit; once
+ * they return to their branch those edits must come back, or the stash record
+ * silently owns them. Anything that makes the apply unsafe (dirty repo, a stash
+ * of this very switch, no verifiable sha) leaves the record alone and reports a
+ * concrete reason to the UI through the one-shot warning channel.
+ */
+async function restoreReviewStashAfterBack(ctx: RuntimeContext, task: WorktreeTask, entry: PendingStash): Promise<void> {
+  const warn = (message: string) => ctx.opWarnings.set(task.id, message)
+  if (!entry.sha) {
+    warn('返回原分支成功，但暂存记录无法唯一匹配到 stash，未自动恢复；请在侧栏手动处理')
+    return
+  }
+  const dirty = await dirtySummary(ctx, task.repoPath, false)
+  if (dirty.count > 0) {
+    warn(`返回原分支成功，但主仓库有 ${dirty.count} 处未提交改动（${dirty.shown}），暂存未自动恢复`)
+    return
+  }
+  try {
+    await gitx.stashApplyBySha(ctx.gitPath, task.repoPath, entry.sha)
+  } catch (error) {
+    const text = (error as any)?.stderr || (error instanceof Error ? error.message : String(error))
+    const files = conflictFiles(String(text))
+    const detail = files.length ? files.join('、') : '未知文件'
+    warn(`返回原分支成功，但恢复暂存失败：${detail}。暂存记录已保留，请解决冲突后再恢复或丢弃`)
+    return
+  }
+  consumeStash(task, entry)
+  await dropSpentStash(ctx, task, entry)
 }
 
 /** Choose a recorded stash (by sha when given, else the oldest). */
@@ -289,7 +359,7 @@ export async function migrateLegacyStashes(ctx: RuntimeContext): Promise<number>
   return migrated
 }
 
-/** Apply a recorded stash (never drops it; the user must drop explicitly). */
+/** Apply a recorded stash. A successful apply consumes the record. */
 export async function applyStash(ctx: RuntimeContext, id: string, sha?: string): Promise<WorktreeTask> {
   const task = needTask(ctx, id)
   const entry = pickStash(task, sha)
@@ -307,7 +377,12 @@ export async function applyStash(ctx: RuntimeContext, id: string, sha?: string):
       const detail = files.length ? files.join('、') : '未知文件'
       throw new TaskError(`恢复暂存产生冲突：${detail}。暂存记录已保留，请解决冲突后再恢复或丢弃。`, 409, 'stash-apply-conflict')
     }
-    // Apply succeeded; keep the record (only an explicit drop removes it).
+    // Apply succeeded: the edits are back in the working tree, so the record is
+    // spent. Keeping it made a second apply possible (and hid the fact that the
+    // stash had already been restored).
+    consumeStash(task, entry)
+    await dropSpentStash(ctx, task, entry)
+    ctx.store.putTask(task)
     return task
   })
 }

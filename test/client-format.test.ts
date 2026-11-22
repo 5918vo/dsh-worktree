@@ -16,6 +16,9 @@ import {
   summarizeResult,
   toolDetail,
   toolTitle,
+  taskStamp,
+  displayPath,
+  pathParts,
   uuid,
 } from '../src/client/format.js'
 
@@ -117,4 +120,37 @@ test('uuid is non-empty and unique', () => {
   assert.equal(typeof a, 'string')
   assert.ok(a.length > 0)
   assert.notEqual(a, b)
+})
+
+test('relTime never reports the future as minutes ago', () => {
+  const now = Date.now()
+  // A clock skew must not render "-1m ago": treat it as just now.
+  assert.equal(relTime(now + 5 * 60_000, T), 'just now')
+  assert.equal(relTime(0, T), '—')
+})
+
+test('taskStamp ignores the inherited base commit of a fresh task', () => {
+  const created = Date.now() - 60_000
+  const base = Date.now() - 5 * 60_000
+  const task = { createdAt: created, updatedAt: created }
+  // No own commit yet: the worktree's lastCommitAt is the base commit, which
+  // would read as "5m ago" for a task created a minute ago.
+  assert.equal(taskStamp(task, { worktree: { ahead: 0, lastCommitAt: base } }), created)
+  assert.equal(taskStamp(task, { worktree: { ahead: 3, lastCommitAt: base } }), base)
+  assert.equal(taskStamp(task, null), created)
+  assert.equal(taskStamp({}, null), 0)
+})
+
+test('displayPath keeps one separator style per screen', () => {
+  assert.equal(displayPath('C:/Users/liang/repo'), 'C:\\Users\\liang\\repo')
+  assert.equal(displayPath('C:\\Users\\liang/repo'), 'C:\\Users\\liang\\repo')
+  assert.equal(displayPath('/home/liang/repo'), '/home/liang/repo')
+  assert.equal(displayPath(''), '')
+  assert.equal(displayPath(null), '')
+})
+
+test('pathParts breaks long paths at separators', () => {
+  assert.deepEqual(pathParts('C:/a/b/c.txt'), ['C:\\', 'a\\', 'b\\', 'c.txt'])
+  assert.deepEqual(pathParts('/home/u/x'), ['/', 'home/', 'u/', 'x'])
+  assert.deepEqual(pathParts(''), [''])
 })

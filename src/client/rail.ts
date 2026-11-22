@@ -1,5 +1,5 @@
 import { h } from './ui'
-import { relTime } from './format'
+import { relTime, taskStamp } from './format'
 import type { ProjectView, TaskView } from '../models'
 import { demoBranch, demoStat, demoStatus, demoStatusLabel, type DemoFilter, type DemoTheme } from './model'
 
@@ -130,5 +130,5 @@ function taskRow(t: any, tv: TaskView, view: ProjectView, props: RailProps) {
       h('span', { className: 'dshwd-item-stat dshwd-mono' }, demoStat(tv.snapshot))),
     h('div', { className: 'dshwd-item-row2' },
       h('span', { className: 'dshwd-mono' }, demoBranch(task.branch)),
-      h('span', null, task.archivedAt ? t.archived : relTime(tv.snapshot.worktree.lastCommitAt, t))))
+      h('span', null, task.archivedAt ? t.archived : relTime(taskStamp(task, tv.snapshot), t))))
 }

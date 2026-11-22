@@ -14,6 +14,10 @@ import { buildHistoryEntries } from '../timeline'
 import { diffHeadSha } from '../model'
 import type { ProjectView, TaskDiff, TaskView, WorktreeTask } from '../../models'
 
+/** Board poll cadence. 4s re-fetched the whole project list far too often; */
+/** actions refresh explicitly, so a slower background tick loses nothing. */
+const POLL_MS = 10_000
+
 export interface UseBoardDataArgs {
   t: Record<string, any>
   showArchived: boolean
@@ -39,6 +43,7 @@ export function useBoardData(args: UseBoardDataArgs) {
   const [previewState, setPreviewState] = React.useState({ phase: 'idle' } as any)
 
   const refreshSeq = React.useRef(0)
+  const refreshInFlight = React.useRef(false)
   const failures = React.useRef(0)
   const online = React.useRef(true)
   const bindingRef = React.useRef(new Set<string>())
@@ -54,6 +59,11 @@ export function useBoardData(args: UseBoardDataArgs) {
     : selectedProject
 
   const refresh = React.useCallback(async (_manual?: boolean) => {
+    // One poll at a time: focus, visibility and the timer all call refresh and
+    // used to stack identical requests. A skipped call is fine — the running
+    // one lands its own result.
+    if (refreshInFlight.current) return
+    refreshInFlight.current = true
     const seq = ++refreshSeq.current
     try {
       const d: any = await getJson('projects?includeArchived=1')
@@ -78,6 +88,8 @@ export function useBoardData(args: UseBoardDataArgs) {
       online.current = false
       setErr(String((e && e.message) || t.loadFailed))
       setLoaded(true)
+    } finally {
+      refreshInFlight.current = false
     }
   }, [])
 
@@ -89,7 +101,7 @@ export function useBoardData(args: UseBoardDataArgs) {
       if (cancelled) return
       if (!document.hidden) await refresh()
       if (cancelled) return
-      const delay = failures.current ? Math.min(30000, 4000 * Math.pow(2, Math.min(failures.current, 3))) : 4000
+      const delay = failures.current ? Math.min(30000, POLL_MS * Math.pow(2, Math.min(failures.current, 3))) : POLL_MS
       timer = window.setTimeout(tick, delay)
     }
     void tick()
@@ -171,8 +183,12 @@ export function useBoardData(args: UseBoardDataArgs) {
     if (!sessionId || !remote || !remote.session) { setEntries([]); setEntriesReady(true); return }
     let cancelled = false
     setEntriesReady(false)
+    let pulling = false
     const pull = async () => {
       if (!online.current) { setEntriesReady(true); return }
+      // A slow follow() can outlive the interval; never stack two streams.
+      if (pulling) return
+      pulling = true
       try {
         const stream: any = await Promise.race([
           remote.session.follow({ address: { kind: 'session', sessionId }, maxMessages: 24 }),
@@ -195,6 +211,8 @@ export function useBoardData(args: UseBoardDataArgs) {
       } catch {
         /* keep last readable timeline, but never leave the loading state on */
         if (!cancelled) setEntriesReady(true)
+      } finally {
+        pulling = false
       }
     }
     void pull()

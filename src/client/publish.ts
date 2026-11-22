@@ -231,7 +231,7 @@ export function PublishModal(props: PublishModalProps) {
   }
 
   if (!project) {
-    return modal(t, props, project, null, busy, h('div', { className: 'dshwd-empty' },
+    return modal(t, props, project, null, busy, start, h('div', { className: 'dshwd-empty' },
       h('div', { className: 'dshwd-empty-title' }, t.noProjectsHint),
       h('div', { className: 'dshwd-hint' }, t.demoAddProjectFirst)),
     h('button', { className: 'dshwd-btn', onClick: props.onClose }, t.close))
@@ -242,7 +242,7 @@ export function PublishModal(props: PublishModalProps) {
   // 否则 <select> 会显示成第一个分支（＝悄悄改掉续作目标）。
   const baseBranches = base && branchNames.length && !branchNames.includes(base) ? [base, ...branchNames] : branchNames
 
-  return modal(t, props, project, submit, busy,
+  return modal(t, props, project, submit, busy, start,
     h('div', { className: 'dshwd-field-row-2' },
       field(t, t.demoProject, h('select', {
         className: 'dshwd-select',
@@ -384,7 +384,7 @@ export function PublishModal(props: PublishModalProps) {
   }
 }
 
-function modal(t: any, props: PublishModalProps, project: any, onSubmit: (() => void) | null, busy: boolean, ...children: any[]) {
+function modal(t: any, props: PublishModalProps, project: any, onSubmit: (() => void) | null, busy: boolean, start: boolean, ...children: any[]) {
   const close = () => { if (!busy) props.onClose() }
   return h('div', {
     className: 'dshwd-modal-backdrop',
@@ -398,11 +398,13 @@ function modal(t: any, props: PublishModalProps, project: any, onSubmit: (() => 
         h('button', { className: 'dshwd-btn dshwd-btn-ghost', title: t.close, disabled: busy, onClick: close }, '×')),
       h('div', { className: 'dshwd-modal-body' }, children),
       h('div', { className: 'dshwd-modal-foot' },
-        h('span', { className: 'dshwd-modal-foot-meta dshwd-mono' }, pathPreview(project)),
+        // With auto-start off nothing is launched, so neither the button nor the
+        // footer may promise a session: show the path being created instead.
+        h('span', { className: 'dshwd-modal-foot-meta dshwd-mono' }, start ? pathPreview(project) : pathOnlyPreview(project)),
         h('div', { className: 'dshwd-modal-foot-actions' },
           h('button', { className: 'dshwd-btn', disabled: busy, onClick: close }, t.cancel),
           onSubmit
-            ? h('button', { className: 'dshwd-btn dshwd-btn-cta', disabled: busy, onClick: onSubmit }, busy ? t.publishing : t.demoCreatePublish)
+            ? h('button', { className: 'dshwd-btn dshwd-btn-cta', disabled: busy, onClick: onSubmit }, busy ? t.publishing : (start ? t.demoCreatePublish : t.demoCreateTask))
             : h('button', { className: 'dshwd-btn', disabled: busy, onClick: close }, t.close))))
   )
 }
@@ -423,4 +425,10 @@ function validBranch(value: string) {
 function pathPreview(project: any) {
   if (!project) return ''
   return `${project.name} → ${project.dirName || '.dsh-worktrees'}/<auto>`
+}
+
+/** Footer path without the "→ worktree" arrow that reads as "will start". */
+function pathOnlyPreview(project: any) {
+  if (!project) return ''
+  return `${project.name}/${project.dirName || '.dsh-worktrees'}/<auto>`
 }

@@ -2,13 +2,61 @@ export const pad2 = (n: number) => String(n).padStart(2, '0')
 
 export function relTime(ts: number | null | undefined, t: any): string {
   if (!ts) return '—'
-  const diff = Date.now() - ts
-  if (diff >= 0 && diff < 60_000) return t.justNow
-  if (diff >= 0 && diff < 3_600_000) return String(t.minutesAgo).replace('{n}', String(Math.floor(diff / 60_000)))
-  if (diff >= 0 && diff < 86_400_000) return String(t.hoursAgo).replace('{n}', String(Math.floor(diff / 3_600_000)))
-  if (diff >= 0 && diff < 7 * 86_400_000) return String(t.daysAgo).replace('{n}', String(Math.floor(diff / 86_400_000)))
+  // Git commit stamps can sit slightly ahead of the browser clock; a future
+  // stamp must still read as "just now" rather than fall through to a date.
+  const diff = Math.max(0, Date.now() - ts)
+  if (diff < 60_000) return t.justNow
+  if (diff < 3_600_000) return String(t.minutesAgo).replace('{n}', String(Math.floor(diff / 60_000)))
+  if (diff < 86_400_000) return String(t.hoursAgo).replace('{n}', String(Math.floor(diff / 3_600_000)))
+  if (diff < 7 * 86_400_000) return String(t.daysAgo).replace('{n}', String(Math.floor(diff / 86_400_000)))
   const d = new Date(ts)
   return `${d.getMonth() + 1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+}
+
+/**
+ * Timestamp a task row should show.
+ *
+ * A worktree with no commits of its own (`ahead === 0`) reports the *base*
+ * commit time, so a freshly created task displayed "5 分钟前" — the age of the
+ * branch it forked from. Only trust `lastCommitAt` once the worktree has its own
+ * commit; otherwise use the task's own activity time.
+ */
+export function taskStamp(task: any, snap: any): number {
+  const worktree = (snap && snap.worktree) || {}
+  const ahead = Number(worktree.ahead) || 0
+  const own = ahead > 0 ? Number(worktree.lastCommitAt) || 0 : 0
+  return own || Number((task && (task.updatedAt || task.createdAt)) || 0) || 0
+}
+
+/**
+ * Normalize a path for display so one screen never mixes `C:/x` with `C:\\x`.
+ * Windows-shaped paths (drive letter, UNC, or any backslash) render with
+ * backslashes; everything else is left alone.
+ */
+export function displayPath(value: any): string {
+  const path = String(value == null ? '' : value)
+  if (!path) return ''
+  const windows = /^[a-zA-Z]:[\\/]/.test(path) || /^\\\\/.test(path) || path.includes('\\')
+  return windows ? path.replace(/\//g, '\\') : path
+}
+
+/**
+ * Split a path into separator-terminated chunks so a long path can wrap at
+ * directory boundaries instead of mid-name (`overflow-wrap: anywhere`).
+ */
+export function pathParts(value: any): string[] {
+  const path = displayPath(value)
+  const parts: string[] = []
+  let buf = ''
+  for (const ch of path) {
+    buf += ch
+    if (ch === '\\' || ch === '/') {
+      parts.push(buf)
+      buf = ''
+    }
+  }
+  if (buf) parts.push(buf)
+  return parts.length ? parts : ['']
 }
 
 export function baseName(p: string): string {

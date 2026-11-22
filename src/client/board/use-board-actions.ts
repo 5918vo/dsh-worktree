@@ -64,7 +64,7 @@ export function useBoardActions(args: UseBoardActionsArgs) {
 
   async function executeSwitch(action: 'checkout' | 'back', strategy: string | undefined, pre: any) {
     if (!selectedTask) return
-    await postLong(action === 'checkout' ? 'task/checkout' : 'task/back', {
+    const res: any = await postLong(action === 'checkout' ? 'task/checkout' : 'task/back', {
       id: selectedTask.task.id,
       strategy,
       expectedSha: pre && pre.targetSha ? pre.targetSha : undefined,
@@ -72,6 +72,9 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     setConfirm(null)
     setTab('overview')
     say(action === 'checkout' ? t.checkoutDone : t.backDone)
+    // `back` auto-restores the review stash; a record it could not apply is
+    // reported once here so it cannot disappear silently.
+    if (res && res.warning) say(String(res.warning), true)
     void refresh()
   }
 
@@ -110,13 +113,23 @@ export function useBoardActions(args: UseBoardActionsArgs) {
       const pf = r && r.preflight
       if (!pf) throw new Error(t.failed)
       if (!pf.canMerge) {
-        const first = (pf.blockers || [])[0]
-        throw new Error((first && first.message) || t.failed)
+        // Every blocker, not just the first: "repo dirty" and "agent running"
+        // often come together and the user needs the whole list.
+        const messages = (pf.blockers || []).map((b: any) => b && b.message).filter(Boolean)
+        throw new Error(messages.length ? messages.join('；') : t.failed)
       }
       const task = selectedTask.task
+      const ahead = Number(selectedTask.snapshot.worktree && selectedTask.snapshot.worktree.ahead) || 0
+      const dirty = Number(selectedTask.snapshot.worktree && selectedTask.snapshot.worktree.dirtyCount) || 0
       setConfirm({
         title: String(t.mergeTitle).replace('{base}', task.baseBranch),
         body: String(t.demoMergeConfirm).replace('{branch}', task.branch).replace('{base}', task.baseBranch),
+        details: [
+          { label: t.branchLabel, value: task.branch || '—', mono: true },
+          { label: t.demoTargetBase, value: task.baseBranch || '—', mono: true },
+          { label: t.commits, value: String(ahead) },
+          { label: t.uncommitted, value: dirty ? `${dirty} ${t.changesUnit} · ${t.mergeNoAutoStash}` : t.clean },
+        ],
         label: t.mergeConfirm,
         danger: true,
         run: async () => {

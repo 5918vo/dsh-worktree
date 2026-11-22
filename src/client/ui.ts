@@ -37,6 +37,19 @@ const REQUIRED_PRIMITIVES = [
 let hostPrim: any = null
 
 /**
+ * Some hosts load a plugin bundle twice (module scope re-evaluated), so a plain
+ * module-level flag would still print twice. The marker lives on globalThis to
+ * make each diagnostic appear exactly once per page. This is a harness
+ * behaviour we cannot fix from here, only de-duplicate.
+ */
+function warnOnce(key: string, ...args: any[]) {
+  const bag = ((globalThis as any).__dshwWarned = (globalThis as any).__dshwWarned || {})
+  if (bag[key]) return
+  bag[key] = true
+  console.warn(...args)
+}
+
+/**
  * The host registers its shared UI primitives as a static module, so this is a
  * synchronous require. Everything optional is probed at call time through
  * `prim()`; only the atoms the board cannot live without gate the whole switch.
@@ -46,13 +59,13 @@ export function initPrimitives(require: (id: string) => any) {
   try {
     mod = require(PRIMITIVES_MODULE)
   } catch (error) {
-    console.warn('[dsh-worktree] UI primitives unavailable, using built-in controls', error)
+    warnOnce('unavailable', '[dsh-worktree] UI primitives unavailable, using built-in controls', error)
     hostPrim = null
     return
   }
   const missing = REQUIRED_PRIMITIVES.filter((name) => mod == null || typeof mod[name] !== 'function')
   if (missing.length > 0) {
-    console.warn('[dsh-worktree] UI primitives incomplete, using built-in controls; missing:', missing.join(', '))
+    warnOnce('incomplete', '[dsh-worktree] UI primitives incomplete, using built-in controls; missing:', missing.join(', '))
     hostPrim = null
     return
   }

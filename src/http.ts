@@ -83,14 +83,23 @@ export function registerHttp(app: App): () => void {
     m.set(method, handler)
   }
 
-  route('session', 'POST', async (req, res) => {
-    const body = await readJson(req)
+  const mintBoardToken = (clientId: string, res: any) => {
     // The board is a global page, not a session dock: one client key is enough.
-    const clientId = String(body.sessionId || BOARD_CLIENT)
     if (clientId !== BOARD_CLIENT) return send(res, 403, { error: 'unknown client' })
     const token = randomBytes(24).toString('hex')
     app.tokens.set(token, clientId)
     send(res, 200, { token })
+  }
+
+  route('session', 'POST', async (req, res) => {
+    const body = await readJson(req)
+    mintBoardToken(String(body.sessionId || BOARD_CLIENT), res)
+  })
+
+  // Compatibility: the client always POSTs, but hosts that prefetch a panel's
+  // endpoint with GET got a 405 here. Minting is idempotent, so answer both.
+  route('session', 'GET', async (req, res) => {
+    mintBoardToken(q(req, 'sessionId') || BOARD_CLIENT, res)
   })
 
   route('config', 'GET', async (_req, res) => send(res, 200, { config: app.config, environment: await app.runtime.environment() }))

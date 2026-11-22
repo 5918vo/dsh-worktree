@@ -16,10 +16,18 @@ export interface ConfirmCheck {
 export interface ConfirmState {
   title: string
   body: string
+  /** Structured facts (branch, baseline, commits...) shown above the checks. */
+  details?: ConfirmDetail[]
   label: string
   danger?: boolean
   checks?: ConfirmCheck[]
   run: (values: Record<string, boolean>) => Promise<void> | void
+}
+
+export interface ConfirmDetail {
+  label: string
+  value: string
+  mono?: boolean
 }
 
 export interface StashViewState {
@@ -33,6 +41,7 @@ export interface ConfirmDialogProps {
   t: Record<string, any>
   title: string
   body: string
+  details?: ConfirmDetail[]
   label: string
   danger?: boolean
   checks?: ConfirmCheck[]
@@ -65,6 +74,11 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
       h('button', { className: 'dshwd-btn dshwd-btn-ghost', onClick: props.onCancel, disabled: props.busy }, '×')),
     h('div', { className: 'dshwd-modal-body' },
       h('div', { className: 'dshwd-prose', style: { fontSize: '12.5px' } }, props.body),
+      Array.isArray(props.details) && props.details.length
+        ? h('div', { className: 'dshwd-confirm-details' }, props.details.map((d, i) => h('div', { key: i, className: 'dshwd-kv' },
+          h('span', { className: 'dshwd-kv-k' }, d.label),
+          h('span', { className: 'dshwd-kv-v' + (d.mono ? ' dshwd-mono' : ''), title: d.value }, d.value))))
+        : null,
       checks.length
         ? h('div', { className: 'dshwd-check-list' }, checks.map((c) => {
           const allowed = enabled(c) && !c.disabled

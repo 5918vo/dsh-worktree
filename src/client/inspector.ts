@@ -1,6 +1,7 @@
 import { h } from './ui'
 import type { TaskView } from '../models'
 import { mergeSummary, mergeSummaryText, shortSha } from './model'
+import { displayPath, pathParts } from './format'
 
 export interface InspectorProps {
   t: any
@@ -15,6 +16,9 @@ export interface InspectorProps {
   archiveReason: string
   stashes: any[]
   partialRestore: any
+  /** Narrow container: the inspector is an overlay drawer and needs a close. */
+  narrow?: boolean
+  onClose?: () => void
   onCopy: (text: string) => void
   onArchive: () => void
   onUnarchive: () => void
@@ -40,7 +44,19 @@ export function Inspector(props: InspectorProps) {
     : mergeSummary(preview, state.phase, error)
   const dotClass = summary.tone === 'err' ? 'dshwd-text-err' : summary.tone === 'warn' ? 'dshwd-text-warn' : summary.tone === 'ok' ? 'dshwd-text-ok' : 'dshwd-text-muted'
   const dirty = Number(snap.worktree && snap.worktree.dirtyCount) || 0
+  const blockers = preview && Array.isArray(preview.blockers) ? preview.blockers : []
+  const worktree = displayPath(task.worktreePath)
   return h('aside', { className: 'dshwd-inspector' },
+    props.narrow && props.onClose
+      ? h('div', { className: 'dshwd-insp-narrow-head' },
+        h('span', { className: 'dshwd-insp-narrow-title' }, t.demoInspector),
+        h('button', {
+          className: 'dshwd-btn dshwd-btn-ghost',
+          title: t.close,
+          'aria-label': t.close,
+          onClick: props.onClose,
+        }, '×'))
+      : null,
     h('section', { className: 'dshwd-insp-sec' },
       h('div', { className: 'dshwd-insp-title' }, t.mergeCheck, h('span', { className: dotClass }, '●')),
       h('div', { style: { fontSize: '12px', color: summary.tone === 'err' ? 'var(--err)' : summary.tone === 'warn' ? 'var(--warn)' : 'var(--text-2)', lineHeight: '1.5' } },
@@ -51,6 +67,13 @@ export function Inspector(props: InspectorProps) {
       h('div', { className: 'dshwd-kv' },
         h('span', { className: 'dshwd-kv-k' }, t.demoTaskHead),
         h('span', { className: 'dshwd-kv-v dshwd-mono', title: props.headSha }, shortSha(props.headSha))),
+      // Blockers stay visible until they clear: a toast disappears before the
+      // user can act on "repo dirty" / "agent running" and left them guessing.
+      blockers.length
+        ? h('div', { className: 'dshwd-blocker-box' },
+          h('div', { className: 'dshwd-blocker-title' }, t.demoBlockersTitle),
+          h('ul', { className: 'dshwd-blocker-list' }, blockers.map((b: any, i: number) => h('li', { key: (b && b.code) || i }, (b && b.message) || String(b)))))
+        : null,
       preview && Array.isArray(preview.conflictFiles) && preview.conflictFiles.length
         ? h('div', { className: 'dshwd-hint', style: { marginTop: '6px', overflowWrap: 'anywhere' } }, t.demoFiles + '：' + preview.conflictFiles.slice(0, 8).join('、'))
         : null),
@@ -63,16 +86,21 @@ export function Inspector(props: InspectorProps) {
       h('div', { className: 'dshwd-kv' },
         h('span', { className: 'dshwd-kv-k' }, t.session),
         h('span', { className: 'dshwd-kv-v dshwd-mono', title: task.sessionId || '' }, task.sessionId || '—')),
-      h('div', { className: 'dshwd-kv', style: { alignItems: 'flex-start' } },
+      // One worktree path only (the row *is* the copy affordance). Segments wrap
+      // at separators, so a long path breaks at directory boundaries.
+      h('div', { className: 'dshwd-kv dshwd-kv-path', style: { alignItems: 'flex-start' } },
         h('span', { className: 'dshwd-kv-k' }, t.worktree),
-        h('span', {
-          className: 'dshwd-kv-v dshwd-mono',
-          title: cleaned ? '' : task.worktreePath,
-          style: { whiteSpace: 'normal', overflowWrap: 'anywhere', textAlign: 'right' },
-        }, cleaned ? t.cleaned : (task.worktreePath || '—'))),
-      cleaned
-        ? null
-        : h('div', { className: 'dshwd-path-box dshwd-mono', title: t.demoCopyPath, onClick: () => props.onCopy(task.worktreePath) }, task.worktreePath || '—')),
+        h('span', { className: 'dshwd-kv-path-copy' },
+          h('span', { className: 'dshwd-kv-v dshwd-mono dshwd-path-wrap', title: cleaned ? '' : worktree },
+            cleaned ? t.cleaned : pathParts(worktree).map((seg, i) => h('span', { key: i }, seg, h('wbr')))),
+          cleaned
+            ? null
+            : h('button', {
+              className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-copy',
+              title: t.demoCopyPath,
+              'aria-label': t.demoCopyPath,
+              onClick: () => props.onCopy(task.worktreePath),
+            }, '⧉')))),
 
     h('section', { className: 'dshwd-insp-sec' },
       h('div', { className: 'dshwd-insp-title' }, t.lifecycle),

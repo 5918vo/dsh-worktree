@@ -115,11 +115,13 @@ test('9 merge stashes blocking changes and keeps them recoverable', async () => 
     const stash = merged.pendingStashes![0]!
     assert.ok(stash.sha, 'stash recorded by sha')
     assert.equal(stash.source, 'merge')
-    // Restore the stashed change (apply keeps the record).
-    await f.runtime.applyStash(task.id, stash.sha)
+    // Restoring the stashed change consumes the record: the edits are back in
+    // the working tree, so a second apply must not be possible.
+    const applied = await f.runtime.applyStash(task.id, stash.sha)
+    assert.equal((applied.pendingStashes || []).length, 0)
     assert.equal((await fs.readFile(join(f.repo, 'tracked.txt'), 'utf8')).replace(/\r\n/g, '\n'), 'work-dirty\n')
     const after = f.store.getTask(task.id)!
-    assert.equal((after.pendingStashes || []).length, 1, 'apply keeps the record')
+    assert.equal((after.pendingStashes || []).length, 0, 'apply consumes the record')
   } finally {
     await teardown(f)
   }

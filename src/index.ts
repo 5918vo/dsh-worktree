@@ -23,6 +23,66 @@ export interface ApplyOptions {
 }
 
 /**
+ * Run state of one live agent, as reported by the host registry.
+ * Anything other than an explicit `running`/`idle` stays 'unknown'.
+ */
+export function agentRunState(agent: any): 'running' | 'idle' | 'unknown' {
+  const status = agent && typeof agent === 'object' ? agent.status : undefined
+  if (status === 'running') return 'running'
+  if (status === 'idle') return 'idle'
+  return 'unknown'
+}
+
+/**
+ * Legacy probe: the host UI-session service keeps a running flag per session.
+ * Only used when the agent registry is unavailable (older hosts, tests).
+ */
+export function uiSessionRunState(service: any, sessionId: string): 'running' | 'idle' | 'unknown' {
+  const snapshot = service && service.sessionStatus && typeof service.sessionStatus.getSnapshot === 'function'
+    ? service.sessionStatus.getSnapshot()
+    : null
+  if (!snapshot) return 'unknown'
+  const state = snapshot instanceof Map ? snapshot.get(sessionId) : snapshot && snapshot[sessionId]
+  if (!state) return 'unknown'
+  if (state.running === true) return 'running'
+  if (state.running === false) return 'idle'
+  return 'unknown'
+}
+
+/**
+ * Probe one task session's run state.
+ *
+ * The authoritative source is the host agent registry (`agents.get(sessionId)`):
+ * `uiSession` is a *client* service, so the host's `ctx.get('uiSession')` is
+ * always empty and the old probe answered 'unknown' forever, which in turn made
+ * every checkout/merge/cleanup refuse with 409 agent-unknown. A session without
+ * a live agent cannot be running, so a miss is 'idle' — not 'unknown'.
+ */
+export function probeSessionState(host: any, sessionId: string): 'running' | 'idle' | 'unknown' {
+  const get = (name: string) => {
+    try {
+      return typeof host.get === 'function' ? host.get(name) : undefined
+    } catch {
+      return undefined
+    }
+  }
+  const agents: any = get('agents')
+  if (agents && typeof agents.get === 'function') {
+    try {
+      const agent = agents.get(sessionId)
+      return agent ? agentRunState(agent) : 'idle'
+    } catch {
+      return 'unknown'
+    }
+  }
+  try {
+    return uiSessionRunState(get('uiSession'), sessionId)
+  } catch {
+    return 'unknown'
+  }
+}
+
+/**
  * Host half of the deepseek-worktree plugin: git worktree task lifecycle plus
  * a board board. Each task is a real DSH session bound to its worktree — the
  * client creates that session via remote.session; the host only records the
@@ -31,25 +91,9 @@ export interface ApplyOptions {
 export function apply(ctx: Ctx, rawConfig: unknown, options?: ApplyOptions): App {
   const config = normalizeConfig(rawConfig)
   const store = options?.store ?? new Store()
-  // Probe a task session's run state from the host UI session service. Unknown
-  // (service/session not resolvable) is reported as 'unknown' so mutations that
-  // could clobber a running agent are refused rather than guessed.
-  const sessionState = (sessionId: string): 'running' | 'idle' | 'unknown' => {
-    try {
-      const svc: any = ctx.get('uiSession')
-      const snapshot = svc && svc.sessionStatus && typeof svc.sessionStatus.getSnapshot === 'function'
-        ? svc.sessionStatus.getSnapshot()
-        : null
-      if (!snapshot) return 'unknown'
-      const state = snapshot instanceof Map ? snapshot.get(sessionId) : snapshot && snapshot[sessionId]
-      if (!state) return 'unknown'
-      if (state.running === true) return 'running'
-      if (state.running === false) return 'idle'
-      return 'unknown'
-    } catch {
-      return 'unknown'
-    }
-  }
+  // Unknown (registry present but throwing) still refuses mutations rather
+  // than guessing; a session with no live agent is idle.
+  const sessionState = (sessionId: string): 'running' | 'idle' | 'unknown' => probeSessionState(ctx, sessionId)
   const runtime = new Runtime({ store, config, sessionState: options?.sessionState ?? sessionState })
   const logger = {
     info: (m: string) => {

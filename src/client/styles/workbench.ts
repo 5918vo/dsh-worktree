@@ -213,6 +213,20 @@ export const WORKBENCH_CSS = `
 .dshw-demo .dshwd-alert { padding: 9px 11px; border-radius: 7px; border: 1px solid var(--err-line); background: var(--err-soft); color: var(--err); font-size: 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .dshw-demo .dshwd-alert-info { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent); }
 .dshw-demo .dshwd-hint { color: var(--text-3); font-size: 11px; line-height: 1.5; }
+/* Persistent inline notice: same text as the error toast, but it stays put. */
+.dshw-demo .dshwd-notice { align-items: flex-start; margin-bottom: 14px; }
+.dshw-demo .dshwd-notice-text { min-width: 0; overflow-wrap: anywhere; line-height: 1.5; }
+.dshw-demo .dshwd-btn-copy { flex-shrink: 0; padding: 0 6px; min-height: 22px; height: 22px; line-height: 22px; }
+.dshw-demo .dshwd-blocker-box { margin-top: 8px; padding: 8px 10px; border-radius: 7px; border: 1px solid var(--warn-line); background: var(--warn-soft); }
+.dshw-demo .dshwd-blocker-title { font-size: 11px; font-weight: 600; color: var(--warn); margin-bottom: 4px; }
+.dshw-demo .dshwd-blocker-list { margin: 0; padding-left: 16px; font-size: 11.5px; line-height: 1.55; color: var(--text-2); overflow-wrap: anywhere; }
+.dshw-demo .dshwd-confirm-details { margin-top: 10px; padding: 8px 10px; border-radius: 7px; background: var(--bg-rail); border: 1px solid var(--line); }
+.dshw-demo .dshwd-confirm-details .dshwd-kv { gap: 10px; }
+.dshw-demo .dshwd-kv-path { gap: 8px; }
+.dshw-demo .dshwd-kv-path-copy { display: flex; align-items: flex-start; justify-content: flex-end; gap: 4px; min-width: 0; flex: 1 1 auto; }
+.dshw-demo .dshwd-path-wrap { min-width: 0; text-align: right; white-space: normal; overflow-wrap: anywhere; }
+.dshw-demo .dshwd-insp-narrow-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--bg-rail); position: sticky; top: 0; z-index: 1; }
+.dshw-demo .dshwd-insp-narrow-title { font-size: 12px; font-weight: 600; color: var(--text-2); }
 .dshw-demo .dshwd-toast { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(8px); padding: 8px 14px; border-radius: 7px; background: var(--cta-bg); color: var(--cta-text); font-size: 12px; font-weight: 500; opacity: 0; pointer-events: none; transition: all .15s; z-index: 200; max-width: 80%; text-align: center; }
 .dshw-demo .dshwd-toast.dshwd-show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .dshw-demo .dshwd-toast.dshwd-error { background: var(--err); color: #fff; }
@@ -243,6 +257,28 @@ export const WORKBENCH_CSS = `
   .dshw-demo .dshwd-stage-head { padding: 14px 14px 0; }
   .dshw-demo .dshwd-stage-body { padding: 16px 14px 28px; }
   .dshw-demo .dshwd-topbar { padding: 0 14px; }
+}
+/* Below ~720px the board is one column: rail and inspector become overlay
+   sheets, stage/task view keeps the full width, and nothing may overflow. */
+@container dshwdemo (max-width: 720px) {
+  .dshw-demo .dshwd-app,
+  .dshw-demo .dshwd-app.dshwd-hide-left,
+  .dshw-demo .dshwd-app.dshwd-hide-right,
+  .dshw-demo .dshwd-app.dshwd-hide-left.dshwd-hide-right { grid-template-columns: minmax(0,1fr); position: relative; }
+  .dshw-demo .dshwd-rail { display: none; }
+  .dshw-demo .dshwd-app:not(.dshwd-hide-left) .dshwd-rail { display: flex; position: absolute; left: 0; top: 0; bottom: 0; width: min(300px, 88%); z-index: 40; background: var(--bg-rail); box-shadow: 16px 0 40px rgba(0,0,0,.32); }
+  .dshw-demo .dshwd-stage, .dshw-demo .dshwd-inspector { min-width: 0; }
+  .dshw-demo .dshwd-app:not(.dshwd-hide-right) .dshwd-inspector { display: flex; position: absolute; left: 0; right: 0; top: 0; bottom: 0; width: 100%; z-index: 45; }
+  .dshw-demo .dshwd-stage-title-row { flex-direction: column; gap: 10px; }
+  .dshw-demo .dshwd-stage-title-row > div { min-width: 0; max-width: 100%; }
+  .dshw-demo .dshwd-stage-title-row > div:last-child { flex-wrap: wrap; flex-shrink: 1; }
+  .dshw-demo .dshwd-btn { white-space: normal; height: auto; max-width: 100%; }
+  .dshw-demo .dshwd-kv { flex-wrap: wrap; gap: 6px 10px; }
+  .dshw-demo .dshwd-kv-v { white-space: normal; overflow-wrap: anywhere; min-width: 0; }
+  .dshw-demo .dshwd-tabs { overflow-x: auto; }
+  .dshw-demo .dshwd-breadcrumb { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dshw-demo .dshwd-management .dshw-app,
+  .dshw-demo .dshwd-management .dshw-app.dshw-rail-hidden { grid-template-columns: minmax(0,1fr); }
 }
 ${PANEL_CSS}
 `

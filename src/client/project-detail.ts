@@ -30,17 +30,26 @@ export function ProjectDetail(props: any) {
     // still-running session is really "in progress", so resolve the live
     // session state before bucketing tasks.
     const isRunning = (task: any) => !!(task && task.sessionId && props.sessionMap && props.sessionMap[task.sessionId])
-    const counts = { total: v.tasks.length, active: 0, review: 0, merged: 0 }
-    for (const item of v.tasks) {
+    // A task belongs to exactly one bucket. "Needs attention" used to include
+    // every pending session, which could also sit in "in progress" — the same
+    // task was counted twice. Broken/pending wins over the status bucket.
+    const bucketOf = (item: any): 'attention' | 'active' | 'review' | 'merged' | 'other' => {
       const status = resolveStatus(item.snapshot.status, isRunning(item.task))
-      if (status === 'developing' || status === 'reviewing') counts.active += 1
-      else if (status === 'review') counts.review += 1
-      else if (status === 'merged') counts.merged += 1
+      const pending = !!(item.task.sessionId && props.pendingMap && props.pendingMap[item.task.sessionId])
+      if (status === 'broken' || pending) return 'attention'
+      if (status === 'developing' || status === 'reviewing') return 'active'
+      if (status === 'review') return 'review'
+      if (status === 'merged') return 'merged'
+      return 'other'
     }
-    const pendingTasks = v.tasks.filter((item: any) => item.task.sessionId && props.pendingMap && props.pendingMap[item.task.sessionId])
-    const firstPending = pendingTasks[0]
-    const brokenTasks = v.tasks.filter((item: any) => resolveStatus(item.snapshot.status, isRunning(item.task)) === 'broken')
-    const attentionCount = pendingTasks.length + brokenTasks.length
+    const counts = { total: v.tasks.length, attention: 0, active: 0, review: 0, merged: 0 }
+    for (const item of v.tasks) {
+      const bucket = bucketOf(item)
+      if (bucket !== 'other') counts[bucket] += 1
+    }
+    // Same bucket as the stat above, so the banner and the number never disagree.
+    const attentionTasks = v.tasks.filter((item: any) => bucketOf(item) === 'attention')
+    const firstPending = attentionTasks[0]
     const reviewingTasks = v.tasks.filter((item: any) => item.snapshot.status === 'reviewing')
 
     const act = async (label: string, fn: () => Promise<any>) => {
@@ -162,7 +171,7 @@ export function ProjectDetail(props: any) {
     const topbar = h('div', { className: 'dshw-topbar' },
       h('div', { className: 'dshw-topbar-left' },
         props.onToggleRail
-          ? h('button', { type: 'button', className: 'dshw-btn dshw-btn--ghost dshw-btn--sm', title: props.railHidden ? t.expand : t.collapse, 'aria-label': props.railHidden ? t.expand : t.collapse, onClick: () => props.onToggleRail() }, '◧')
+          ? h('button', { type: 'button', className: 'dshw-btn dshw-btn--ghost dshw-btn--sm', title: props.railHidden ? t.expand : t.collapse, 'aria-label': props.railHidden ? t.expand : t.collapse, onClick: () => props.onToggleRail() }, props.narrow ? [h('span', { key: 'l' }, '‹ '), h('span', { key: 't' }, t.backToList)] : '◧')
           : null,
         h('div', { className: 'dshw-breadcrumb' },
           h(Icon, { name: 'folder' }),
@@ -203,14 +212,14 @@ export function ProjectDetail(props: any) {
       h('div', { className: 'dshw-measure' },
         err ? h('div', { className: 'dshw-err', role: 'alert', style: { marginBottom: '16px' } }, h(Icon, { name: 'alert' }), h('span', null, err)) : null,
         h('div', { className: 'dshw-stats' },
-          h(Stat, { label: t.attentionStat, value: attentionCount, icon: 'alert', tone: 'warn' }),
+          h(Stat, { label: t.attentionStat, value: counts.attention, icon: 'alert', tone: 'warn' }),
           h(Stat, { label: t.activeTasks, value: counts.active, icon: 'terminal', tone: 'brand' }),
           h(Stat, { label: t.reviewTasks, value: counts.review, icon: 'clock', tone: 'warn' }),
           h(Stat, { label: t.mergedTasks, value: counts.merged, icon: 'branch', tone: 'success' })),
-        pendingTasks.length
+        attentionTasks.length
           ? h('div', { className: 'dshw-attention' },
             h(Icon, { name: 'clock' }),
-            h('span', null, String(t.attention).replace('{n}', String(pendingTasks.length))),
+            h('span', null, String(t.attention).replace('{n}', String(attentionTasks.length))),
             firstPending
               ? h('button', { type: 'button', className: 'dshw-link-btn', onClick: () => props.onSelectTask(firstPending.task.id, project.id) }, t.view)
               : null)

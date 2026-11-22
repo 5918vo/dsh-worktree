@@ -86,6 +86,8 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
   const [stashView, setStashView] = React.useState(null as StashViewState | null)
   const [partialRestore, setPartialRestore] = React.useState(null as { restoreFailed: boolean; reason: string } | null)
   const [toast, setToast] = React.useState(null as { message: string; error?: boolean } | null)
+  const [notice, setNotice] = React.useState(null as { message: string } | null)
+  const [narrow, setNarrow] = React.useState(false)
   const [theme, setTheme] = React.useState(() => {
     let stored = ''
     try { stored = localStorage.getItem(THEME_KEY) || '' } catch { /* storage may be disabled */ }
@@ -100,11 +102,15 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
 
   const rootRef = React.useRef(null as HTMLDivElement | null)
   const compactRef = React.useRef(false)
+  const narrowRef = React.useRef(false)
   const searchRef = React.useRef(null as HTMLInputElement | null)
   const toastTimer = React.useRef(null as ReturnType<typeof setTimeout> | null)
 
+  // An error toast vanishes in 6s; the same text also becomes a sticky inline
+  // banner so a refused merge/checkout stays readable after the toast is gone.
   const say = (message: string, error = false) => {
     setToast({ message, error })
+    setNotice(error ? { message } : null)
     if (toastTimer.current) clearTimeout(toastTimer.current)
     // Failures need time to read; successes can stay brief.
     toastTimer.current = setTimeout(() => setToast(null), error ? 6000 : 2400)
@@ -152,6 +158,11 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     if (!el || typeof ResizeObserver === 'undefined') return
     const apply = (width: number) => {
       const next = width <= 980
+      const nextNarrow = width <= 720
+      if (nextNarrow !== narrowRef.current) {
+        narrowRef.current = nextNarrow
+        setNarrow(nextNarrow)
+      }
       if (next === compactRef.current) return
       compactRef.current = next
       setCompact(next)
@@ -165,10 +176,24 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     return () => ro.disconnect()
   }, [])
 
-  // The inspector is a drawer in compact mode: keep it closed until asked for.
+  // The inspector is a drawer in compact mode: close it while narrow, but put
+  // it back when the container widens again — the hide state belongs to the
+  // breakpoint, not to the user's choice.
   React.useEffect(() => {
-    if (compact) setInspectorHidden(true)
+    setInspectorHidden(compact)
   }, [compact])
+
+  // Below ~720px the board is a single column: the rail becomes a full-width
+  // overlay, so start with it closed (the stage/task view is the point).
+  React.useEffect(() => {
+    setRailHidden(narrow)
+  }, [narrow])
+
+  // The banner explains the action the user just attempted; it must not follow
+  // them to another task.
+  React.useEffect(() => {
+    setNotice(null)
+  }, [selectedTaskId])
 
   const openPublish = (projectId?: string, parentId = '') => {
     setPublishProjectId(projectId || selectedProjectId || (views[0] && views[0].project.id) || '')
@@ -315,6 +340,10 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           headSha,
           onToggleRail: () => setRailHidden((v: boolean) => !v),
           onToggleInspector: () => setInspectorHidden((v: boolean) => !v),
+          narrow,
+          notice,
+          onDismissNotice: () => setNotice(null),
+          onBackToList: () => setSelectedTaskId(''),
         })
         : selectedProject
           ? h('div', { className: 'dshwd-management' },
@@ -327,6 +356,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
                 t,
                 railHidden,
                 inspectorHidden,
+                narrow,
                 onToggleRail: () => setRailHidden((v: boolean) => !v),
                 onToggleInspector: () => setInspectorHidden((v: boolean) => !v),
                 notify: say,
@@ -359,6 +389,8 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           archiveReason,
           stashes: selectedTask.task.pendingStashes || [],
           partialRestore,
+          narrow,
+          onClose: () => setInspectorHidden(true),
           onCopy: (text: string) => { copyText(text); say(t.copied) },
           onArchive: () => actions.archiveTask(false),
           onUnarchive: () => actions.archiveTask(true),

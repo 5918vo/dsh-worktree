@@ -46,6 +46,25 @@ after(async () => {
   if (root) await rmrf(root)
 })
 
+test('GET /session is answered instead of 405', async () => {
+  // Some hosts probe the board session endpoint with GET before the client
+  // posts. Answering it keeps the board from logging a 405 and reloading.
+  const route = findRoute(routes, `${PREFIX}/session`)
+  const res = await callRoute(route.handler, { method: 'GET', url: `${PREFIX}/session` })
+  assert.equal(res.status, 200)
+  assert.ok(res.body.token, 'GET should mint a board token')
+
+  // POST is unchanged: only the board client may ask for a token.
+  const bad = await callRoute(route.handler, {
+    method: 'POST',
+    url: `${PREFIX}/session`,
+    headers: { 'content-type': 'application/json' },
+    body: { sessionId: 'someone-else' },
+  })
+  assert.equal(bad.status, 403)
+  assert.equal(bad.body.error, 'unknown client')
+})
+
 test('requests without a token are rejected', async () => {
   const res = await call('tasks', { method: 'GET' })
   assert.equal(res.status, 403)

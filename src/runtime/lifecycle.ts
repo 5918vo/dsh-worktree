@@ -90,6 +90,9 @@ export function unarchiveTask(ctx: RuntimeContext, id: string): WorktreeTask {
 
 export async function deleteTask(ctx: RuntimeContext, id: string): Promise<void> {
   const task = needTask(ctx, id)
+  // Deleting only drops the record, which would orphan a session that is still
+  // working in the worktree — same gate as checkout/merge/cleanup.
+  assertAgentIdle(ctx, task)
   if ((await ctx.snapshot(task)).status === 'reviewing') {
     throw new TaskError('任务正在验收中，请先切回原分支再删除记录', 409)
   }
