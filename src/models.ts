@@ -58,6 +58,8 @@ export interface WorktreeTask {
   firstPrompt: string
   /** Optional per-task acceptance criteria (one trimmed line per item). */
   acceptanceCriteria?: string[]
+  /** Verified criterion texts; intersected with acceptanceCriteria for display. */
+  checkedCriteria?: string[]
   /** Auto-create the session on the next workbench mount (tool-publish path). */
   startOnBind: boolean
   /** Preferred model for the task session; applied right after the session is created. */

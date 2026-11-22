@@ -1,7 +1,7 @@
 import { React, h } from './ui'
 import { fmtK, pad2, relTime, taskStamp } from './format'
 import type { TaskDiff, TaskView } from '../models'
-import { criteria, boardStatus, boardStatusLabel, diffCount, diffHeadSha, diffLineKind, shortSha, type BoardAction, type BoardCta } from './model'
+import { criteria, criteriaProgress, boardStatus, boardStatusLabel, diffCount, diffHeadSha, diffLineKind, shortSha, type BoardAction, type BoardCta } from './model'
 import { pendingLabel } from './status'
 import type { SessionHealth } from './task-attention'
 import { fallbackEntries, type TimelineEntry } from './timeline'
@@ -26,6 +26,10 @@ export interface StageProps {
   /** Per-action blockers, already localized, in display order. */
   actionReasons?: Partial<Record<string, string[]>>
   onAction: (action: BoardAction) => void
+  /** A criterion write is in flight; the checkboxes stay disabled. */
+  criteriaBusy?: boolean
+  /** Toggle one acceptance criterion; omitted keeps the checklist read-only. */
+  onToggleCriterion?: (text: string, checked: boolean) => void
   entries: TimelineEntry[]
   entriesReady: boolean
   /** Raw session projections `values` for the selected session, when available. */
@@ -231,17 +235,37 @@ function actionButton(t: any, action: BoardAction, labelKey: string, props: Stag
 
 function Overview(props: StageProps) {
   const { t } = props
-  const items = criteria(props.taskView.task, props.taskView.snapshot.status)
+  const status = props.taskView.snapshot.status
+  const items = criteria(props.taskView.task, status)
+  const progress = criteriaProgress(items)
+  const readOnly = status === 'merged' || status === 'cleaned'
+  const toggle = readOnly ? undefined : props.onToggleCriterion
+  const progressText = progress.missing === 0
+    ? String(t.boardCriteriaAllDone)
+    : String(t.boardCriteriaProgress).replace('{n}', String(progress.checked)).replace('{total}', String(progress.total))
   return h('div', { className: 'dshwd-measure' },
     h('section', { className: 'dshwd-block' },
       h('div', { className: 'dshwd-block-label' }, t.taskDescription),
       h('div', { className: 'dshwd-prose' }, props.taskView.task.description || '—')),
     h('section', { className: 'dshwd-block' },
-      h('div', { className: 'dshwd-block-label' }, t.acceptanceCriteria),
+      h('div', { className: 'dshwd-block-label' }, items.length ? `${t.acceptanceCriteria} · ${progressText}` : t.acceptanceCriteria),
       items.length
-        ? h('div', { className: 'dshwd-check-list' }, items.map((item, i) => h('div', { key: i, className: 'dshwd-check-item' },
+        ? h('div', { className: 'dshwd-check-list' }, items.map((item, i) => toggle
+          ? h('button', {
+            key: i,
+            type: 'button',
+            className: 'dshwd-check-item dshwd-check-toggle',
+            role: 'checkbox',
+            'aria-checked': item.checked,
+            disabled: !!props.criteriaBusy,
+            title: t.boardCriteriaToggleHint,
+            onClick: () => toggle(item.text, !item.checked),
+          },
           h('span', { className: 'dshwd-check-box' + (item.checked ? '' : ' dshwd-todo'), 'aria-hidden': 'true' }, item.checked ? '✓' : ''),
-          h('span', null, item.text))))
+          h('span', null, item.text))
+          : h('div', { key: i, className: 'dshwd-check-item' },
+            h('span', { className: 'dshwd-check-box' + (item.checked ? '' : ' dshwd-todo'), 'aria-hidden': 'true' }, item.checked ? '✓' : ''),
+            h('span', null, item.text))))
         : h('div', { className: 'dshwd-hint' }, t.boardNoCriteria)))
 }
 

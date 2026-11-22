@@ -117,3 +117,20 @@ export function bindTask(ctx: RuntimeContext, id: string, sessionId: string): Wo
 export function unbindTaskBySession(ctx: RuntimeContext, sessionId: string): WorktreeTask | null {
   return ctx.store.unbindSession(sessionId)
 }
+
+/**
+ * Check or uncheck one acceptance criterion on a task.
+ *
+ * Parameter errors surface before the store write so a bad request never
+ * bumps updatedAt; store outcomes map to the HTTP statuses the board expects.
+ */
+export function setCriterionChecked(ctx: RuntimeContext, id: string, text: string, checked: boolean): WorktreeTask {
+  const criterion = String(text == null ? '' : text).trim()
+  if (!criterion) throw new TaskError('验收标准不能为空')
+  const result = ctx.store.setCriterionChecked(id, criterion, checked)
+  if (!result.ok) {
+    if (result.reason === 'missing') throw new TaskError(`任务不存在：${id}`, 404)
+    throw new TaskError('该任务没有这条验收标准', 400, 'unknown-criterion')
+  }
+  return result.task
+}
