@@ -16,9 +16,14 @@ export function openNativeSession(sessionId: string): boolean {
   return false
 }
 
-/** Send the first prompt to an already-bound but not-yet-started session. */
-export async function sendTaskPrompt(remotes: any, task: any): Promise<void> {
-  if (!remotes || !remotes.session || !task || !task.sessionId || !task.firstPrompt) return
+/**
+ * Queue a plain text prompt into an existing session.
+ *
+ * Shared by the first-prompt flow and by the base-sync instruction so both use
+ * the same request shape (queue mode, request id, client time zone).
+ */
+export async function sendSessionPrompt(remotes: any, sessionId: string, text: string): Promise<void> {
+  if (!remotes || !remotes.session || !sessionId) throw new Error('prompt failed')
   const tz = (() => {
     try {
       return Intl.DateTimeFormat().resolvedOptions().timeZone || ''
@@ -28,15 +33,21 @@ export async function sendTaskPrompt(remotes: any, task: any): Promise<void> {
   })()
   const sent = await remotes.session.prompt({
     requestId: uuid(),
-    sessionId: String(task.sessionId),
+    sessionId: String(sessionId),
     mode: 'queue',
-    content: [{ type: 'text', text: String(task.firstPrompt) }],
+    content: [{ type: 'text', text: String(text) }],
     ...(tz ? { clientTimeZone: tz } : {}),
   })
   if (sent && sent.ok === false) {
     const err = sent.error
     throw new Error(String((err && (err.message || err.code)) || 'prompt failed'))
   }
+}
+
+/** Send the first prompt to an already-bound but not-yet-started session. */
+export async function sendTaskPrompt(remotes: any, task: any): Promise<void> {
+  if (!remotes || !remotes.session || !task || !task.sessionId || !task.firstPrompt) return
+  await sendSessionPrompt(remotes, String(task.sessionId), String(task.firstPrompt))
 }
 
 /** Start an unbound task, or resend the first prompt to a bound one. */

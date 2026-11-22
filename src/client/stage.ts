@@ -6,6 +6,7 @@ import { pendingLabel } from './status'
 import type { SessionHealth } from './task-attention'
 import { fallbackEntries, type TimelineEntry } from './timeline'
 import { entryTag, entryTitle, liveStatsText, modelLabel, pressurePercent, readLive, stepStatusLabel, tokenSummary } from './live-session'
+import { postMergeCount, reviewStaleCount } from './review-surfaces'
 
 export type BoardTab = 'overview' | 'live' | 'diff'
 
@@ -58,6 +59,11 @@ export function Stage(props: StageProps) {
     : props.running ? t.sessionRunning : t.sessionIdle
   const updated = taskStamp(task, taskView.snapshot)
   const count = diffCount(props.diff)
+  // A merged task whose branch kept moving still deserves a way forward; a
+  // review pinned to an old commit needs a warning. Both can be true at once.
+  const postMerge = postMergeCount(taskView.snapshot)
+  const reviewStale = reviewStaleCount(status.key, taskView.snapshot)
+  const cleanedNow = taskView.snapshot.status === 'cleaned'
   return h('main', { className: 'dshwd-stage' },
     h('div', { className: 'dshwd-topbar' },
       h('div', { className: 'dshwd-topbar-left' },
@@ -115,6 +121,24 @@ export function Stage(props: StageProps) {
         }, t.codeChanges, h('span', { className: 'dshwd-mono', style: { fontSize: '11px', color: 'var(--text-3)' } }, String(count))))),
 
     h('div', { className: 'dshwd-stage-body' },
+      postMerge > 0
+        ? h('div', { className: 'dshwd-notice dshwd-alert dshwd-alert-warn' },
+          h('div', { className: 'dshwd-notice-text' },
+            h('div', { className: 'dshwd-notice-title' }, String(t.postMergeTitle).replace('{n}', String(postMerge))),
+            h('div', { className: 'dshwd-hint' }, String(t.postMergeHint).replace('{n}', String(postMerge)))),
+          // A cleaned task has no worktree to merge from; offer no dead action.
+          cleanedNow
+            ? null
+            : h('div', { className: 'dshwd-notice-actions' },
+              actionButton(t, 'merge', 'mergeAgain', props, false),
+              actionButton(t, 'continue', 'continueTask', props, false)))
+        : null,
+      reviewStale > 0
+        ? h('div', { className: 'dshwd-notice dshwd-alert dshwd-alert-warn' },
+          h('div', { className: 'dshwd-notice-text' },
+            h('div', { className: 'dshwd-notice-title' }, t.reviewStaleTitle),
+            h('div', { className: 'dshwd-hint' }, String(t.reviewStaleHint).replace('{n}', String(reviewStale)))))
+        : null,
       // Errors from checkout/merge/cleanup keep living here after the toast is
       // gone, so a refused action stays explainable.
       props.notice

@@ -21,6 +21,8 @@ export interface ConfirmState {
   label: string
   danger?: boolean
   checks?: ConfirmCheck[]
+  /** Long pre-formatted text (e.g. the exact prompt to be sent). */
+  pre?: string
   run: (values: Record<string, boolean>) => Promise<void> | void
 }
 
@@ -45,6 +47,7 @@ export interface ConfirmDialogProps {
   label: string
   danger?: boolean
   checks?: ConfirmCheck[]
+  pre?: string
   busy: boolean
   onCancel: () => void
   onConfirm: (values: Record<string, boolean>) => void
@@ -74,6 +77,9 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
       h('button', { className: 'dshwd-btn dshwd-btn-ghost', onClick: props.onCancel, disabled: props.busy }, '×')),
     h('div', { className: 'dshwd-modal-body' },
       h('div', { className: 'dshwd-prose', style: { fontSize: '12.5px' } }, props.body),
+      props.pre
+        ? h('pre', { className: 'dshwd-diff-pre', style: { maxHeight: '38vh', overflow: 'auto', margin: 0 } }, props.pre)
+        : null,
       Array.isArray(props.details) && props.details.length
         ? h('div', { className: 'dshwd-confirm-details' }, props.details.map((d, i) => h('div', { key: i, className: 'dshwd-kv' },
           h('span', { className: 'dshwd-kv-k' }, d.label),
