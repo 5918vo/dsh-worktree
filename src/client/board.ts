@@ -32,6 +32,7 @@ import { useBoardData } from './board/use-board-data'
 import { useBoardActions } from './board/use-board-actions'
 import {
   boardCta,
+  boardEmptyKind,
   boardStatus,
   diffBaseSha,
   filterProjectViews,
@@ -384,14 +385,10 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     attentionOf,
     (task: any) => pendingLabel(t, pendingOf(task)),
   )
-  const hasSearch = !!String(query || '').trim()
-  const emptyKind = !views.length
-    ? 'no-projects'
-    : hasSearch
-      ? 'search'
-      : filter !== 'all'
-        ? 'filter'
-        : ''
+  const taskCount = filtered.reduce((n: number, v: ProjectView) => n + v.tasks.length, 0)
+  // "No matches" only when the filtered list is truly empty: a search that
+  // still has hits must keep showing them.
+  const emptyKind = boardEmptyKind({ loaded, projectCount: views.length, query, filter, taskCount })
 
   const runQuick = (action: QuickAction, tv: TaskView, projectId: string) => {
     if (action === 'handle' || action === 'open-session') {
@@ -428,6 +425,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
         attentionStale: !!err,
         lastOkAt,
         emptyKind,
+        loaded,
         onQuery: setQuery,
         onFilter: setFilter,
         onToggleArchived: toggleArchived,
@@ -524,6 +522,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           stashes: selectedTask.task.pendingStashes || [],
           partialRestore,
           running: runningOf(selectedTask.task),
+          pending: pendingOf(selectedTask.task),
           narrow,
           onClose: () => setInspectorHidden(true),
           onCopy: (text: string) => { copyText(text); say(t.copied) },

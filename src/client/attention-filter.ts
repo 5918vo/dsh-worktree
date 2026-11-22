@@ -1,6 +1,6 @@
 import { React, h } from './ui'
 import { Icon } from './primitives'
-import { RECOVERY_UI_READY, categoryKey } from './task-attention'
+import { RECOVERY_UI_READY, categoryKey, filterCount } from './task-attention'
 import type { BoardFilter } from './model'
 
 /**
@@ -72,7 +72,7 @@ export function AttentionFilter(props: any) {
   }
 
   const currentLabel = t[categoryKey(value)]
-  const total = counts.total || 0
+  const count = filterCount(counts, value)
 
   return h('div', { className: 'dshwd-filter', ref: rootRef },
     h('button', {
@@ -81,14 +81,14 @@ export function AttentionFilter(props: any) {
       className: 'dshwd-filter-btn' + (value !== 'all' ? ' dshwd-filter-btn-on' : ''),
       'aria-haspopup': 'listbox',
       'aria-expanded': open ? 'true' : 'false',
-      'aria-label': total > 0 ? currentLabel + ' · ' + String(total) : currentLabel,
+      'aria-label': count > 0 ? currentLabel + ' · ' + String(count) : currentLabel,
       title: t.attentionFilterTitle,
       onClick: () => setOpen((o: boolean) => !o),
       onKeyDown,
     },
       h(Icon, { name: 'sliders' }),
       h('span', { className: 'dshwd-filter-label' }, currentLabel),
-      total > 0 ? h('span', { className: 'dshwd-filter-count' }, String(total)) : null,
+      count > 0 ? h('span', { className: 'dshwd-filter-count' }, String(count)) : null,
       h(Icon, { name: 'chevronDown', className: 'dshwd-filter-chev' })),
     open
       ? h('ul', {

@@ -31,6 +31,8 @@ export interface RailProps {
   attentionStale: boolean
   lastOkAt: number
   emptyKind: RailEmptyKind
+  /** False until the first project fetch lands; the foot shows placeholders. */
+  loaded?: boolean
   onQuery: (value: string) => void
   onFilter: (filter: BoardFilter) => void
   onToggleArchived: () => void
@@ -149,7 +151,8 @@ export function Rail(props: RailProps) {
                 : h('div', { className: 'dshwd-hint', style: { padding: '0 8px 8px 24px', fontSize: '11px' } }, t.noTasks)))),
 
     h('div', { className: 'dshwd-rail-foot' },
-      h('span', { className: 'dshwd-mono', style: { fontSize: '11px', color: 'var(--text-3)' } }, `${totalRepos} repos · ${totalTasks} tasks`),
+      h('span', { className: 'dshwd-mono', style: { fontSize: '11px', color: 'var(--text-3)' } },
+        props.loaded === false ? '—' : `${totalRepos} repos · ${totalTasks} tasks`),
       h('button', { className: 'dshwd-btn dshwd-btn-ghost', style: { height: '24px', fontSize: '11px' }, onClick: props.onToggleTheme },
         props.theme === 'dark' ? t.boardThemeLight : t.boardThemeDark)))
 }

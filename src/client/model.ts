@@ -163,6 +163,25 @@ export function filterProjectViews(
     .filter((view) => view.tasks.length > 0 || keepEmpty)
 }
 
+/**
+ * What the rail's empty state should say. Search and filter only claim "no
+ * matches" when the filtered list really is empty; with a hit the list wins.
+ */
+export function boardEmptyKind(input: {
+  loaded: boolean
+  projectCount: number
+  query: string
+  filter: BoardFilter
+  taskCount: number
+}): '' | 'no-projects' | 'search' | 'filter' {
+  if (!input.loaded) return ''
+  if (!input.projectCount) return 'no-projects'
+  const q = String(input.query || '').trim()
+  if (q && input.taskCount === 0) return 'search'
+  if (input.filter !== 'all' && input.taskCount === 0) return 'filter'
+  return ''
+}
+
 export function criteria(task: WorktreeTask, status: TaskStatus): Array<{ text: string; checked: boolean }> {
   const done = status === 'merged' || status === 'cleaned'
   const marked = new Set(task.checkedCriteria || [])
@@ -183,6 +202,32 @@ export function diffHeadSha(task: WorktreeTask, snapshot: TaskSnapshot | null | 
   if (commits.length && commits[0] && commits[0].hash) return String(commits[0].hash)
   if (task.mergedCommit) return task.mergedCommit
   return ''
+}
+
+/**
+ * HEAD to show for the task. A detached review is pinned to its recorded
+ * commit; otherwise the live worktree tip wins, so a post-merge commit is not
+ * hidden behind a stale review sha.
+ */
+export function branchHeadSha(task: WorktreeTask, snapshot: TaskSnapshot | null | undefined): string {
+  if (snapshot && snapshot.status === 'reviewing' && task.reviewSha) return String(task.reviewSha)
+  const commits = (snapshot && snapshot.worktree && snapshot.worktree.commits) || []
+  if (commits.length && commits[0] && commits[0].hash) return String(commits[0].hash)
+  return diffHeadSha(task, snapshot)
+}
+
+/** Why acceptance actions are unavailable, for the overview tab. */
+export function acceptanceHintFor(t: any, status: TaskStatus, postMergeAhead: number): string {
+  switch (status) {
+    case 'developing':
+    case 'ready': return t.acceptanceHintDeveloping
+    case 'merged':
+      return postMergeAhead > 0
+        ? String(t.acceptanceHintPostMerge).replace('{n}', String(postMergeAhead))
+        : t.acceptanceHintMerged
+    case 'cleaned': return t.acceptanceHintClean
+    default: return ''
+  }
 }
 
 export function diffBaseSha(task: WorktreeTask, snapshot: TaskSnapshot | null | undefined, mergeBase?: string | null): string {
@@ -206,8 +251,8 @@ export function diffLineKind(line: string): DiffLineKind {
 }
 
 export interface MergeSummary {
-  tone: 'idle' | 'ok' | 'warn' | 'err'
-  key: 'idle' | 'checking' | 'error' | 'blocked' | 'conflict' | 'overlap' | 'baseAhead' | 'safe' | 'merged'
+  tone: 'idle' | 'ok' | 'warn' | 'err' | 'neutral'
+  key: 'idle' | 'checking' | 'error' | 'blocked' | 'conflict' | 'overlap' | 'baseAhead' | 'safe' | 'merged' | 'cleaned'
   n?: number
   message?: string
 }
@@ -237,6 +282,7 @@ export function mergeSummaryText(t: any, summary: MergeSummary): string {
     case 'baseAhead': return String(t.boardPreviewBaseAhead).replace('{n}', String(summary.n || 0))
     case 'safe': return t.boardPreviewSafe
     case 'merged': return t.boardPreviewMerged
+    case 'cleaned': return t.acceptanceHintClean
     default: return t.boardPreviewIdle
   }
 }
