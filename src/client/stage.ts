@@ -31,6 +31,12 @@ export interface StageProps {
   criteriaBusy?: boolean
   /** Toggle one acceptance criterion; omitted keeps the checklist read-only. */
   onToggleCriterion?: (text: string, checked: boolean) => void
+  /** Copy the acceptance report; omitted hides the entry (SSR / tests). */
+  onCopyReport?: () => void
+  /** Download the acceptance report as `.md`; omitted hides the entry. */
+  onDownloadReport?: () => void
+  /** A report action is in flight; both report buttons stay disabled. */
+  reportBusy?: boolean
   entries: TimelineEntry[]
   entriesReady: boolean
   /** Raw session projections `values` for the selected session, when available. */
@@ -54,11 +60,6 @@ export interface StageProps {
   partial?: { message: string } | null
   onDismissPartial?: () => void
   onBackToList?: () => void
-  /** Generated Markdown acceptance report for the overview tab. */
-  reportText?: string
-  reportFileName?: string
-  onCopyReport?: () => void
-  onDownloadReport?: () => void
   /** Send a free-form prompt into this task's session. */
   onSendPrompt?: (text: string) => Promise<void>
   promptBusy?: boolean
@@ -263,7 +264,29 @@ function Overview(props: StageProps) {
       h('div', { className: 'dshwd-block-label' }, t.taskDescription),
       h('div', { className: 'dshwd-prose' }, props.taskView.task.description || '—')),
     h('section', { className: 'dshwd-block' },
-      h('div', { className: 'dshwd-block-label' }, items.length ? `${t.acceptanceCriteria} · ${progressText}` : t.acceptanceCriteria),
+      h('div', { className: 'dshwd-block-head' },
+        h('div', { className: 'dshwd-block-label' }, items.length ? `${t.acceptanceCriteria} · ${progressText}` : t.acceptanceCriteria),
+        props.onCopyReport || props.onDownloadReport
+          ? h('div', { className: 'dshwd-block-actions' },
+            props.onCopyReport
+              ? h('button', {
+                type: 'button',
+                className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini',
+                disabled: !!props.reportBusy,
+                title: props.reportBusy ? t.working : t.reportCopy,
+                onClick: props.onCopyReport,
+              }, t.reportCopy)
+              : null,
+            props.onDownloadReport
+              ? h('button', {
+                type: 'button',
+                className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini',
+                disabled: !!props.reportBusy,
+                title: props.reportBusy ? t.working : t.reportDownload,
+                onClick: props.onDownloadReport,
+              }, t.reportDownload)
+              : null)
+          : null),
       items.length
         ? h('div', { className: 'dshwd-check-list' }, items.map((item, i) => toggle
           ? h('button', {
@@ -282,22 +305,7 @@ function Overview(props: StageProps) {
             h('span', { className: 'dshwd-check-box' + (item.checked ? '' : ' dshwd-todo'), 'aria-hidden': 'true' }, item.checked ? '✓' : ''),
             h('span', null, item.text))))
         : h('div', { className: 'dshwd-hint' }, t.boardNoCriteria),
-      hint ? h('div', { className: 'dshwd-hint', style: { marginTop: '6px' } }, hint) : null),
-    h('section', { className: 'dshwd-block' },
-      h('div', { className: 'dshwd-block-label' }, t.acceptanceReport),
-      h('div', { className: 'dshwd-report-actions' },
-        h('button', {
-          className: 'dshwd-btn',
-          disabled: !props.reportText,
-          onClick: props.onCopyReport,
-        }, t.copyReport),
-        h('button', {
-          className: 'dshwd-btn',
-          disabled: !props.reportText,
-          title: props.reportFileName || undefined,
-          onClick: props.onDownloadReport,
-        }, t.downloadReport)),
-      h('div', { className: 'dshwd-hint dshwd-mono' }, props.reportFileName || '')))
+      hint ? h('div', { className: 'dshwd-hint', style: { marginTop: '6px' } }, hint) : null))
 }
 
 function Live(props: StageProps) {

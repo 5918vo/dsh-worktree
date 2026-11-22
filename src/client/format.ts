@@ -249,19 +249,3 @@ export function copyText(text: string): Promise<boolean> {
   }
   return Promise.resolve(fallbackCopy(text))
 }
-
-/** Trigger a browser download for generated text (report Markdown). */
-export function downloadTextFile(name: string, text: string): void {
-  const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = name
-  a.style.display = 'none'
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  // The click is synchronous but the download starts async; revoke on the next
-  // macrotask so Safari has already grabbed the blob.
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
-}

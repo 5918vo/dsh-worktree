@@ -8,7 +8,7 @@
 import { React, h, useStyles } from './ui'
 import { getJson } from './context'
 import { upsertPublishedTask, visibleProjectViews } from './board-data'
-import { copyText, downloadTextFile } from './format'
+import { copyText } from './format'
 import { ProjectDetail } from './project-detail'
 import type { ProjectView, TaskView } from '../models'
 import { WORKBENCH_CSS } from './styles'
@@ -27,7 +27,6 @@ import {
   type TaskAttention,
 } from './task-attention'
 import { deriveActionGate } from './action-gate'
-import { buildAcceptanceReport, reportFileName } from './report'
 import { ConfirmDialog, StashDiffModal, type ConfirmState, type StashViewState } from './board/dialogs'
 import { useBoardData } from './board/use-board-data'
 import { useBoardActions } from './board/use-board-actions'
@@ -35,6 +34,7 @@ import {
   boardCta,
   boardEmptyKind,
   boardStatus,
+  boardStatusLabel,
   diffBaseSha,
   filterProjectViews,
   mergeGateMissing,
@@ -284,12 +284,24 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     setShowArchived((v: boolean) => !v)
   }
 
+  // Status drives both the Stage chip and the acceptance report label, so it is
+  // resolved once before the action hook reads it.
+  const archived = !!(selectedTask && selectedTask.task.archivedAt)
+  const running = selectedTask ? runningOf(selectedTask.task) : false
+  const pending = !!(selectedTask && selectedTask.task.sessionId && pendingMap[selectedTask.task.sessionId])
+  const status = selectedTask ? boardStatus(selectedTask.snapshot.status, running) : null
+  const statusKey = status ? status.key : ''
+  const cta = selectedTask && status ? boardCta(status, !!selectedTask.task.sessionId) : null
+  const statusLabel = status ? boardStatusLabel(t, status) : ''
+
   const actions = useBoardActions({
     t,
     remotes,
     selectedTask,
     selectedProjectId,
     projectOfTask,
+    diff,
+    statusLabel,
     busy,
     setBusy,
     setConfirm,
@@ -301,13 +313,6 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     say,
     refresh,
   })
-
-  const archived = !!(selectedTask && selectedTask.task.archivedAt)
-  const running = selectedTask ? runningOf(selectedTask.task) : false
-  const pending = !!(selectedTask && selectedTask.task.sessionId && pendingMap[selectedTask.task.sessionId])
-  const status = selectedTask ? boardStatus(selectedTask.snapshot.status, running) : null
-  const statusKey = status ? status.key : ''
-  const cta = selectedTask && status ? boardCta(status, !!selectedTask.task.sessionId) : null
 
   // Another uncleaned task the main repo is currently accepting blocks
   // checkout, because switching away would drop its review context. The stage
@@ -342,12 +347,6 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     mergeGateMissing: selectedTask ? mergeGateMissing(projectOfTask && projectOfTask.project, selectedTask.task, selectedTask.snapshot.status) : 0,
   }), [t, selectedTask, statusKey, running, pending, previewState, otherReviewing, projectOfTask])
 
-  // Regenerate only when the task, its snapshot or the diff changes; the
-  // report is a pure function of those inputs.
-  const reportText = React.useMemo(() => (selectedTask
-    ? buildAcceptanceReport({ task: selectedTask.task, snapshot: selectedTask.snapshot, diff, t })
-    : ''), [selectedTask, diff, t])
-  const reportName = React.useMemo(() => (selectedTask ? reportFileName(selectedTask.task) : ''), [selectedTask])
   const baseSha = selectedTask
     ? diffBaseSha(selectedTask.task, selectedTask.snapshot, previewRef.current && previewRef.current.preview ? (previewRef.current.preview.expectedBase || null) : null)
     : ''
@@ -466,6 +465,10 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           onAction: actions.runAction,
           criteriaBusy: !!busy,
           onToggleCriterion: actions.runCriterion,
+          onCopyReport: actions.runCopyReport,
+          onDownloadReport: actions.runDownloadReport,
+          // Any in-flight action freezes the snapshot the report would read.
+          reportBusy: !!busy,
           entries,
           entriesReady,
           live,
@@ -476,19 +479,6 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           diffLoading,
           diffError,
           onRetryDiff: retryDiff,
-          reportText,
-          reportFileName: reportName,
-          onCopyReport: () => {
-            void copyText(reportText).then((ok) => say(ok ? t.reportCopied : t.reportCopyFailed, !ok))
-          },
-          onDownloadReport: () => {
-            try {
-              downloadTextFile(reportName, reportText)
-              say(t.reportDownloaded)
-            } catch {
-              say(t.reportCopyFailed, true)
-            }
-          },
           onSendPrompt: actions.runPrompt,
           promptBusy: !!busy,
           baseSha,

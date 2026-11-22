@@ -9,7 +9,9 @@ import { openNativeSession, sendSessionPrompt, startTask } from '../actions'
 import { SYNC_BUSY, syncPromptText } from '../review-surfaces'
 import type { BoardAction } from '../model'
 import { criteria, criteriaProgress, mergeGateMissing } from '../model'
-import type { ProjectView, TaskView } from '../../models'
+import { copyText } from '../format'
+import { buildAcceptanceReport, reportFilename } from '../report'
+import type { ProjectView, TaskDiff, TaskView } from '../../models'
 import type { ConfirmState, StashViewState } from './dialogs'
 import type { BoardTab } from '../stage'
 
@@ -19,6 +21,10 @@ export interface UseBoardActionsArgs {
   selectedTask: TaskView | null
   selectedProjectId: string
   projectOfTask: ProjectView | null
+  /** Diff already loaded for the selected task; the report never refetches it. */
+  diff: TaskDiff | null
+  /** Localized status label for the report, matching the Stage chip. */
+  statusLabel: string
   busy: string
   setBusy: (value: string) => void
   setConfirm: (state: ConfirmState | null) => void
@@ -38,6 +44,8 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     selectedTask,
     selectedProjectId,
     projectOfTask,
+    diff,
+    statusLabel,
     busy,
     setBusy,
     setConfirm,
@@ -288,6 +296,66 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     }
   }
 
+  /**
+   * The report is generated from the current snapshot and the diff already in
+   * memory, in the interface language. Both entry points share this text so a
+   * copy and a download never diverge.
+   */
+  function reportMarkdown(view: TaskView): string {
+    return buildAcceptanceReport({
+      task: view.task,
+      snapshot: view.snapshot,
+      diff,
+      projectName: projectOfTask ? projectOfTask.project.name : '',
+      statusLabel,
+      t,
+    })
+  }
+
+  async function runCopyReport() {
+    if (!selectedTask || busy) return
+    setBusy('report')
+    try {
+      const ok = await copyText(reportMarkdown(selectedTask))
+      if (!ok) throw new Error(t.reportFailed)
+      say(t.reportCopied)
+    } catch (e: any) {
+      say(String((e && e.message) || t.reportFailed), true)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function runDownloadReport() {
+    if (!selectedTask || busy) return
+    const view = selectedTask
+    setBusy('report')
+    let url = ''
+    try {
+      const markdown = reportMarkdown(view)
+      if (typeof document === 'undefined' || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
+        throw new Error(t.reportFailed)
+      }
+      const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' })
+      url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = reportFilename(view.task)
+      link.style.display = 'none'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      say(t.reportDownloaded)
+    } catch (e: any) {
+      say(String((e && e.message) || t.reportFailed), true)
+    } finally {
+      // Chromium copies the blob synchronously on click, but Safari can still be
+      // reading it; revoke on the next tick instead of pulling it away mid-flight.
+      if (url) setTimeout(() => { try { URL.revokeObjectURL(url) } catch { /* noop */ } }, 1000)
+      setBusy('')
+    }
+  }
+
   const applyStash = (sha: string) => {
     if (!selectedTask || busy) return
     const id = selectedTask.task.id
@@ -393,6 +461,8 @@ export function useBoardActions(args: UseBoardActionsArgs) {
   return {
     runAction,
     runCriterion,
+    runCopyReport,
+    runDownloadReport,
     runCleanup,
     runDeleteTask,
     runMergeRestore,

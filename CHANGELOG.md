@@ -7,7 +7,7 @@
 ### 新增
 
 - 项目级合并门禁：项目设置可开启「验收标准未全部核对时禁止合并」。开启后合并预检新增 `criteria-incomplete` 阻断项，`merge` 在锁内重新预检时同样拒绝（返回 412），任务详情与 Rail 按钮提前说明还差几项；没有验收标准的任务不受影响，关闭门禁即恢复原行为。
-- 验收报告导出：任务概览新增「验收报告」区，可复制 Markdown 或下载 `.md`。报告由纯函数生成，包含任务 / 分支 / worktree / 状态、验收标准勾选、相对基线的最近提交、改动文件统计（含截断提示）、未提交改动与待处理暂存；不包含完整 patch。
+- 验收报告导出：「验收标准」分区标题右侧新增「复制报告」「下载 .md」两个 ghost mini 按钮（`dshwd-btn-ghost` + `dshwd-btn-mini`）。报告由纯函数 `src/client/report.ts` 生成，包含项目 / 任务分支 / 基线分支 / 状态 / 任务 HEAD / 合并提交 / 会话 / 生成时间、任务描述、验收标准勾选与进度、提交列表、改动文件表（路径、变更类型、行数增删）与工作区统计；不含完整 patch。下载文件名为 `acceptance-<id8>-<YYYYMMDD>-<HHmm>.md`，所有异常状态都有本地化降级说明。
 - 发布模板：设置页新增模板管理（名称、标题、描述、验收标准）；发布弹窗可选择模板快速填充标题、描述与验收标准。模板验收标准只采用全局标准库中已有的条目，其余写入手动标准；不会覆盖项目、基线、分支、模型或「立即执行」选择。
 - 任务置顶：任务记录新增可选 `pinnedAt`；左栏任务行提供置顶 / 取消置顶按钮与图钉标记。项目分组与客户端发布后的增量列表都按「置顶优先、再按创建时间倒序」排列；重复置顶保留首次时间。
 - 会话快捷指令：实时会话新增指令输入区与「继续 / 跑测试 / 总结进展 / 提交改动」四个 chip，支持 `Ctrl/Cmd+Enter` 发送。会话运行中指令会排队，等待审批 / 回答或发送中时禁用并说明原因，发送失败保留输入内容。
@@ -19,11 +19,15 @@
 - Runtime 暴露 `listTaskTemplates` / `saveTaskTemplate` / `deleteTaskTemplate`（名称空 400、模板不存在 404）与 `setTaskPinned`（任务不存在 404）；`updateProject` 校验 `mergeGate` 取值。
 - 新增 `GET /dsh-worktree/api/templates`（只读，无需 token）、`POST templates/save` 与 `templates/delete`（需要 token，始终返回完整 `{ templates }`）、`POST task/pin`（`{ id, pinned }`）。`projects/update` 接受 `mergeGate`。
 - `worktree_act` 的 action 新增 `pin` / `unpin`。
-- 新增纯函数模块 `src/client/report.ts`（`buildAcceptanceReport` / `reportFileName`）、`src/client/quick-prompts.ts`（指令文本、禁用原因与 locale key 映射），以及 `applyPublishTemplate`；`format.ts` 新增 `downloadTextFile`。
+- 新增纯函数模块 `src/client/report.ts`（`buildAcceptanceReport` / `reportFilename`）、`src/client/quick-prompts.ts`（指令文本、禁用原因与 locale key 映射），以及 `applyPublishTemplate`。
 
 ### 测试
 
-- 新增合并门禁预检 / 合并拒绝 / 无标准放行 / 非法取值用例，报告渲染与降级 / 文件名用例，模板 Store + Runtime + HTTP + 纯函数用例，置顶 Store + HTTP + 双列表排序用例，快捷指令文本 / 禁用原因用例；`npm run verify` 共 305 项测试通过。
+- 新增合并门禁预检 / 合并拒绝 / 无标准放行 / 非法取值用例，验收报告渲染 / 降级 / 文件名 / 中英文占位符用例，模板 Store + Runtime + HTTP + 纯函数用例，置顶 Store + HTTP + 双列表排序用例，快捷指令文本 / 禁用原因用例；`npm run verify` 共 323 项测试通过。
+
+### 文档
+
+- `README.md`、`docs/frontend-design.md`、`docs/i18n-terminology.md` 同步更新；`locale/zh.json` 与 `locale/en.json` 新增报告、门禁、模板、置顶、快捷指令系列文案。
 
 ## [1.10.0] - 2026-11-22
 
