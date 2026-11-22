@@ -296,10 +296,13 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-modal-foot-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .dshw-board .dshwd-alert { padding: 9px 11px; border-radius: 7px; border: 1px solid var(--err-line); background: var(--err-soft); color: var(--err); font-size: 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .dshw-board .dshwd-alert-info { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent); }
+.dshw-board .dshwd-alert-warn { border-color: var(--warn-line); background: var(--warn-soft); color: var(--warn); }
 .dshw-board .dshwd-hint { color: var(--text-3); font-size: 11px; line-height: 1.5; }
 /* Persistent inline notice: same text as the error toast, but it stays put. */
 .dshw-board .dshwd-notice { align-items: flex-start; margin-bottom: 14px; }
 .dshw-board .dshwd-notice-text { min-width: 0; overflow-wrap: anywhere; line-height: 1.5; }
+.dshw-board .dshwd-notice-title { font-weight: 600; margin-bottom: 2px; }
+.dshw-board .dshwd-notice-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; flex-wrap: wrap; }
 .dshw-board .dshwd-btn-copy { flex-shrink: 0; padding: 0 6px; min-height: 22px; height: 22px; line-height: 22px; }
 .dshw-board .dshwd-blocker-box { margin-top: 8px; padding: 8px 10px; border-radius: 7px; border: 1px solid var(--warn-line); background: var(--warn-soft); }
 .dshw-board .dshwd-blocker-title { font-size: 11px; font-weight: 600; color: var(--warn); margin-bottom: 4px; }

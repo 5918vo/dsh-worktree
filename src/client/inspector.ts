@@ -3,6 +3,7 @@ import type { TaskView } from '../models'
 import { mergeSummary, mergeSummaryText, shortSha } from './model'
 import { displayPath, pathParts } from './format'
 import { readLive } from './live-session'
+import { SYNC_BUSY, mergePreviewFiles, mergeRiskChip, previewFilesText, previewNoCheck, syncApplicable } from './review-surfaces'
 
 export interface InspectorProps {
   t: any
@@ -19,10 +20,14 @@ export interface InspectorProps {
   archiveReason: string
   stashes: any[]
   partialRestore: any
+  /** Whether the bound session is currently running a turn. */
+  running: boolean
   /** Narrow container: the inspector is an overlay drawer and needs a close. */
   narrow?: boolean
   onClose?: () => void
   onCopy: (text: string) => void
+  /** Send the base-sync instruction for the given preview files. */
+  onSyncBaseline: (files: string[]) => void
   onArchive: () => void
   onUnarchive: () => void
   onCleanup: () => void
@@ -48,6 +53,29 @@ export function Inspector(props: InspectorProps) {
   const dotClass = summary.tone === 'err' ? 'dshwd-text-err' : summary.tone === 'warn' ? 'dshwd-text-warn' : summary.tone === 'ok' ? 'dshwd-text-ok' : 'dshwd-text-muted'
   const dirty = Number(snap.worktree && snap.worktree.dirtyCount) || 0
   const blockers = preview && Array.isArray(preview.blockers) ? preview.blockers : []
+  // Merge-preview extras: one risk chip, the files it is about, and the
+  // base-sync escape hatch. All live inside the merge-check section so the
+  // panel never stacks two near-identical warnings.
+  const risk = mergeRiskChip(t, preview)
+  const riskFiles = mergePreviewFiles(preview)
+  const canSync = !merged && syncApplicable(preview)
+  const syncing = props.busy === SYNC_BUSY
+  const syncDisabled = !task.sessionId || props.running === true || props.busy !== ''
+  const syncTitle = !task.sessionId ? t.syncNoSession : props.running === true ? t.acceptAgentRunning : undefined
+  const riskNode = risk || canSync
+    ? h('div', { style: { marginTop: '8px', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' } },
+      risk
+        ? h('span', { className: 'dshwd-chip' + (risk.tone === 'err' ? ' dshwd-err' : risk.tone === 'warn' ? ' dshwd-warn' : '') }, risk.label)
+        : null,
+      canSync
+        ? h('button', {
+          className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini',
+          disabled: syncDisabled,
+          title: syncTitle,
+          onClick: () => props.onSyncBaseline(riskFiles),
+        }, syncing ? t.syncingBaseline : t.syncBaseline)
+        : null)
+    : null
   const worktree = displayPath(task.worktreePath)
   // The session can still be running in the base checkout (or another dir)
   // while the task is published; compare normalised paths so Windows casing
@@ -84,18 +112,40 @@ export function Inspector(props: InspectorProps) {
           h('div', { className: 'dshwd-blocker-title' }, t.boardBlockersTitle),
           h('ul', { className: 'dshwd-blocker-list' }, blockers.map((b: any, i: number) => h('li', { key: (b && b.code) || i }, (b && b.message) || String(b)))))
         : null,
-      preview && Array.isArray(preview.conflictFiles) && preview.conflictFiles.length
-        ? h('div', { className: 'dshwd-hint', style: { marginTop: '6px', overflowWrap: 'anywhere' } }, t.boardFiles + '：' + preview.conflictFiles.slice(0, 8).join('、'))
+      riskNode,
+      riskFiles.length
+        ? h('div', { className: 'dshwd-hint', style: { marginTop: '6px', overflowWrap: 'anywhere' } }, t.mergePreviewFiles + '：' + previewFilesText(riskFiles))
+        : null,
+      previewNoCheck(preview)
+        ? h('div', { className: 'dshwd-hint', style: { marginTop: '6px' } }, t.mergePreviewNoCheck)
         : null),
 
     h('section', { className: 'dshwd-insp-sec' },
       h('div', { className: 'dshwd-insp-title' }, t.techInfo),
       h('div', { className: 'dshwd-kv' },
         h('span', { className: 'dshwd-kv-k' }, t.branchLabel),
-        h('span', { className: 'dshwd-kv-v dshwd-mono', title: task.branch }, task.branch || '—')),
+        h('span', { className: 'dshwd-kv-path-copy' },
+          h('span', { className: 'dshwd-kv-v dshwd-mono', title: task.branch }, task.branch || '—'),
+          task.branch
+            ? h('button', {
+              className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-copy',
+              title: t.copyBranch,
+              'aria-label': t.copyBranch,
+              onClick: () => props.onCopy(task.branch),
+            }, '⧉')
+            : null)),
       h('div', { className: 'dshwd-kv' },
         h('span', { className: 'dshwd-kv-k' }, t.session),
-        h('span', { className: 'dshwd-kv-v dshwd-mono', title: task.sessionId || '' }, task.sessionId || '—')),
+        h('span', { className: 'dshwd-kv-path-copy' },
+          h('span', { className: 'dshwd-kv-v dshwd-mono', title: task.sessionId || '' }, task.sessionId || '—'),
+          task.sessionId
+            ? h('button', {
+              className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-copy',
+              title: t.copySessionId,
+              'aria-label': t.copySessionId,
+              onClick: () => props.onCopy(String(task.sessionId)),
+            }, '⧉')
+            : null)),
       h('div', { className: 'dshwd-kv dshwd-kv-live', style: { alignItems: 'flex-start' } },
         h('span', { className: 'dshwd-kv-k' }, t.liveCwd),
         h('span', { className: 'dshwd-kv-live-value' },

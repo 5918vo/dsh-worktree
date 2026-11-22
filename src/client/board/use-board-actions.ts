@@ -5,7 +5,8 @@
  */
 
 import { getJson, post, postLong } from '../context'
-import { openNativeSession, startTask } from '../actions'
+import { openNativeSession, sendSessionPrompt, startTask } from '../actions'
+import { SYNC_BUSY, syncPromptText } from '../review-surfaces'
 import type { BoardAction } from '../model'
 import type { ProjectView, TaskView } from '../../models'
 import type { ConfirmState, StashViewState } from './dialogs'
@@ -202,6 +203,42 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     })
   }
 
+  /**
+   * Ask the session to merge the base into the task branch. The files shown in
+   * the confirmation are the ones the preview flagged so the agent starts from
+   * the same list the panel shows.
+   */
+  function runSyncBaseline(files: string[]) {
+    if (!selectedTask || busy) return
+    const task = selectedTask.task
+    if (!task.sessionId) {
+      say(t.syncNoSession, true)
+      return
+    }
+    if (!remotes || !remotes.session) {
+      say(t.failed, true)
+      return
+    }
+    const text = syncPromptText(t, task, files)
+    setConfirm({
+      title: t.syncConfirmTitle,
+      body: t.syncConfirmHint,
+      pre: text,
+      label: t.send,
+      run: async () => {
+        // Close first: the prompt is already decided, the toast reports the result.
+        setConfirm(null)
+        setBusy(SYNC_BUSY)
+        try {
+          await sendSessionPrompt(remotes, String(task.sessionId), text)
+          say(t.syncPromptSent)
+        } finally {
+          setBusy('')
+        }
+      },
+    })
+  }
+
   function runMergeRestore() {
     if (!selectedTask || busy) return
     const id = selectedTask.task.id
@@ -283,6 +320,7 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     runCleanup,
     runDeleteTask,
     runMergeRestore,
+    runSyncBaseline,
     applyStash,
     dropStash,
     viewStash,
