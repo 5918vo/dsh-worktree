@@ -25,6 +25,7 @@ import {
   type QuickAction,
   type TaskAttention,
 } from './task-attention'
+import { deriveActionGate } from './action-gate'
 import { ConfirmDialog, StashDiffModal, type ConfirmState, type StashViewState } from './board/dialogs'
 import { useBoardData } from './board/use-board-data'
 import { useBoardActions } from './board/use-board-actions'
@@ -287,9 +288,41 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
   })
 
   const archived = !!(selectedTask && selectedTask.task.archivedAt)
-  const cta = selectedTask
-    ? boardCta(boardStatus(selectedTask.snapshot.status, runningOf(selectedTask.task)), !!selectedTask.task.sessionId)
-    : null
+  const running = selectedTask ? runningOf(selectedTask.task) : false
+  const status = selectedTask ? boardStatus(selectedTask.snapshot.status, running) : null
+  const statusKey = status ? status.key : ''
+  const cta = selectedTask && status ? boardCta(status, !!selectedTask.task.sessionId) : null
+
+  // Another uncleaned task the main repo is currently accepting blocks
+  // checkout, because switching away would drop its review context. The stage
+  // is not on the task branch in that state, so "this task" cannot be itself.
+  const otherReviewing = React.useMemo(() => {
+    if (!selectedTask) return null
+    const self = selectedTask.task
+    const snap = selectedTask.snapshot
+    const onTaskBranch = (!!self.reviewSha && !!snap.repo.headSha && self.reviewSha === snap.repo.headSha)
+      || (!!self.branch && snap.repo.currentBranch === self.branch)
+    if (onTaskBranch) return null
+    for (const view of views) {
+      for (const tv of view.tasks) {
+        const task = tv.task
+        if (!task || task.id === self.id || task.cleanedAt) continue
+        if ((task.branch && task.branch === snap.repo.currentBranch)
+          || (task.reviewSha && snap.repo.headSha && task.reviewSha === snap.repo.headSha)) return tv
+      }
+    }
+    return null
+  }, [views, selectedTask])
+
+  const actionGate = React.useMemo(() => deriveActionGate({
+    t,
+    task: selectedTask ? selectedTask.task : null,
+    snapshot: selectedTask ? selectedTask.snapshot : null,
+    status: statusKey,
+    running,
+    previewState,
+    otherReviewing,
+  }), [t, selectedTask, statusKey, running, previewState, otherReviewing])
   const baseSha = selectedTask
     ? diffBaseSha(selectedTask.task, selectedTask.snapshot, previewRef.current && previewRef.current.preview ? (previewRef.current.preview.expectedBase || null) : null)
     : ''
@@ -404,7 +437,8 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           tab,
           onTab: setTab,
           ctas: cta,
-          disabledActions: busy ? { merge: t.working, checkout: t.working, back: t.working, cleanup: t.working, open: t.working, create: t.working, start: t.working, retry: t.working, continue: t.working } : {},
+          disabledActions: busy ? { merge: t.working, checkout: t.working, back: t.working, cleanup: t.working, open: t.working, create: t.working, start: t.working, retry: t.working, continue: t.working } : actionGate.disabled,
+          actionReasons: actionGate.reasons,
           onAction: actions.runAction,
           entries,
           entriesReady,

@@ -157,6 +157,17 @@ export function createPreviewController(opts: PreviewControllerOptions): Preview
  * off merged/cleaned: a merged task with post-merge commits, or a cleaned task
  * whose branch still has unmerged commits, must keep previewing.
  */
+/**
+ * Whether a merge preview still has something to say. A merged task normally
+ * shows the completed lifecycle, but a post-merge re-merge needs its preview:
+ * that is what decides whether "merge again" may run.
+ */
+export function previewAppliesTo(status?: string, postMergeAhead?: number): boolean {
+  if (status === 'cleaned') return false
+  if (status === 'merged') return Number(postMergeAhead || 0) > 0
+  return true
+}
+
 export function shouldPollPreview(input: {
   hidden?: boolean
   status?: string
