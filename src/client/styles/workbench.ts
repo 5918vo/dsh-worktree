@@ -234,9 +234,9 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-meter i { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
 .dshw-board .dshwd-kv-live { gap: 8px; }
 .dshw-board .dshwd-kv-live-value { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 4px 6px; min-width: 0; }
-.dshw-board .dshwd-diff-box { border: 1px solid var(--line); border-radius: 8px; background: var(--code-bg); overflow: hidden; margin-bottom: 14px; }
+.dshw-board .dshwd-diff-box { border: 1px solid var(--line); border-radius: 8px; background: var(--code-bg); overflow-x: auto; overflow-y: hidden; margin-bottom: 14px; }
 .dshw-board .dshwd-diff-head { padding: 8px 14px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--text-2); }
-.dshw-board .dshwd-diff-line { margin: 0; padding: 2px 14px; font-size: 12px; line-height: 1.65; white-space: pre; overflow-x: auto; }
+.dshw-board .dshwd-diff-line { margin: 0; padding: 2px 14px; font-size: 12px; line-height: 1.65; white-space: pre; width: max-content; min-width: 100%; box-sizing: border-box; }
 .dshw-board .dshwd-diff-line.dshwd-hunk { color: var(--text-3); background: var(--bg-hover); }
 .dshw-board .dshwd-diff-line.dshwd-add { background: var(--diff-add-bg); color: var(--ok); }
 .dshw-board .dshwd-diff-line.dshwd-del { background: var(--diff-del-bg); color: var(--err); }

@@ -106,7 +106,8 @@ export function Inspector(props: InspectorProps) {
         h('span', { className: 'dshwd-kv-v dshwd-mono', title: props.baseSha }, `${props.baseLabel} @ ${shortSha(props.baseSha)}`)),
       h('div', { className: 'dshwd-kv' },
         h('span', { className: 'dshwd-kv-k' }, t.boardTaskHead),
-        h('span', { className: 'dshwd-kv-v dshwd-mono', title: props.headSha || t.boardNoCommitYet }, shortSha(props.headSha))),
+        h('span', { className: 'dshwd-kv-v dshwd-mono', title: props.headSha ? shortSha(props.headSha) : t.boardNoCommitYet },
+          props.headSha ? shortSha(props.headSha) : t.boardNoCommitYet)),
       // Blockers stay visible in the stage's blocker list until they clear.
       riskNode,
       riskFiles.length
@@ -142,12 +143,16 @@ export function Inspector(props: InspectorProps) {
               onClick: () => props.onCopy(String(task.sessionId)),
             }, '⧉')
             : null)),
-      h('div', { className: 'dshwd-kv dshwd-kv-live', style: { alignItems: 'flex-start' } },
-        h('span', { className: 'dshwd-kv-k' }, t.liveCwd),
-        h('span', { className: 'dshwd-kv-live-value' },
-          h('span', { className: 'dshwd-kv-v dshwd-mono dshwd-path-wrap', title: liveCwd || worktree },
-            pathParts(liveCwd || worktree).map((seg, i) => h('span', { key: i }, seg, h('wbr')))),
-          cwdOff ? h('span', { className: 'dshwd-chip dshwd-warn dshwd-chip-sm', title: t.liveCwdOff }, t.liveCwdOff) : null)),
+      // "Working directory" only earns a row when the session runs somewhere
+      // other than the worktree; otherwise it repeats the path below verbatim.
+      liveCwd && liveCwd !== worktree
+        ? h('div', { className: 'dshwd-kv dshwd-kv-live', style: { alignItems: 'flex-start' } },
+          h('span', { className: 'dshwd-kv-k' }, t.liveCwd),
+          h('span', { className: 'dshwd-kv-live-value' },
+            h('span', { className: 'dshwd-kv-v dshwd-mono dshwd-path-wrap', title: liveCwd },
+              pathParts(liveCwd).map((seg, i) => h('span', { key: i }, seg, h('wbr')))),
+            cwdOff ? h('span', { className: 'dshwd-chip dshwd-warn dshwd-chip-sm', title: t.liveCwdOff }, t.liveCwdOff) : null))
+        : null,
       // One worktree path only (the row *is* the copy affordance). Segments wrap
       // at separators, so a long path breaks at directory boundaries.
       h('div', { className: 'dshwd-kv dshwd-kv-path', style: { alignItems: 'flex-start' } },

@@ -2,7 +2,7 @@ import { React, h } from './ui'
 import { Icon } from './primitives'
 import { relTime, taskStamp } from './format'
 import type { ProjectView, TaskView } from '../models'
-import { boardBranch, boardStat, boardStatus, boardStatusLabel, type BoardFilter, type BoardTheme } from './model'
+import { boardBranch, boardStat, boardStatTitle, boardStatus, boardStatusLabel, type BoardFilter, type BoardTheme } from './model'
 import { pendingLabel, postMergeLabel } from './status'
 import { AttentionFilter } from './attention-filter'
 import { AttentionSummaryBar } from './attention-summary'
@@ -245,7 +245,7 @@ function taskRow(
       h('div', { className: 'dshwd-item-row1' },
         h('span', { className: 'dshwd-dot dshwd-' + status.dot, 'aria-hidden': 'true' }),
         h('span', { className: 'dshwd-item-title' }, task.title),
-        h('span', { className: 'dshwd-item-stat dshwd-mono' }, boardStat(tv.snapshot))),
+        h('span', { className: 'dshwd-item-stat dshwd-mono', title: boardStatTitle(t, tv.snapshot) }, boardStat(tv.snapshot))),
       h('div', { className: 'dshwd-item-row2' },
         h('span', { className: 'dshwd-mono' }, boardBranch(task.branch)),
         h('span', null, task.archivedAt ? t.archived : relTime(taskStamp(task, tv.snapshot), t))),

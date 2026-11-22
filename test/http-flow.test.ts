@@ -225,6 +225,33 @@ test('task/diff returns per-file changes for a task', async () => {
   assert.ok(file.patch.includes('+a'))
 })
 
+test('task/diff for a merged task reads the merge commit, not the emptied base diff', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
+  const projectId = added.body.project.id
+  const published = await call('publish', {
+    body: { projectId, title: '已合并 diff', description: '实现', branchName: 'feat/http-merged-diff' },
+    headers: auth,
+  })
+  assert.equal(published.status, 200, JSON.stringify(published.body))
+  const task = published.body.task
+  await commitFile(task.worktreePath, 'src/merged.txt', 'merged' + String.fromCharCode(10), 'feat: merged diff')
+  const merged = await call('task/merge', { body: { id: task.id }, headers: auth })
+  assert.equal(merged.status, 200, JSON.stringify(merged.body))
+
+  const route = findRoute(routes, `${PREFIX}/task/diff`)
+  const res = await callRoute(route.handler, {
+    method: 'GET',
+    url: `${PREFIX}/task/diff?id=${encodeURIComponent(task.id)}`,
+    headers: auth,
+  })
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  assert.equal(res.body.diff.source, 'merge-commit')
+  const file = res.body.diff.files.find((f: any) => f.path === 'src/merged.txt')
+  assert.ok(file, 'merge commit changes should be listed after a merge')
+  assert.ok(file.patch.includes('+merged'))
+})
+
 test('publish with parentId continues a merged task over HTTP', async () => {
   const auth = { 'x-dsh-worktree-token': token }
   const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })

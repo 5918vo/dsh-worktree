@@ -228,6 +228,32 @@ export function diffBaseSha(task: WorktreeTask, snapshot: TaskSnapshot | null | 
   return String(mergeBase || '')
 }
 
+/**
+ * Subtitle range for a task. A missing head means the agent has not committed
+ * yet ("base..—" reads like corruption); a merged task is described as merged
+ * instead of printing base..head, which looks inverted once base contains head.
+ */
+export function commitRangeText(t: any, opts: { baseSha?: string | null; headSha?: string | null; merged?: boolean; baseBranch?: string }): string {
+  const base = String(opts.baseSha || '')
+  const head = String(opts.headSha || '')
+  const mergedInto = String(t.rangeMergedInto || '').replace('{base}', opts.baseBranch || '').replace('{sha}', shortSha(base))
+  if (opts.merged && base) return mergedInto
+  if (!head) return t.rangeNoCommits
+  if (!base) return shortSha(head)
+  if (base === head) return String(t.rangeSameAsBase || '').replace('{base}', opts.baseBranch || shortSha(base))
+  return shortSha(base) + '..' + shortSha(head)
+}
+
+/** Tooltip for the rail's "↑n" / "n•" marker. */
+export function boardStatTitle(t: any, snapshot: TaskSnapshot | null | undefined): string {
+  if (!snapshot) return ''
+  const ahead = Number(snapshot.worktree && snapshot.worktree.ahead) || 0
+  if (ahead > 0) return String(t.statAhead).replace('{n}', String(ahead))
+  const dirty = Number(snapshot.worktree && snapshot.worktree.dirtyCount) || 0
+  if (dirty > 0) return String(t.statDirty).replace('{n}', String(dirty))
+  return ''
+}
+
 export function shortSha(value: string | null | undefined): string {
   const s = String(value || '')
   return s ? s.slice(0, 7) : '—'

@@ -156,7 +156,8 @@ export function useBoardActions(args: UseBoardActionsArgs) {
         body: mergeBody,
         details,
         label: t.mergeConfirm,
-        danger: true,
+        // Merging is additive and reversible with a revert; red reads as delete.
+        danger: false,
         run: async () => {
           // The merge must lock exactly the tips the preflight inspected; the
           // cached preview may be older than this preflight result.

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { criteria, criteriaProgress, boardBranch, boardCta, boardStat, boardStatus, diffBaseSha, diffCount, diffHeadSha, diffLineKind, filterProjectViews, matchesSearch, mergeSummary, mergeSummaryText, pathPreview, railEmptyKind, shortSha, switchConfirmText, taskMergeSummary, themeFor, type BoardStatus, cleanupPrimaryLabel } from '../src/client/model.js'
+import { criteria, criteriaProgress, boardBranch, boardCta, boardStat, boardStatus, diffBaseSha, diffCount, diffHeadSha, diffLineKind, filterProjectViews, matchesSearch, mergeSummary, mergeSummaryText, pathPreview, railEmptyKind, shortSha, switchConfirmText, taskMergeSummary, themeFor, type BoardStatus, cleanupPrimaryLabel, commitRangeText, boardStatTitle } from '../src/client/model.js'
 
 const T = {
   boardReady: '待开始',
@@ -262,4 +262,23 @@ test('cleanupPrimaryLabel only changes when commits would be discarded', () => {
   assert.equal(cleanupPrimaryLabel(t, { deleteBranch: true }, 3), '清理')
   assert.equal(cleanupPrimaryLabel(t, { deleteBranch: true, forceDeleteBranch: true }, 0), '清理')
   assert.equal(cleanupPrimaryLabel(t, { deleteBranch: true, forceDeleteBranch: true }, 3), '强制清理并丢弃 3 个提交')
+})
+
+test('commitRangeText avoids dangling and inverted ranges', () => {
+  const t = {
+    rangeMergedInto: '已合并到 {base} @ {sha}',
+    rangeNoCommits: '尚无提交',
+    rangeSameAsBase: '与 {base} 一致',
+  }
+  assert.equal(commitRangeText(t, { baseSha: '0ccd8ea1111', headSha: null }), '尚无提交')
+  assert.equal(commitRangeText(t, { baseSha: '0ccd8ea1111', headSha: 'e79ff942222' }), '0ccd8ea..e79ff94')
+  assert.equal(commitRangeText(t, { baseSha: '0ccd8ea1111', headSha: '0ccd8ea1111' }), '与 0ccd8ea 一致')
+  assert.equal(commitRangeText(t, { baseSha: 'e79ff941111', headSha: '3df14092222', merged: true, baseBranch: 'main' }), '已合并到 main @ e79ff94')
+})
+
+test('boardStatTitle explains the rail stat glyph', () => {
+  const t = { statAhead: '领先基线 {n} 个提交', statDirty: '{n} 处未提交改动' }
+  assert.equal(boardStatTitle(t, { worktree: { ahead: 2, dirtyCount: 0 } }), '领先基线 2 个提交')
+  assert.equal(boardStatTitle(t, { worktree: { ahead: 0, dirtyCount: 3 } }), '3 处未提交改动')
+  assert.equal(boardStatTitle(t, null), '')
 })

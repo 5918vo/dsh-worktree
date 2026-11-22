@@ -1,7 +1,7 @@
 import { React, h } from './ui'
 import { fmtK, pad2, relTime, taskStamp } from './format'
 import type { TaskDiff, TaskView } from '../models'
-import { criteria, criteriaProgress, boardStatus, boardStatusLabel, diffCount, diffHeadSha, diffLineKind, shortSha, type BoardAction, type BoardCta } from './model'
+import { criteria, criteriaProgress, boardStatus, boardStatusLabel, commitRangeText, diffCount, diffHeadSha, diffLineKind, shortSha, type BoardAction, type BoardCta } from './model'
 import { pendingLabel } from './status'
 import type { SessionHealth } from './task-attention'
 import { fallbackEntries, type TimelineEntry } from './timeline'
@@ -145,8 +145,8 @@ export function Stage(props: StageProps) {
                 onClick: props.onOpenSession,
               }, t.handlePending)
               : null,
-            h('span', { className: 'dshwd-mono', style: { color: 'var(--text-3)', fontSize: '11px' } },
-              `${shortSha(props.baseSha)}..${shortSha(props.headSha)} · ${relTime(updated, t)}`))),
+            h('span', { className: 'dshwd-mono', style: { color: 'var(--text-3)', fontSize: '11px' }, title: commitRangeText(t, { baseSha: props.baseSha, headSha: props.headSha, merged: taskView.snapshot.merged, baseBranch: task.baseBranch }) },
+              commitRangeText(t, { baseSha: props.baseSha, headSha: props.headSha, merged: taskView.snapshot.merged, baseBranch: task.baseBranch }) + ' · ' + relTime(updated, t)))),
         h('div', { style: { display: 'flex', gap: '8px', flexShrink: '0' } },
           ctas.secondary ? actionButton(t, ctas.secondary.action, ctas.secondary.label, props, false) : null,
           actionButton(t, ctas.primary.action, ctas.primary.label, props, true))),
@@ -372,10 +372,13 @@ function Diff(props: StageProps) {
   }
   if (props.diffLoading && !props.diff) return h('div', { className: 'dshwd-hint' }, t.loading)
   if (!props.diff) return h('div', { className: 'dshwd-empty' }, h('div', { className: 'dshwd-empty-title' }, t.boardNoDiff))
+  const mergedSource = props.diff.source === 'merge-commit'
+  const sourceHint = mergedSource ? h('div', { className: 'dshwd-hint' }, t.boardDiffMergedHint) : null
   if (!props.diff.files || !props.diff.files.length) {
-    return h('div', { className: 'dshwd-empty' }, h('div', { className: 'dshwd-empty-title' }, t.boardNoDiff), h('div', { className: 'dshwd-hint' }, t.boardNoDiffHint))
+    return h('div', { className: 'dshwd-empty' }, h('div', { className: 'dshwd-empty-title' }, t.boardNoDiff), h('div', { className: 'dshwd-hint' }, mergedSource ? t.boardDiffMergedHint : t.boardNoDiffHint))
   }
   return h('div', { className: 'dshwd-measure', style: { maxWidth: '960px' } },
+    sourceHint,
     props.diff.files.map((file, i) => h('div', { className: 'dshwd-diff-box', key: file.path + i },
       h('div', { className: 'dshwd-diff-head' },
         h('span', { className: 'dshwd-mono' }, file.path),
