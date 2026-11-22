@@ -6,9 +6,19 @@ import { execFile } from 'node:child_process'
 import { GIT_ENV, GIT_OP_TIMEOUT_MS, run, tryRun } from './exec.js'
 import { revParse } from './history.js'
 
-export async function mergeNoFF(gitPath: string, repoDir: string, branch: string, timeoutMs = GIT_OP_TIMEOUT_MS): Promise<void> {
+/** Commit subject for a task merge; `--no-edit` used to leave only the sha. */
+export function mergeCommitMessage(task: { id: string; title?: string | null }): string {
+  const short = String(task.id || '').slice(0, 8) || 'unknown'
+  const title = String(task.title || '').trim()
+  return title ? `Merge task ${short}: ${title}` : `Merge task ${short}`
+}
+
+export async function mergeNoFF(gitPath: string, repoDir: string, branch: string, timeoutMs = GIT_OP_TIMEOUT_MS, message?: string): Promise<void> {
+  const args = ['merge', '--no-ff']
+  if (message) args.push('-m', message)
+  else args.push('--no-edit')
   try {
-    await run(gitPath, repoDir, ['merge', '--no-ff', '--no-edit', branch], timeoutMs)
+    await run(gitPath, repoDir, args.concat(branch), timeoutMs)
   } catch (error) {
     // Undo a conflicted merge so the repo is not left mid-merge.
     await tryRun(gitPath, repoDir, ['merge', '--abort'])

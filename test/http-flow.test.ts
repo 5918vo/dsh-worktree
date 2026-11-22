@@ -4,7 +4,7 @@ import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import { bootHost } from './helpers/host.js'
 import { callRoute, findRoute } from './helpers/http.js'
-import { commitFile, exists, initRepo, mkTempDir, rmrf } from './helpers/git.js'
+import { commitFile, exists, git, initRepo, mkTempDir, rmrf } from './helpers/git.js'
 
 const PREFIX = '/dsh-worktree/api'
 
@@ -300,6 +300,8 @@ test('task/archive hides a merged task from the default listing and unarchive re
   await commitFile(task.worktreePath, 'src/http-archive.txt', 'x\n', 'feat: archive')
   const merged = await call('task/merge', { body: { id: task.id }, headers: auth })
   assert.equal(merged.status, 200, JSON.stringify(merged.body))
+  const subject = await git(repo, ['log', '-1', '--pretty=%s'])
+  assert.match(subject.trim(), /^Merge task [0-9a-f]{8}: 归档任务$/)
 
   const archived = await call('task/archive', { body: { id: task.id }, headers: auth })
   assert.equal(archived.status, 200, JSON.stringify(archived.body))

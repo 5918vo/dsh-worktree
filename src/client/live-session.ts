@@ -47,8 +47,8 @@ export function readLive(values: any): LiveSessionData | null {
   }
 }
 
-/** `provider/model`, preferring the pending selection over the current one. */
-export function modelLabel(model: any): string | null {
+/** Full `provider/model` id, preferring the pending selection over the current. */
+export function modelLabelFull(model: any): string | null {
   if (!model) return null
   const pick = model.next || model.current
   if (!pick) return null
@@ -56,6 +56,19 @@ export function modelLabel(model: any): string | null {
   if (pick.provider && pick.model) return pick.provider + '/' + pick.model
   if (pick.model) return String(pick.model)
   return null
+}
+
+/** Short, human-facing name: the model segment of an internal provider path. */
+export function shortModelLabel(full: string | null | undefined): string | null {
+  const text = String(full || '').trim()
+  if (!text) return null
+  const parts = text.split('/').filter(Boolean)
+  return parts.length ? parts[parts.length - 1] : text
+}
+
+/** Display name for the live header; `modelLabelFull` carries the raw id. */
+export function modelLabel(model: any): string | null {
+  return shortModelLabel(modelLabelFull(model))
 }
 
 /**

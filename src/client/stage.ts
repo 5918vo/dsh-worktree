@@ -5,7 +5,7 @@ import { criteria, criteriaProgress, boardStatus, boardStatusLabel, commitRangeT
 import { pendingLabel } from './status'
 import type { SessionHealth } from './task-attention'
 import { fallbackEntries, type TimelineEntry } from './timeline'
-import { entryTag, entryTitle, liveStatsText, modelLabel, pressurePercent, readLive, stepStatusLabel, tokenSummary } from './live-session'
+import { entryTag, entryTitle, liveStatsText, modelLabel, modelLabelFull, pressurePercent, readLive, stepStatusLabel, tokenSummary } from './live-session'
 import { postMergeCount, reviewStaleCount } from './review-surfaces'
 
 export type BoardTab = 'overview' | 'live' | 'diff'
@@ -254,22 +254,18 @@ function Overview(props: StageProps) {
     h('section', { className: 'dshwd-block' },
       h('div', { className: 'dshwd-block-label' }, items.length ? `${t.acceptanceCriteria} · ${progressText}` : t.acceptanceCriteria),
       items.length
-        ? h('div', { className: 'dshwd-check-list' }, items.map((item, i) => toggle
-          ? h('button', {
-            key: i,
-            type: 'button',
-            className: 'dshwd-check-item dshwd-check-toggle',
-            role: 'checkbox',
-            'aria-checked': item.checked,
-            disabled: !!props.criteriaBusy,
-            title: t.boardCriteriaToggleHint,
-            onClick: () => toggle(item.text, !item.checked),
-          },
-          h('span', { className: 'dshwd-check-box' + (item.checked ? '' : ' dshwd-todo'), 'aria-hidden': 'true' }, item.checked ? '✓' : ''),
-          h('span', null, item.text))
-          : h('div', { key: i, className: 'dshwd-check-item' },
+        ? h('div', { className: 'dshwd-check-list' }, items.map((item, i) => (toggle
+          ? h('label', { key: i, className: 'dshwd-check-item dshwd-check-toggle' },
+            h('input', {
+              type: 'checkbox',
+              checked: item.checked,
+              disabled: !!props.criteriaBusy,
+              onChange: () => toggle(item.text, !item.checked),
+            }),
+            h('span', null, item.text))
+          : h('div', { key: i, className: 'dshwd-check-item dshwd-check-readonly' },
             h('span', { className: 'dshwd-check-box' + (item.checked ? '' : ' dshwd-todo'), 'aria-hidden': 'true' }, item.checked ? '✓' : ''),
-            h('span', null, item.text))))
+            h('span', null, item.text)))))
         : h('div', { className: 'dshwd-hint' }, t.boardNoCriteria)))
 }
 
@@ -299,6 +295,7 @@ function Live(props: StageProps) {
   const history = props.entries.length ? props.entries : fallbackEntries(live ? live.turns : [])
   const historySteps = new Set(history.map((entry) => entry.stepKey).filter(Boolean)).size
   const modelText = modelLabel(live && live.model) || history.find((entry) => entry.model)?.model || '—'
+  const modelFull = modelLabelFull(live && live.model) || modelText
   const statsText = live || historySteps ? liveStatsText(live && live.stats, historySteps, t) : '—'
   const tokenText = tokenSummary(live && live.tokens, t)
   const todos = (live && live.todos) || []
@@ -310,7 +307,7 @@ function Live(props: StageProps) {
 
   return h('div', { className: 'dshwd-measure' },
     h('div', { className: 'dshwd-live-bar' },
-      h('span', { className: 'dshwd-live-stat' }, h('span', { className: 'dshwd-live-bar-k' }, t.liveModel), h('strong', { className: 'dshwd-mono', title: modelText }, modelText)),
+      h('span', { className: 'dshwd-live-stat' }, h('span', { className: 'dshwd-live-bar-k' }, t.liveModel), h('strong', { className: 'dshwd-mono', title: modelFull }, modelText)),
       h('span', { className: 'dshwd-live-stat dshwd-mono' }, statsText),
       tokenText ? h('span', { className: 'dshwd-live-stat dshwd-mono' }, tokenText) : null,
       h('span', { className: 'dshwd-live-bar-grow' }),

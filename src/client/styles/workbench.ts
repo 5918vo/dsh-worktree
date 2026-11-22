@@ -179,10 +179,13 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-prose { font-size: 13.5px; line-height: 1.7; color: var(--text-2); white-space: pre-wrap; }
 .dshw-board .dshwd-check-list { display: flex; flex-direction: column; gap: 9px; }
 .dshw-board .dshwd-check-toggle { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.dshw-board .dshwd-check-toggle input[type='checkbox'] { width: 15px; height: 15px; margin: 0; flex-shrink: 0; accent-color: var(--accent); }
+.dshw-board .dshwd-check-readonly { color: var(--text-2); }
+.dshw-board .dshwd-check-readonly .dshwd-check-box { opacity: .55; }
 .dshw-board .dshwd-check-item { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-1); }
 .dshw-board .dshwd-check-box { width: 15px; height: 15px; border-radius: 4px; border: 1px solid var(--ok-line); display: grid; place-items: center; font-size: 10px; color: var(--ok); background: var(--ok-soft); flex-shrink: 0; }
 .dshw-board .dshwd-check-box.dshwd-todo { background: transparent; border-color: var(--line-strong); color: transparent; }
-.dshw-board .dshwd-check-toggle:hover .dshwd-check-box { border-color: var(--accent); }
+.dshw-board .dshwd-check-toggle:hover input[type='checkbox'] { outline: 2px solid var(--accent); outline-offset: 1px; }
 .dshw-board .dshwd-check-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .dshw-board .dshwd-check-toggle:disabled { cursor: default; opacity: .6; }
 .dshw-board .dshwd-check-row { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: var(--text-2); cursor: pointer; }
@@ -220,7 +223,7 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-step-tag { flex: none; font-size: 9.5px; letter-spacing: .06em; color: var(--text-3); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
 .dshw-board .dshwd-step--think .dshwd-step-tag { color: var(--accent); border-color: var(--accent-line); }
 .dshw-board .dshwd-step--tool .dshwd-step-tag { color: var(--text-2); }
-.dshw-board .dshwd-step-title { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-1); }
+.dshw-board .dshwd-step-title { min-width: 0; flex: 1 1 auto; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-1); }
 .dshw-board .dshwd-step-meta { flex: none; font-size: 10.5px; color: var(--text-3); }
 .dshw-board .dshwd-step-status { flex: none; font-size: 10.5px; }
 .dshw-board .dshwd-step-body { padding: 2px 6px 8px 32px; color: var(--text-2); font-size: 11.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -268,6 +271,8 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-field { display: flex; flex-direction: column; gap: 6px; }
 .dshw-board .dshwd-label { font-size: 11.5px; font-weight: 500; color: var(--text-2); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .dshw-board .dshwd-label-hint { font-weight: 400; font-size: 11px; color: var(--text-3); }
+.dshw-board .dshwd-label-text { display: inline-flex; align-items: baseline; gap: 2px; }
+.dshw-board .dshwd-required { color: var(--err); font-weight: 600; }
 .dshw-board .dshwd-input, .dshw-board .dshwd-select, .dshw-board .dshwd-textarea { width: 100%; border-radius: 7px; border: 1px solid var(--line); background: var(--bg-stage); color: var(--text-1); font-family: inherit; font-size: 12.5px; outline: none; transition: border-color .14s, background .14s; }
 .dshw-board .dshwd-input, .dshw-board .dshwd-select { height: 34px; padding: 0 10px; }
 .dshw-board .dshwd-textarea { padding: 9px 11px; min-height: 92px; resize: vertical; line-height: 1.6; }

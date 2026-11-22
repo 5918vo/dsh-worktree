@@ -55,6 +55,10 @@ export function PublishModal(props: PublishModalProps) {
   const [busy, setBusy] = React.useState(false)
   const [err, setErr] = React.useState('')
   const [fieldErrors, setFieldErrors] = React.useState({} as Record<string, string>)
+  const markRequired = (key: string, value: string) => {
+    if (String(value || '').trim()) return
+    setFieldErrors((prev: Record<string, string>) => Object.assign({}, prev, { [key]: t.requiredField }))
+  }
   const [unknown, setUnknown] = React.useState(false)
   const [closeConfirm, setCloseConfirm] = React.useState(false)
   const [library, setLibrary] = React.useState([] as string[])
@@ -379,6 +383,8 @@ export function PublishModal(props: PublishModalProps) {
       : null,
 
     field(t, t.taskTitle, h('input', {
+      'aria-required': 'true',
+      onBlur: () => markRequired('title', title),
       ref: titleRef,
       className: 'dshwd-input' + (fieldErrors.title ? ' dshwd-invalid' : ''),
       value: title,
@@ -387,17 +393,19 @@ export function PublishModal(props: PublishModalProps) {
       placeholder: t.boardTitlePlaceholder,
       'aria-invalid': fieldErrors.title ? 'true' : 'false',
       onChange: (e: any) => { setTitle(e.target.value); clearField('title') },
-    })),
+    }), true),
     fieldErrors.title ? h('div', { className: 'dshwd-alert', role: 'alert' }, fieldErrors.title) : null,
 
     field(t, t.taskDescription, h('textarea', {
+      'aria-required': 'true',
+      onBlur: () => markRequired('description', description),
       className: 'dshwd-textarea' + (fieldErrors.description ? ' dshwd-invalid' : ''),
       value: description,
       disabled: busy,
       placeholder: t.boardDescriptionPlaceholder,
       'aria-invalid': fieldErrors.description ? 'true' : 'false',
       onChange: (e: any) => { setDescription(e.target.value); clearField('description') },
-    })),
+    }), true),
     fieldErrors.description ? h('div', { className: 'dshwd-alert', role: 'alert' }, fieldErrors.description) : null,
 
     field(t, t.acceptanceCriteria,
@@ -518,7 +526,7 @@ function modal(t: any, project: any, onSubmit: (() => void) | null, busy: boolea
       h('div', { className: 'dshwd-modal-foot' },
         // With auto-start off nothing is launched, so neither the button nor the
         // footer may promise a session: show the path being created instead.
-        h('span', { className: 'dshwd-modal-foot-meta dshwd-mono' }, start ? pathPreview(project) : pathOnlyPreview(project)),
+        h('span', { className: 'dshwd-modal-foot-meta dshwd-mono' }, pathPreview(project)),
         h('div', { className: 'dshwd-modal-foot-actions' },
           h('button', { className: 'dshwd-btn', disabled: busy, onClick: close }, t.cancel),
           onSubmit
@@ -527,9 +535,11 @@ function modal(t: any, project: any, onSubmit: (() => void) | null, busy: boolea
   )
 }
 
-function field(t: any, label: string, input: any) {
+function field(t: any, label: string, input: any, required = false) {
   return h('label', { className: 'dshwd-field' },
-    h('span', { className: 'dshwd-label' }, label),
+    h('span', { className: 'dshwd-label' },
+      h('span', { className: 'dshwd-label-text' }, label,
+        required ? h('span', { className: 'dshwd-required', 'aria-hidden': 'true' }, ' *') : null)),
     input)
 }
 
@@ -552,7 +562,4 @@ function pathPreview(project: any) {
 }
 
 /** Footer path without the "→ worktree" arrow that reads as "will start". */
-function pathOnlyPreview(project: any) {
-  if (!project) return ''
-  return `${project.name}/${project.dirName || '.dsh-worktrees'}/<auto>`
-}
+

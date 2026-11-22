@@ -1,6 +1,7 @@
 import { React, h } from './ui'
 import { Icon } from './primitives'
 import { relTime, taskStamp } from './format'
+import { railStatsText } from './model'
 import type { ProjectView, TaskView } from '../models'
 import { boardBranch, boardStat, boardStatTitle, boardStatus, boardStatusLabel, type BoardFilter, type BoardTheme } from './model'
 import { pendingLabel, postMergeLabel } from './status'
@@ -149,7 +150,7 @@ export function Rail(props: RailProps) {
                 : h('div', { className: 'dshwd-hint', style: { padding: '0 8px 8px 24px', fontSize: '11px' } }, t.noTasks)))),
 
     h('div', { className: 'dshwd-rail-foot' },
-      h('span', { className: 'dshwd-mono', style: { fontSize: '11px', color: 'var(--text-3)' } }, `${totalRepos} repos · ${totalTasks} tasks`),
+      h('span', { className: 'dshwd-mono', style: { fontSize: '11px', color: 'var(--text-3)' } }, railStatsText(t, totalRepos, totalTasks)),
       h('button', {
         className: 'dshwd-btn dshwd-btn-ghost',
         style: { height: '24px', fontSize: '11px' },

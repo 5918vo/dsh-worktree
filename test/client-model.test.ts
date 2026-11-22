@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { criteria, criteriaProgress, boardBranch, boardCta, boardStat, boardStatus, diffBaseSha, diffCount, diffHeadSha, diffLineKind, filterProjectViews, matchesSearch, mergeSummary, mergeSummaryText, pathPreview, railEmptyKind, shortSha, switchConfirmText, taskMergeSummary, themeFor, type BoardStatus, cleanupPrimaryLabel, commitRangeText, boardStatTitle } from '../src/client/model.js'
+import { criteria, criteriaProgress, boardBranch, boardCta, boardStat, boardStatus, diffBaseSha, diffCount, diffHeadSha, diffLineKind, filterProjectViews, matchesSearch, mergeSummary, mergeSummaryText, pathPreview, railEmptyKind, shortSha, switchConfirmText, taskMergeSummary, themeFor, type BoardStatus, cleanupPrimaryLabel, commitRangeText, boardStatTitle, railStatsText } from '../src/client/model.js'
 
 const T = {
   boardReady: '待开始',
@@ -281,4 +281,12 @@ test('boardStatTitle explains the rail stat glyph', () => {
   assert.equal(boardStatTitle(t, { worktree: { ahead: 2, dirtyCount: 0 } }), '领先基线 2 个提交')
   assert.equal(boardStatTitle(t, { worktree: { ahead: 0, dirtyCount: 3 } }), '3 处未提交改动')
   assert.equal(boardStatTitle(t, null), '')
+})
+
+test('railStatsText avoids English singular/plural mistakes', () => {
+  const zh = { railRepoOne: '{n} 个仓库', railRepoMany: '{n} 个仓库', railTaskOne: '{n} 个任务', railTaskMany: '{n} 个任务', railStatsJoin: '{repos} · {tasks}' }
+  const en = { railRepoOne: '1 repo', railRepoMany: '{n} repos', railTaskOne: '1 task', railTaskMany: '{n} tasks', railStatsJoin: '{repos} · {tasks}' }
+  assert.equal(railStatsText(zh, 1, 1), '1 个仓库 · 1 个任务')
+  assert.equal(railStatsText(en, 1, 1), '1 repo · 1 task')
+  assert.equal(railStatsText(en, 2, 5), '2 repos · 5 tasks')
 })

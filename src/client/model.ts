@@ -116,6 +116,18 @@ export function boardBranch(branch: string): string {
   return String(branch || '').replace(/^dsh-wt\//, '')
 }
 
+/**
+ * Footer counts with correct singular/plural forms. English cannot say
+ * "1 repos", and zh/en must not be mixed in one line.
+ */
+export function railStatsText(t: any, repos: number, tasks: number): string {
+  const pick = (n: number, one: string, many: string) =>
+    String(t[n === 1 ? one : many]).replace('{n}', String(n))
+  return String(t.railStatsJoin)
+    .replace('{repos}', pick(repos, 'railRepoOne', 'railRepoMany'))
+    .replace('{tasks}', pick(tasks, 'railTaskOne', 'railTaskMany'))
+}
+
 export function boardStat(snapshot: TaskSnapshot | null | undefined): string {
   if (!snapshot) return ''
   const ahead = Number(snapshot.worktree && snapshot.worktree.ahead) || 0
