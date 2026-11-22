@@ -475,6 +475,15 @@ export const CSS = `
 .dshw-criteria-lib-row{display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--dshw-border);border-radius:8px;background:var(--dshw-surface-2);font-size:12.5px}
 .dshw-criteria-lib-row .dshw-ico{width:14px;height:14px;color:var(--dshw-success);flex:none}
 .dshw-criteria-lib-text{flex:1;min-width:0;overflow-wrap:anywhere}
+/* publish templates (settings page) ---------------------------------------- */
+.dshw-template-list{display:flex;flex-direction:column;gap:6px;margin:8px 0}
+.dshw-template-row{display:flex;align-items:flex-start;gap:6px;padding:8px 9px;border:1px solid var(--dshw-border);border-radius:8px;background:var(--dshw-surface-2)}
+.dshw-template-row-on{border-color:var(--dshw-brand)}
+.dshw-template-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.dshw-template-name{font-size:12.5px;font-weight:600;color:var(--dshw-text)}
+.dshw-template-criteria{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
+.dshw-template-form{display:flex;flex-direction:column;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--dshw-border)}
+.dshw-template-criteria-input{resize:vertical;font-family:inherit;line-height:1.5}
 .dshw-switch-warn{font-size:12px;color:var(--dshw-text);line-height:1.6;margin-bottom:8px}
 .dshw-switch-files{display:flex;flex-direction:column;gap:5px;margin:0;padding:0;list-style:none;max-height:200px;overflow:auto}
 .dshw-switch-files li{display:flex;align-items:center;gap:8px;font-size:12px;padding:5px 8px;border:1px solid var(--dshw-border);border-radius:7px;background:var(--dshw-surface-2);overflow-wrap:anywhere}

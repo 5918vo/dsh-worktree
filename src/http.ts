@@ -140,6 +140,31 @@ export function registerHttp(app: App): () => void {
     }
   })
 
+  route('templates', 'GET', async (_req, res) => send(res, 200, { templates: app.runtime.listTaskTemplates() }))
+  route('templates/save', 'POST', async (req, res) => {
+    requireToken(req)
+    const body = await readJson(req)
+    try {
+      send(res, 200, {
+        templates: app.runtime.saveTaskTemplate({
+          id: body.id === undefined ? undefined : String(body.id),
+          name: String(body.name || ''),
+          title: body.title === undefined ? undefined : String(body.title),
+          description: body.description === undefined ? undefined : String(body.description),
+          criteria: Array.isArray(body.criteria) ? body.criteria.map(String) : undefined,
+        }),
+      })
+    } catch (error) {
+      if (error instanceof TaskError) return send(res, error.status, { error: error.message, ...(error.code ? { code: error.code } : {}) })
+      send(res, 500, { error: error instanceof Error ? error.message : String(error) })
+    }
+  })
+  route('templates/delete', 'POST', async (req, res) => {
+    requireToken(req)
+    const body = await readJson(req)
+    send(res, 200, { templates: app.runtime.deleteTaskTemplate(String(body.id || '')) })
+  })
+
   route('branches', 'GET', async (req, res) => {
     const dir = q(req, 'path')
     if (!dir) return send(res, 400, { error: 'path required' })
@@ -210,6 +235,7 @@ export function registerHttp(app: App): () => void {
         baseBranch: body.baseBranch === undefined ? undefined : String(body.baseBranch),
         dirName: body.dirName === undefined ? undefined : String(body.dirName),
         branchPrefix: body.branchPrefix === undefined ? undefined : String(body.branchPrefix),
+        mergeGate: body.mergeGate === undefined ? undefined : String(body.mergeGate) as 'off' | 'criteria',
       })
       send(res, 200, { project })
     } catch (error) {
@@ -365,6 +391,7 @@ export function registerHttp(app: App): () => void {
   act('archive', async (id) => app.runtime.archive(id))
   act('unarchive', async (id) => app.runtime.unarchive(id))
   act('criteria', async (id, body) => app.runtime.setCriterionChecked(id, String(body.text || ''), body.checked === true))
+  act('pin', async (id, body) => app.runtime.setTaskPinned(id, body.pinned === true))
   act('delete', async (id) => app.runtime.delete(id))
 
   const routes: RouteDef[] = []

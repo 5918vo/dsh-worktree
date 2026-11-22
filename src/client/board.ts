@@ -8,7 +8,7 @@
 import { React, h, useStyles } from './ui'
 import { getJson } from './context'
 import { upsertPublishedTask, visibleProjectViews } from './board-data'
-import { copyText } from './format'
+import { copyText, downloadTextFile } from './format'
 import { ProjectDetail } from './project-detail'
 import type { ProjectView, TaskView } from '../models'
 import { WORKBENCH_CSS } from './styles'
@@ -27,6 +27,7 @@ import {
   type TaskAttention,
 } from './task-attention'
 import { deriveActionGate } from './action-gate'
+import { buildAcceptanceReport, reportFileName } from './report'
 import { ConfirmDialog, StashDiffModal, type ConfirmState, type StashViewState } from './board/dialogs'
 import { useBoardData } from './board/use-board-data'
 import { useBoardActions } from './board/use-board-actions'
@@ -36,6 +37,7 @@ import {
   boardStatus,
   diffBaseSha,
   filterProjectViews,
+  mergeGateMissing,
   themeFor,
   type BoardFilter,
 } from './model'
@@ -337,7 +339,15 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     pending,
     previewState,
     otherReviewing,
-  }), [t, selectedTask, statusKey, running, pending, previewState, otherReviewing])
+    mergeGateMissing: selectedTask ? mergeGateMissing(projectOfTask && projectOfTask.project, selectedTask.task, selectedTask.snapshot.status) : 0,
+  }), [t, selectedTask, statusKey, running, pending, previewState, otherReviewing, projectOfTask])
+
+  // Regenerate only when the task, its snapshot or the diff changes; the
+  // report is a pure function of those inputs.
+  const reportText = React.useMemo(() => (selectedTask
+    ? buildAcceptanceReport({ task: selectedTask.task, snapshot: selectedTask.snapshot, diff, t })
+    : ''), [selectedTask, diff, t])
+  const reportName = React.useMemo(() => (selectedTask ? reportFileName(selectedTask.task) : ''), [selectedTask])
   const baseSha = selectedTask
     ? diffBaseSha(selectedTask.task, selectedTask.snapshot, previewRef.current && previewRef.current.preview ? (previewRef.current.preview.expectedBase || null) : null)
     : ''
@@ -433,6 +443,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
         onSelectProject: selectProject,
         onQuick: runQuick,
         onPublish: () => openPublish(),
+        onPinTask: actions.runPin,
         onAddProject: () => setAddOpen(true),
         onToggleTheme: toggleTheme,
         searchRef,
@@ -465,6 +476,21 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           diffLoading,
           diffError,
           onRetryDiff: retryDiff,
+          reportText,
+          reportFileName: reportName,
+          onCopyReport: () => {
+            void copyText(reportText).then((ok) => say(ok ? t.reportCopied : t.reportCopyFailed, !ok))
+          },
+          onDownloadReport: () => {
+            try {
+              downloadTextFile(reportName, reportText)
+              say(t.reportDownloaded)
+            } catch {
+              say(t.reportCopyFailed, true)
+            }
+          },
+          onSendPrompt: actions.runPrompt,
+          promptBusy: !!busy,
           baseSha,
           headSha,
           onToggleRail: () => setRailHidden((v: boolean) => !v),

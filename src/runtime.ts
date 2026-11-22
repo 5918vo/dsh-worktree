@@ -7,7 +7,7 @@
 import { join } from 'node:path'
 import { normalizeCriteria } from './criteria.js'
 import * as gitx from './gitx.js'
-import { MergePreflight, MergePreview, Project, ProjectView, TaskDiff, TaskSnapshot, TaskStatus, TaskView, WorktreeConfig, WorktreeTask } from './models.js'
+import { MergePreflight, MergePreview, Project, ProjectView, TaskDiff, TaskSnapshot, TaskStatus, TaskTemplate, TaskView, WorktreeConfig, WorktreeTask } from './models.js'
 import { Store } from './store.js'
 import { taskDiff } from './runtime/diff.js'
 import { archiveTask, bindTask, cleanupTask, deleteTask, setCriterionChecked as setCriterionCheckedTask, unarchiveTask, unbindTaskBySession } from './runtime/lifecycle.js'
@@ -134,7 +134,7 @@ export class Runtime {
     return addProject(this.ctx, input)
   }
 
-  updateProject(id: string, patch: { name?: string; baseBranch?: string; dirName?: string; branchPrefix?: string }): Promise<Project> {
+  updateProject(id: string, patch: { name?: string; baseBranch?: string; dirName?: string; branchPrefix?: string; mergeGate?: 'off' | 'criteria' }): Promise<Project> {
     return updateProject(this.ctx, id, patch)
   }
 
@@ -167,6 +167,31 @@ export class Runtime {
   /** Check or uncheck one criterion on a task; 404 / 400 on missing task / criterion. */
   setCriterionChecked(id: string, text: string, checked: boolean): WorktreeTask {
     return setCriterionCheckedTask(this.ctx, id, text, checked)
+  }
+
+  // ---- publish templates ----
+
+  listTaskTemplates(): TaskTemplate[] {
+    return this.ctx.store.listTemplates()
+  }
+
+  saveTaskTemplate(input: { id?: string; name: string; title?: string; description?: string; criteria?: string[] }): TaskTemplate[] {
+    const name = String((input && input.name) || '').trim()
+    if (!name) throw new TaskError('模板名称不能为空')
+    const result = this.ctx.store.saveTemplate({ ...input, name })
+    if (!result.ok) throw new TaskError(`模板不存在：${String(input.id || '')}`, 404)
+    return result.templates
+  }
+
+  deleteTaskTemplate(id: string): TaskTemplate[] {
+    return this.ctx.store.deleteTemplate(String(id || '').trim())
+  }
+
+  /** Pin or unpin a task; 404 when the task row is gone. */
+  setTaskPinned(id: string, pinned: boolean): WorktreeTask {
+    const result = this.ctx.store.setTaskPinned(id, pinned)
+    if (!result.ok) throw new TaskError(`任务不存在：${id}`, 404)
+    return result.task
   }
 
   // ---- tasks, snapshots & diffs ----

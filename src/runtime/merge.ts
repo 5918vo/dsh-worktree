@@ -4,6 +4,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { normalizeCriteria } from '../criteria.js'
 import * as gitx from '../gitx.js'
 import { MergeBlocker, MergeBlockingFile, MergeConflictInfo, MergePreflight, MergePreview, WorktreeTask } from '../models.js'
 import { conflictFiles, id8 } from './prompt.js'
@@ -92,6 +93,16 @@ async function buildMergePreflight(
     ahead = 0
   }
   if (ahead === 0) push('nothing-ahead', '没有领先基线的提交，无需合并')
+
+  // 项目级合并门禁：验收清单还有未核对项时拒绝合并。只作用于未合并的任务；
+  // 已合并任务（post-merge 后续提交）仍允许继续合并到基线。
+  const project = task.projectId ? ctx.store.getProject(task.projectId) : undefined
+  if (!task.mergedAt && project?.mergeGate === 'criteria') {
+    const standard = normalizeCriteria(task.acceptanceCriteria)
+    const marked = new Set(task.checkedCriteria || [])
+    const missing = standard.filter((item) => !marked.has(item)).length
+    if (missing > 0) push('criteria-incomplete', `还有 ${missing} 项验收标准未核对；请先在概览中逐项核对，或关闭该项目的合并门禁`)
+  }
 
   const wtDirty = await dirtySummary(ctx, task.worktreePath)
   if (wtDirty.count > 0) push('worktree-dirty', `worktree 有 ${wtDirty.count} 处未提交改动（${wtDirty.shown}），这些改动不会被合并；请先让 Agent 提交`)

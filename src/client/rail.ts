@@ -41,6 +41,7 @@ export interface RailProps {
   onQuick: (action: QuickAction, view: TaskView, projectId: string) => void
   onPublish: () => void
   onAddProject: () => void
+  onPinTask: (taskId: string, pinned: boolean) => void
   onToggleTheme: () => void
   searchRef: any
   /** Host capabilities from `GET config`; absent while loading or after failure. */
@@ -242,6 +243,7 @@ function taskRow(
     },
       h('div', { className: 'dshwd-item-row1' },
         h('span', { className: 'dshwd-dot dshwd-' + status.dot, 'aria-hidden': 'true' }),
+        task.pinnedAt ? h('span', { className: 'dshwd-pin-mark', 'aria-hidden': 'true' }, h(Icon, { name: 'pin' })) : null,
         h('span', { className: 'dshwd-item-title' }, task.title),
         h('span', { className: 'dshwd-item-stat dshwd-mono' }, boardStat(tv.snapshot))),
       h('div', { className: 'dshwd-item-row2' },
@@ -250,6 +252,14 @@ function taskRow(
       h('div', { className: 'dshwd-item-chips' }, chips)),
 
     h('div', { className: 'dshwd-item-actions' },
+      h('button', {
+        type: 'button',
+        className: 'dshwd-item-action dshwd-pin' + (task.pinnedAt ? ' dshwd-item-action-on' : ''),
+        title: task.pinnedAt ? t.unpinTask : t.pinTask,
+        'aria-label': (task.pinnedAt ? t.unpinTask : t.pinTask) + (active ? ' · ' + task.title : ''),
+        'aria-pressed': task.pinnedAt ? 'true' : 'false',
+        onClick: () => props.onPinTask(task.id, !task.pinnedAt),
+      }, h(Icon, { name: 'pin' })),
       extras.length
         ? h('button', {
           ref: open ? moreBtnRef : undefined,

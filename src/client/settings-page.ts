@@ -3,6 +3,7 @@ import { Btn, Card, CardHead, Icon, IconBtn, KV, Modal, Spinner, TextInput, Toas
 import { useToast } from './hooks'
 import { getJson, post } from './context'
 import { copyText } from './format'
+import type { TaskTemplate } from '../models'
 
 export function SettingsPage(props: any) {
     const t = props.__t
@@ -13,6 +14,14 @@ export function SettingsPage(props: any) {
     const [newCriterion, setNewCriterion] = React.useState('')
     const [criteriaBusy, setCriteriaBusy] = React.useState(false)
     const [criteriaSearch, setCriteriaSearch] = React.useState('')
+    const [templates, setTemplates] = React.useState([] as TaskTemplate[])
+    const [templateEdit, setTemplateEdit] = React.useState('')
+    const [templateName, setTemplateName] = React.useState('')
+    const [templateTitle, setTemplateTitle] = React.useState('')
+    const [templateDesc, setTemplateDesc] = React.useState('')
+    const [templateCriteria, setTemplateCriteria] = React.useState('')
+    const [templateBusy, setTemplateBusy] = React.useState(false)
+    const [templateDelete, setTemplateDelete] = React.useState(null as TaskTemplate | null)
     const [editingText, setEditingText] = React.useState('')
     const [editingValue, setEditingValue] = React.useState('')
     const [clearing, setClearing] = React.useState(false)
@@ -25,6 +34,7 @@ export function SettingsPage(props: any) {
       getJson('config').then((d: any) => setCfg(d.config)).catch((e: any) => setErr((e && e.message) || t.loadFailed))
       getJson('recents').then((d: any) => setRecents(d.dirs || [])).catch(() => {})
       getJson('acceptance-criteria').then((d: any) => setCriteria(Array.isArray(d.items) ? d.items : [])).catch(() => {})
+      getJson('templates').then((d: any) => setTemplates(Array.isArray(d.templates) ? d.templates : [])).catch(() => {})
     }, [])
 
     const addCriterion = async () => {
@@ -87,6 +97,63 @@ export function SettingsPage(props: any) {
       void saveCriteriaList(next).then(() => { setEditingText(''); setEditingValue('') })
     }
 
+    // ----- Publish templates: locked read-modify-write on the host ----------
+    const resetTemplate = () => {
+      setTemplateEdit('')
+      setTemplateName('')
+      setTemplateTitle('')
+      setTemplateDesc('')
+      setTemplateCriteria('')
+    }
+
+    const editTemplate = (item: TaskTemplate) => {
+      setTemplateEdit(item.id)
+      setTemplateName(item.name)
+      setTemplateTitle(item.title || '')
+      setTemplateDesc(item.description || '')
+      setTemplateCriteria((item.criteria || []).join('\n'))
+    }
+
+    const saveTemplate = async () => {
+      const name = templateName.trim()
+      if (!name || templateBusy) return
+      setTemplateBusy(true)
+      setErr('')
+      try {
+        const d: any = await post('templates/save', {
+          id: templateEdit || undefined,
+          name,
+          title: templateTitle.trim(),
+          description: templateDesc.trim(),
+          criteria: templateCriteria.split('\n').map((line: string) => line.trim()).filter(Boolean),
+        })
+        setTemplates(Array.isArray(d.templates) ? d.templates : [])
+        resetTemplate()
+        notify(t.templateSaved)
+      } catch (e: any) {
+        setErr((e && e.message) || t.failed)
+      } finally {
+        setTemplateBusy(false)
+      }
+    }
+
+    const removeTemplate = async (id: string) => {
+      if (templateBusy) return
+      setTemplateBusy(true)
+      setErr('')
+      try {
+        const d: any = await post('templates/delete', { id })
+        setTemplates(Array.isArray(d.templates) ? d.templates : [])
+        setTemplateDelete(null)
+        if (templateEdit === id) resetTemplate()
+        notify(t.templateDeleted)
+      } catch (e: any) {
+        setErr((e && e.message) || t.failed)
+      } finally {
+        setTemplateBusy(false)
+      }
+    }
+
     const clearRecents = async () => {
       if (clearRef.current || clearing) return
       clearRef.current = true
@@ -126,6 +193,24 @@ export function SettingsPage(props: any) {
           recents.map((dir: string) => h('div', { key: dir, className: 'dshw-danger-item' }, h(Icon, { name: 'folder' }), h('span', null, dir)))),
         h('div', { className: 'dshw-hint' }, t.clearRecentsHint),
         err ? h('div', { className: 'dshw-err', role: 'alert' }, h(Icon, { name: 'alert' }), h('span', null, err)) : null)
+      : null
+
+    const templateModal = templateDelete
+      ? h(Modal, {
+        t,
+        title: t.templateDelete,
+        subtitle: templateDelete.name,
+        icon: 'trash',
+        tone: 'danger',
+        size: 'sm',
+        busy: templateBusy,
+        onClose: () => { if (!templateBusy) setTemplateDelete(null) },
+        footer: [
+          h(Btn, { key: 'c', onClick: () => setTemplateDelete(null), disabled: templateBusy, 'data-modal-autofocus': true }, t.cancel),
+          h(Btn, { key: 'ok', variant: 'danger', disabled: templateBusy, onClick: () => { if (templateDelete) void removeTemplate(templateDelete.id) } },
+            templateBusy ? h(Spinner) : null, t.templateDelete),
+        ],
+      }, h('div', { className: 'dshw-hint' }, t.templateDeleteConfirm))
       : null
 
     return h('div', { className: 'dshw-scope dshw-shell', style: { overflow: 'auto' } },
@@ -193,6 +278,58 @@ export function SettingsPage(props: any) {
             : h('div', { className: 'dshw-hint' }, t.acceptanceLibraryEmpty)),
         h(Card, null,
           h(CardHead, {
+            icon: 'file',
+            title: t.templates,
+            right: h(Btn, { size: 'sm', disabled: templateBusy, onClick: resetTemplate }, t.templateNew),
+          }),
+          h('p', { className: 'dshw-card-sub' }, t.templateHint),
+          templates.length
+            ? h('div', { className: 'dshw-template-list' }, templates.map((item: TaskTemplate) =>
+              h('div', { key: item.id, className: 'dshw-template-row' + (templateEdit === item.id ? ' dshw-template-row-on' : '') },
+                h('div', { className: 'dshw-template-main' },
+                  h('div', { className: 'dshw-template-name' }, item.name),
+                  item.title ? h('div', { className: 'dshw-hint' }, item.title) : null,
+                  item.description ? h('div', { className: 'dshw-hint' }, item.description) : null,
+                  item.criteria && item.criteria.length
+                    ? h('div', { className: 'dshw-template-criteria' }, item.criteria.map((text: string, i: number) =>
+                      h('span', { key: i, className: 'dshw-chip dshw-chip--sm' }, text)))
+                    : null),
+                h(IconBtn, { size: 'sm', icon: 'file', label: t.templateEdit, onClick: () => editTemplate(item) }),
+                h(IconBtn, { size: 'sm', icon: 'trash', label: t.templateDelete, onClick: () => setTemplateDelete(item) }))))
+            : h('div', { className: 'dshw-hint' }, t.templateEmpty),
+          h('div', { className: 'dshw-template-form' },
+            h(TextInput, {
+              value: templateName,
+              placeholder: t.templateName,
+              'aria-label': t.templateName,
+              onChange: (e: any) => setTemplateName(e.target.value),
+            }),
+            h(TextInput, {
+              value: templateTitle,
+              placeholder: t.templateTitle,
+              'aria-label': t.templateTitle,
+              onChange: (e: any) => setTemplateTitle(e.target.value),
+            }),
+            h(TextInput, {
+              value: templateDesc,
+              placeholder: t.templateDescription,
+              'aria-label': t.templateDescription,
+              onChange: (e: any) => setTemplateDesc(e.target.value),
+            }),
+            h('textarea', {
+              className: 'dshw-input dshw-template-criteria-input',
+              rows: 4,
+              value: templateCriteria,
+              placeholder: t.templateCriteria,
+              'aria-label': t.templateCriteria,
+              onChange: (e: any) => setTemplateCriteria(e.target.value),
+            }),
+            h('div', { className: 'dshw-form-foot' },
+              h(Btn, { variant: 'primary', disabled: !templateName.trim() || templateBusy, onClick: () => void saveTemplate() },
+                templateBusy ? h(Spinner) : null, t.templateSave),
+              templateEdit ? h(Btn, { disabled: templateBusy, onClick: resetTemplate }, t.templateCancel) : null))),
+        h(Card, null,
+          h(CardHead, {
             icon: 'clock',
             title: t.recents,
             right: h('span', { className: 'dshw-hint', style: { margin: 0 } }, recents.length + ' ' + t.dirUnit),
@@ -227,7 +364,8 @@ export function SettingsPage(props: any) {
             h(KV, { label: t.worktreeDirName }, h('code', null, cfg ? String(cfg.dirName) : '…')),
             h(KV, { label: t.branchPrefix }, h('code', null, cfg ? String(cfg.branchPrefix) : '…')),
             h(KV, { label: t.gitPath }, h('code', null, cfg ? String(cfg.gitPath) : '…')))),
-            clearModal))),
+            clearModal,
+            templateModal))),
       h(Toast, { toast, onClose: dismiss }))
   }
 

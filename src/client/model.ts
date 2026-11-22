@@ -195,6 +195,17 @@ export function criteriaProgress(items: Array<{ checked: boolean }>): { checked:
   return { checked, total, missing: total - checked }
 }
 
+/**
+ * Merge gate helper shared by the button state, blocker list and merge
+ * confirmation. Merged/cleaned tasks are already past acceptance, so a
+ * post-merge follow-up commit is never blocked by stale criteria.
+ */
+export function mergeGateMissing(project: any, task: WorktreeTask, status: TaskStatus): number {
+  if (!project || project.mergeGate !== 'criteria') return 0
+  if (status === 'merged' || status === 'cleaned') return 0
+  return criteriaProgress(criteria(task, status)).missing
+}
+
 export function diffHeadSha(task: WorktreeTask, snapshot: TaskSnapshot | null | undefined): string {
   if (task.reviewSha) return task.reviewSha
   if (task.mergedBranchTip) return task.mergedBranchTip

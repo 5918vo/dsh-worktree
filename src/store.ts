@@ -13,8 +13,9 @@ import {
 } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
+import { randomUUID } from 'node:crypto'
 import { normalizeCriteria } from './criteria.js'
-import { Project, WorktreeTask } from './models.js'
+import { Project, TaskTemplate, WorktreeTask } from './models.js'
 
 /** Outcome of an atomic session binding; callers translate conflicts into 409s. */
 export type BindSessionResult =
@@ -25,6 +26,16 @@ export type BindSessionResult =
 export type CriterionResult =
   | { ok: true; task: WorktreeTask }
   | { ok: false; reason: 'missing' | 'unknown' }
+
+/** Outcome of an atomic pin toggle; `missing` maps to 404. */
+export type PinResult =
+  | { ok: true; task: WorktreeTask }
+  | { ok: false; reason: 'missing' }
+
+/** Outcome of saving a template; `missing` maps to 404. */
+export type TemplateResult =
+  | { ok: true; item: TaskTemplate; templates: TaskTemplate[] }
+  | { ok: false; reason: 'missing' }
 
 /**
  * One global task store for every DSH process on this machine.
@@ -89,6 +100,7 @@ export class Store {
   private tasks = new Map<string, WorktreeTask>()
   private recents: string[] = []
   private criteria: string[] = []
+  private templates: TaskTemplate[] = []
 
   constructor(dir = stateDir()) {
     this.dir = dir
@@ -115,6 +127,23 @@ export class Store {
   private readCriteria(): string[] {
     const value = readJsonSync<any>(this.file('acceptance-criteria.json'), [])
     return Array.isArray(value) ? value.filter((item) => typeof item === 'string' && item.trim()).map((item) => item.trim()) : []
+  }
+
+  /** Templates are an array; malformed rows are dropped instead of failing the board. */
+  private readTemplates(): TaskTemplate[] {
+    const value = readJsonSync<any>(this.file('templates.json'), [])
+    if (!Array.isArray(value)) return []
+    return value
+      .filter((item) => item && typeof item.id === 'string' && item.id && typeof item.name === 'string' && item.name.trim())
+      .map((item) => ({
+        id: String(item.id),
+        name: String(item.name).trim(),
+        title: String(item.title || ''),
+        description: String(item.description || ''),
+        criteria: normalizeCriteria(item.criteria),
+        createdAt: Number(item.createdAt) || 0,
+        ...(item.updatedAt ? { updatedAt: Number(item.updatedAt) } : {}),
+      }))
   }
 
   /**
@@ -166,6 +195,10 @@ export class Store {
     this.criteria = this.readCriteria()
   }
 
+  private refreshTemplates(): void {
+    this.templates = this.readTemplates()
+  }
+
   private saveProjects(): void {
     writeJsonSync(this.file('projects.json'), Object.fromEntries(this.projects))
   }
@@ -182,11 +215,16 @@ export class Store {
     writeJsonSync(this.file('acceptance-criteria.json'), this.criteria)
   }
 
+  private saveTemplates(): void {
+    writeJsonSync(this.file('templates.json'), this.templates)
+  }
+
   private saveAll(): void {
     this.saveProjects()
     this.saveTasks()
     this.saveRecents()
     this.saveCriteria()
+    this.saveTemplates()
   }
 
   private withLock<T>(fn: () => T): T {
@@ -232,6 +270,7 @@ export class Store {
     this.refreshTasks()
     this.refreshRecents()
     this.refreshCriteria()
+    this.refreshTemplates()
     if (!this.migrateLegacy) return
     const marker = this.file('.migrated-v2')
     this.withLock(() => {
@@ -496,6 +535,29 @@ export class Store {
     })
   }
 
+  /**
+   * Pin or unpin a task under the store lock.
+   *
+   * Pinning is a presentation bit, never a lifecycle state: it only stamps
+   * `pinnedAt` and keeps the original timestamp when already pinned, so a
+   * repeated pin cannot reorder the rail.
+   */
+  setTaskPinned(taskId: string, pinned: boolean): PinResult {
+    return this.withLock(() => {
+      this.refreshTasks()
+      const task = this.tasks.get(taskId)
+      if (!task) return { ok: false, reason: 'missing' }
+      if (pinned) {
+        if (!task.pinnedAt) task.pinnedAt = Date.now()
+      } else {
+        delete task.pinnedAt
+      }
+      task.updatedAt = Date.now()
+      this.saveTasks()
+      return { ok: true, task }
+    })
+  }
+
   /** Clear the task bound to a session (conversation deleted) atomically. */
   unbindSession(sessionId: string): WorktreeTask | null {
     return this.withLock(() => {
@@ -591,6 +653,58 @@ export class Store {
     })
   }
 
+  // ---- templates ----
+
+  /** Newest first; the picker shows creation order, edits do not reshuffle. */
+  listTemplates(): TaskTemplate[] {
+    this.refreshTemplates()
+    return [...this.templates].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+  }
+
+  /**
+   * Create or update a template under the store lock.
+   *
+   * The whole read-modify-write lives inside one critical section: two DSH
+   * processes saving at once must not drop each other's row. An update keeps
+   * `createdAt` and only refreshes `updatedAt`.
+   */
+  saveTemplate(input: { id?: string; name: string; title?: string; description?: string; criteria?: string[] }): TemplateResult {
+    const name = String((input && input.name) || '').trim()
+    return this.withLock(() => {
+      this.refreshTemplates()
+      const id = String((input && input.id) || '').trim()
+      const title = String((input && input.title) || '')
+      const description = String((input && input.description) || '')
+      const criteria = normalizeCriteria(input && input.criteria)
+      const now = Date.now()
+      let item: TaskTemplate | undefined
+      if (id) {
+        item = this.templates.find((t) => t.id === id)
+        if (!item) return { ok: false, reason: 'missing' }
+        item.name = name
+        item.title = title
+        item.description = description
+        item.criteria = criteria
+        item.updatedAt = now
+      } else {
+        item = { id: randomUUID(), name, title, description, criteria, createdAt: now }
+        this.templates.push(item)
+      }
+      this.saveTemplates()
+      const templates = [...this.templates].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+      return { ok: true, item, templates }
+    })
+  }
+
+  deleteTemplate(id: string): TaskTemplate[] {
+    return this.withLock(() => {
+      this.refreshTemplates()
+      this.templates = this.templates.filter((t) => t.id !== id)
+      this.saveTemplates()
+      return [...this.templates].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    })
+  }
+
   async flush(): Promise<void> {
     // 所有 put*/delete* 已在锁内同步落盘；这里绝不能用本进程内存全量覆盖
     // 共享文件，否则会抹掉其他进程刚写的任务。刷新内存即可（等价 no-op）。
@@ -598,6 +712,7 @@ export class Store {
     this.refreshTasks()
     this.refreshRecents()
     this.refreshCriteria()
+    this.refreshTemplates()
   }
 
   dispose(): void {
@@ -607,6 +722,7 @@ export class Store {
       this.refreshTasks()
       this.refreshRecents()
       this.refreshCriteria()
+      this.refreshTemplates()
     } catch {
       /* shutdown must never throw */
     }

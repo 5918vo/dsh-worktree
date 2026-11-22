@@ -1,208 +1,701 @@
-# 功能说明：验收清单逐项勾选
+# 每日功能批次 · 2026-11-22 · v1.11.0
 
-- 日期：2026-11-22
-- 目标版本：1.10.0
-- 状态：待验收（随本 PR 提交）
-- 涉及模块：任务模型 / Store / Runtime / HTTP API / 工作台 Stage / 合并确认 / 文案与样式
+> 批次主题：**验收收口与日常效率**
+>
+> 交付方式：一个 PR（`t3/daily-feature-batch-planning` → `master`），5 个功能同批验收。
+>
+> 分工：主线程负责方案、任务拆分、验收与 PR；`pi` 负责编码落地。上一批次（1.10.0 验收清单逐项勾选）的文档见 git 历史（`021f8ce`）。
 
-## 1. 一句话概述
+## 0. 批次总览
 
-把「验收标准」从发布时录入的一段只读文字，变成验收阶段可以逐项勾选、带进度、可持久化的核对清单，并在合并确认时提示尚未核对的项。
+| # | 功能 | 一句话价值 | 主要落点 |
+| --- | --- | --- | --- |
+| 1 | 项目级合并门禁 | 验收标准没核对完，可以按项目配置禁止合并 | 模型 / 项目设置 / 合并预检 / 工作台 |
+| 2 | 验收报告导出 | 一键生成可复制的 Markdown 验收报告，留痕可追溯 | 客户端纯函数 / 任务概览 / 剪贴板与下载 |
+| 3 | 发布模板 | 常用任务的标题、描述、验收标准一键填入 | Store / HTTP / 设置页 / 发布弹窗 |
+| 4 | 任务置顶 | 重要任务固定在项目分组顶部 | 模型 / Store / HTTP / 左栏 |
+| 5 | 会话快捷指令 | 在工作台直接给任务会话发追问指令 | 客户端纯函数 / 实时会话 / 指令输入 |
 
-## 2. 背景与问题
+设计原则：
 
-发布任务时，用户可以从验收标准库勾选或手动补充 `acceptanceCriteria`。这些标准目前只有两个作用：
+- **不改变既有状态机**：任务状态仍由 Git 与会话绑定推导，本批次只增加策略、派生展示和操作入口。
+- **写操作走 Store 锁**：模板、置顶、门禁配置都通过 Store 的跨进程读改写，两个 DSH 实例不会互相覆盖。
+- **默认不打扰**：合并门禁默认关闭；没有验收标准的任务不受门禁影响；发布模板为空时不显示模板选择。
+- **可回滚**：新增字段全部可选，旧任务记录、旧项目记录无需迁移；移除路由与 UI 后旧记录仍可读。
 
-1. 发布弹窗里录入；
-2. 任务详情「概览」中展示，且只在任务**已合并 / 已清理**后统一显示为完成（`src/client/model.ts` 的 `criteria()`）。
+---
 
-这带来三个实际问题：
+## 1. 项目级合并门禁（`mergeGate`）
 
-- **验收标准与验收动作脱节**：真正进入 `review` 状态验收时，清单仍然是只读的，用户无法记录「这一条我核对过了」。
-- **合并前没有遗漏提醒**：任务可以在清单一项未核对的情况下直接合并，验收标准无法起到把关作用。
-- **核对过程落在产品之外**：用户只能另开文档或凭记忆逐条检查，任务结束后也看不出当时核对到什么程度。
+### 1.1 功能说明
 
-验收标准是本插件「发布 → 开发 → 验收 → 合并」闭环里唯一描述“什么算完成”的数据，却恰好是闭环中唯一没有交互的一环。
+项目设置新增「合并门禁」选项：
 
-## 3. 功能说明
+- `off`（默认）：保持现状，验收标准只提示、不阻止合并。
+- `criteria`：任务存在验收标准且仍有未核对项时，禁止通过工作台合并；全部核对后自动放行。
 
-### 3.1 逐项勾选
+门禁只作用于「合并」动作，不影响「切到主仓库验收」「返回原分支」「清理」「归档」等其他操作。已合并任务再次合并补丁时不受门禁限制（`task.mergedAt` 已存在）。
 
-- 任务详情「概览」中的每条验收标准变为可点击的复选项。
-- 点击一次标记为已核对，再点一次取消；状态立即持久化，刷新页面、重启 DSH、换端口打开都不丢失。
-- 任务已合并 / 已清理时，清单保持只读并显示为全部完成（沿用现有语义，避免历史任务出现“未完成”的误导）。
-- 正在执行验收切换、合并等操作时，勾选按钮禁用，避免与工作区操作并发。
+### 1.2 为什么做
 
-### 3.2 进度展示
+1.10.0 把验收标准变成了可逐项勾选的清单，但合并确认里只提示「还有 N 项未核对」，仍然可以直接合并。对于希望把验收标准当作准入条件的团队，提示不够；对于不需要门禁的用户，强制拦截又会改变既有行为。做成项目级开关可以同时满足两类用户。
 
-- 「验收标准」分区标题显示进度，例如 `验收标准 · 2/4`；全部核对后显示完成态。
-- 合并确认弹窗新增一行「验收标准」进度；仍有未核对项时明确提示数量，但不阻止合并（是否合并由用户决定）。
+### 1.3 预期效果
 
-### 3.3 数据与接口
+- 开启门禁的项目：合并按钮在清单未完成时禁用，按钮 `title` 与 Stage 顶部阻塞列表说明原因；即使绕过 UI 调用接口，后端返回 `412 criteria-incomplete`。
+- 关闭门禁的项目：行为与 1.10.0 完全一致。
+- 没有验收标准的任务：无论开关如何都不受影响。
 
-- 任务记录新增可选字段 `checkedCriteria?: string[]`，保存已核对的标准文本。标准本身仍以 `acceptanceCriteria` 为准，勾选状态按文本取交集，天然容忍未来标准被移除。
-- Store 新增原子方法 `setCriterionChecked(taskId, text, checked)`：在跨进程账本锁内读取最新任务、校验标准存在、更新并落盘，避免两个 DSH 进程同时勾选时互相覆盖。
-- Runtime 新增 `setCriterionChecked(id, text, checked)`：校验参数并把 Store 的结果翻译成 `404`（任务不存在）或 `400`（该任务没有这条标准）。
-- 新增 HTTP 路由 `POST /dsh-worktree/api/task/criteria`，请求体 `{ id, text, checked }`，沿用 `task/*` 的 token 校验与统一响应（返回最新 `view`）。
+### 1.4 收益
 
-### 3.4 交互与可访问性
+- **对用户**：把「验收标准」从提醒升级为可选的准入规则，减少漏验收。
+- **对团队**：项目级配置比任务级配置更容易统一，不需要每个任务单独设置。
+- **对插件**：补上验收闭环的「门禁」一环，为后续更多策略（如必须通过测试、必须有人复核）留下同一套 blocker 机制。
+- **风险可控**：默认关闭；后端只是新增一个 blocker code，不改变合并流程本身。
 
-- 复选项使用 `button` + `role="checkbox"` + `aria-checked`，保留键盘 Tab / Space 操作与可见焦点环。
-- 文案同时加入 `locale/zh.json` 与 `locale/en.json`，不引入第二份字典。
-- 样式只改看板作用域（`src/client/styles/workbench.ts`），复用现有 `--ok` / `--accent` / `--line-strong` token，明暗主题一致。
+### 1.5 实现方案
 
-## 4. 为什么现在做
-
-- **闭环成本最低**：数据字段、发布入口、展示位置都已存在，只差“可写 + 进度 + 提醒”，不需要新页面或新概念。
-- **收益直接**：它把“验收标准”从说明文字变成可执行动作，直接作用在每天最高频的验收 / 合并路径上。
-- **风险可控**：只新增可选字段和一条 POST 路由，不改状态机、不改 Git 操作、不改合并门禁；旧任务记录无需迁移。
-- **符合现有加固方向**：勾选写入走 Store 锁，与 1.9.3 的跨进程账本、原子会话绑定保持一致。
-
-## 5. 预期效果
-
-| 维度 | 预期 |
-| --- | --- |
-| 验收完整性 | 用户在合并前能看到“还有几项没核对”，减少漏验收 |
-| 可追溯性 | 任务记录保留核对结果，事后能回答“当时按什么标准验收的” |
-| 使用率 | 验收标准不再是一次性输入，发布时填写标准的动机更强 |
-| 操作成本 | 每次核对一次点击，无额外弹窗、无额外页面 |
-
-定性目标：让「验收标准」成为验收动作的一部分，而不是发布表单里的装饰项。
-
-## 6. 收益
-
-- **对用户**：验收时不用另开清单；合并前有一次明确的遗漏提示；历史任务可回看核对状态。
-- **对团队 / 评审者**：验收标准与勾选结果随任务记录保存，评审时能区分“标准是什么”和“核对到哪一步”。
-- **对插件**：补上验收闭环的最后一段交互；为后续“合并门禁可配置”“验收报告导出”留下数据基础。
-- **对维护者**：改动集中在模型、Store、一条路由和一个组件，测试面清晰，回滚只需移除字段与路由。
-
-## 7. 实现方案
-
-### 7.1 数据模型（`src/models.ts`）
+#### 数据模型（`src/models.ts`）
 
 ```ts
-/** 已核对的验收标准文本；与 acceptanceCriteria 取交集后展示。 */
-checkedCriteria?: string[]
+export interface Project {
+  // ...
+  /** 合并门禁：off（默认）或 criteria（存在未核对验收标准时禁止合并）。 */
+  mergeGate?: 'off' | 'criteria'
+}
 ```
 
-### 7.2 Store（`src/store.ts`）
+#### 项目更新（`src/runtime/projects.ts`、`src/runtime.ts`、`src/http.ts`）
 
-新增并导出结果类型：
+- `Runtime.updateProject` 的 patch 类型增加 `mergeGate?: 'off' | 'criteria'`。
+- 校验：只接受 `'off'` / `'criteria'`，其他值抛 `TaskError('合并门禁取值无效', 400)`。
+- `POST projects/update` 透传 `body.mergeGate`。
+
+#### 合并预检（`src/runtime/merge.ts`）
+
+在 `buildMergePreflight` 中、任务基础校验之后增加：
 
 ```ts
-export type CriterionResult =
+const project = task.projectId ? ctx.store.getProject(task.projectId) : undefined
+if (!task.mergedAt && project?.mergeGate === 'criteria') {
+  const standard = normalizeCriteria(task.acceptanceCriteria)
+  const marked = new Set(task.checkedCriteria || [])
+  const missing = standard.filter((item) => !marked.has(item)).length
+  if (missing > 0) {
+    push('criteria-incomplete', `还有 ${missing} 项验收标准未核对；请先在概览中逐项核对，或关闭该项目的合并门禁`)
+  }
+}
+```
+
+- `missing === 0`（含没有标准）时不产生 blocker。
+- `mergeTask` 会在锁内重跑预检，`criteria-incomplete` 属于 hard blocker，自然返回 `412`；不需要在合并流程里重复判断。
+- `worktree_act` 的 `merge` 路径复用同一预检，工具调用同样被拦截。
+
+#### 客户端门禁派生（`src/client/model.ts`）
+
+新增纯函数，供按钮禁用、阻塞列表与合并确认共用：
+
+```ts
+export function mergeGateMissing(project: any, task: WorktreeTask, status: TaskStatus): number {
+  if (!project || project.mergeGate !== 'criteria') return 0
+  if (status === 'merged' || status === 'cleaned') return 0
+  return criteriaProgress(criteria(task, status)).missing
+}
+```
+
+#### 操作门禁（`src/client/action-gate.ts`、`src/client/board.ts`）
+
+- `ActionGateInput` 增加 `mergeGateMissing?: number`。
+- 在 merge 分支中，若 `mergeGateMissing > 0`，向 `merge` 追加 `fill(t.mergeGateBlocked, 'n', ...)`。
+- `board.ts` 用 `projectOfTask?.project`、选中任务与快照状态计算并传入。
+
+#### 合并确认（`src/client/board/use-board-actions.ts`）
+
+`runMerge` 在发预检请求前先检查门禁；有未核对项时直接 Toast 提示并返回，避免无意义的 Git 预检：
+
+```ts
+const gateMissing = mergeGateMissing(projectOfTask?.project, task, snap.status)
+if (gateMissing > 0) {
+  say(String(t.mergeGateBlocked).replace('{n}', String(gateMissing)), true)
+  return
+}
+```
+
+#### 项目设置（`src/client/project-detail.ts`）
+
+- 新增 `mergeGate` 状态，初值 `project.mergeGate === 'criteria'`。
+- 设置页增加一行复选框/开关：「验收标准未全部核对时禁止合并」。
+- 保存时提交 `mergeGate: mergeGateOn ? 'criteria' : 'off'`。
+- 说明文案：门禁只影响合并，不影响验收；无验收标准的任务不受影响。
+
+#### 文案（`locale/zh.json`、`locale/en.json`）
+
+- `mergeGate`：合并门禁
+- `mergeGateHint`：开启后，任务仍有未核对的验收标准时会禁止合并；没有验收标准的任务不受影响。
+- `mergeGateCriteria`：验收标准未全部核对时禁止合并
+- `mergeGateBlocked`：还有 {n} 项验收标准未核对，项目已开启合并门禁
+
+### 1.6 验收标准
+
+- [x] 项目设置可开启/关闭合并门禁，刷新后保持。
+- [x] 开启门禁 + 有未核对标准：合并按钮禁用，Stage 顶部与按钮 `title` 说明原因。
+- [x] 全部核对后：按钮恢复可用，合并成功。
+- [x] 任务没有验收标准：门禁不阻止合并。
+- [x] 直接调用 `task/merge`：返回 `412` 且 `code` 为 `criteria-incomplete`。
+- [x] 已合并任务的「再次合并」不受门禁影响。
+- [x] 关闭门禁的项目行为与 1.10.0 一致。
+
+---
+
+## 2. 验收报告导出（Markdown）
+
+### 2.1 功能说明
+
+任务概览新增「验收报告」区块，提供两个动作：
+
+- **复制 Markdown**：把当前任务的验收信息生成 Markdown 并写入剪贴板。
+- **下载 .md**：下载为 `dshw-report-<id8>-<YYYYMMDD>.md`。
+
+报告包含：任务标题与 ID、状态、任务分支与基线、worktree 路径、更新时间、合并信息、验收标准逐项勾选、相对基线的提交、改动文件统计（不含完整 patch）、未提交改动与待处理暂存数量。
+
+### 2.2 为什么做
+
+验收结果目前只存在于看板里：验收标准、提交、改动文件、合并信息分散在概览、代码改动、右栏三个区域。用户要把验收结论发给同事、贴进 PR 或留档时，只能手工拼。报告导出把「当时按什么标准验收、验收了什么、改了什么」一次带走，补上可追溯性。
+
+### 2.3 预期效果
+
+- 任意状态的任务都能生成报告；已合并/已清理任务按「全部核对」语义输出。
+- 报告中的文件统计与「代码改动」标签一致；diff 不可用时明确写出原因，不伪造数据。
+- 复制失败与下载行为有明确反馈。
+
+### 2.4 收益
+
+- **对用户**：验收结论可直接进入 PR 描述、周报或交付文档，减少手工整理。
+- **对团队/评审者**：报告自带标准与勾选结果，能区分「标准是什么」和「核对到哪一步」。
+- **对插件**：验收闭环产生可导出的产物，为后续「验收报告归档」「按报告生成发布说明」留下基础。
+- **成本低**：只读现有任务记录、快照与 diff，不新增 Git 命令、不改状态。
+
+### 2.5 实现方案
+
+#### 纯函数模块（`src/client/report.ts`）
+
+```ts
+export interface ReportInput {
+  task: WorktreeTask
+  snapshot: TaskSnapshot
+  diff?: TaskDiff | null
+  t: Record<string, any>
+  generatedAt?: number
+}
+
+export function buildAcceptanceReport(input: ReportInput): string
+export function reportFileName(task: WorktreeTask, now?: number): string
+```
+
+报告结构（Markdown）：
+
+```md
+# 验收报告：<标题>
+
+- 任务 ID：`<id>`
+- 状态：<本地化状态>
+- 任务分支：`<branch>` → 基线 ` <baseBranch> `
+- Worktree：`<worktreePath>`
+- 更新时间：<ISO 时间>
+- 合并：<时间 / 合并提交 / 合并分支尖端>（仅已合并任务）
+- 验收标准：n/total 已核对
+
+## 验收标准
+
+- [x] 已核对项
+- [x] 未核对项
+
+## 提交（相对基线）
+
+- `abc1234` 提交说明
+
+## 改动文件
+
+| 文件 | 状态 | 新增 | 删除 |
+| --- | --- | --- | --- |
+| `src/a.ts` | modified | 12 | 3 |
+
+合计：+12 -3
+
+## 备注
+
+- worktree 未提交改动：0
+- 待处理暂存：0
+
+> 本报告由 Worktree 看板生成；状态来自 Git 与任务记录。
+```
+
+规则：
+
+- 验收标准使用 `criteria(task, snapshot.status)`，与概览完全同源；已合并/已清理显示全部勾选。
+- 提交使用 `snapshot.worktree.commits`（最近 20 条）；没有时写「无提交记录」。
+- 文件表使用 `diff.files`，只输出路径、状态、增删行数；`diff.truncated` 时追加提示。
+- `diff` 为空或带 `reason` 时写「改动统计不可用：<reason>」，不生成空表。
+- 文件路径中的 `|` 转义为 `\|`。
+- 所有文案走 `t`，`locale/zh.json` 与 `locale/en.json` 同时补齐。
+
+#### 下载与复制（`src/client/format.ts`、`src/client/stage.ts`、`src/client/board.ts`）
+
+- `format.ts` 新增 `downloadTextFile(name, text)`：Blob + 临时 `<a download>`，完成后回收 object URL。
+- `board.ts` 用 `React.useMemo` 生成 `reportText` 与 `reportFileName`，传给 Stage。
+- Stage 概览新增报告区块：两个按钮分别调用 `copyText` 与 `downloadTextFile`；结果通过现有 `say` Toast 反馈。
+- 新增 Stage props：`reportText?: string`、`reportFileName?: string`、`onCopyReport?: () => void`、`onDownloadReport?: () => void`。
+
+#### 文案
+
+`acceptanceReport`、`copyReport`、`downloadReport`、`reportCopied`、`reportCopyFailed`、`reportDownloaded`、`reportTitle`、`reportTaskId`、`reportStatus`、`reportBranch`、`reportWorktree`、`reportUpdated`、`reportMerged`、`reportCriteria`、`reportCriteriaProgress`、`reportCommits`、`reportFiles`、`reportFile`、`reportTotals`、`reportNotes`、`reportUncommitted`、`reportPendingStashes`、`reportNoCriteria`、`reportNoCommits`、`reportNoFiles`、`reportDiffUnavailable`、`reportTruncated`、`reportFooter`。
+
+### 2.6 验收标准
+
+- [x] 有验收标准的任务：报告逐项输出 `[x]` / `[ ]`，进度数字正确。
+- [x] 已合并 / 已清理任务：报告按全部核对输出。
+- [x] 无验收标准：报告写「无验收标准」，不出现空列表。
+- [x] 有提交与 diff：报告包含提交列表、文件统计与合计。
+- [x] diff 不可用：报告写明原因，不伪造文件表。
+- [x] 复制成功 / 失败都有 Toast；下载文件名符合 `dshw-report-<id8>-<YYYYMMDD>.md`。
+- [x] 中英文 locale 均包含全部报告文案。
+
+---
+
+## 3. 发布模板（`TaskTemplate`）
+
+### 3.1 功能说明
+
+新增全局「发布模板」：保存常用的标题、描述与验收标准；发布任务时从模板下拉选择，一键填入表单，再按需修改。
+
+- 设置页可新建、编辑、删除模板。
+- 发布弹窗顶部显示模板选择；选择后填充标题、描述和验收标准。
+- 模板不绑定项目或基线，避免复制到其他项目时把分支带错。
+
+### 3.2 为什么做
+
+很多任务是重复类型：修 bug、补文档、加测试、发版检查。每次发布都要重新写标题、描述和验收标准，既慢又容易漏项。现有验收标准库只能复用「标准」，不能复用「整张发布表单」。
+
+### 3.3 预期效果
+
+- 选择模板后，标题、描述、验收标准一次填好；仍可自由修改。
+- 模板中的标准如果在标准库中，显示为可勾选项；不在库中的自动进入手动补充区，不丢内容。
+- 删除模板不影响已经发布的任务。
+
+### 3.4 收益
+
+- **对用户**：常规任务从「每次重写」变成「选模板 + 改两处」。
+- **对团队**：把任务描述与验收标准沉淀为可复用资产，减少口径差异。
+- **对插件**：与验收标准库形成「模板 → 发布 → 验收」的连续能力。
+- **风险低**：模板只影响发布弹窗的初始值，不改变发布接口的校验与执行。
+
+### 3.5 实现方案
+
+#### 模型（`src/models.ts`）
+
+```ts
+export interface TaskTemplate {
+  id: string
+  name: string
+  title: string
+  description: string
+  criteria: string[]
+  createdAt: number
+  updatedAt?: number
+}
+```
+
+#### Store（`src/store.ts`）
+
+- 新文件 `templates.json`，保存模板数组。
+- `load()` / `flush()` / `dispose()` 同步刷新。
+- 新方法（均在 `withLock` 内 refresh → 修改 → save）：
+
+```ts
+export type TemplateResult =
+  | { ok: true; item: TaskTemplate; templates: TaskTemplate[] }
+  | { ok: false; reason: 'missing' }
+
+listTemplates(): TaskTemplate[]
+saveTemplate(input: { id?: string; name: string; title?: string; description?: string; criteria?: string[] }): TemplateResult
+deleteTemplate(id: string): TaskTemplate[]
+```
+
+- `name` 为空时由 Runtime 拒绝；Store 只保存已规范化数据。
+- `criteria` 使用 `normalizeCriteria`。
+- 列表按 `createdAt` 倒序（新建的在前）。
+- 更新时保留原 `createdAt`，写入 `updatedAt`。
+
+#### Runtime（`src/runtime.ts`）
+
+```ts
+listTaskTemplates(): TaskTemplate[]
+saveTaskTemplate(input: { id?: string; name: string; title?: string; description?: string; criteria?: string[] }): TaskTemplate[]
+deleteTaskTemplate(id: string): TaskTemplate[]
+```
+
+- `name.trim()` 为空 → `TaskError('模板名称不能为空')`。
+- 带 `id` 但模板不存在 → `TaskError('模板不存在：<id>', 404)`。
+- 其余字段 `String(...)` 兜底，`criteria` 走 `normalizeCriteria`。
+
+#### HTTP（`src/http.ts`）
+
+```text
+GET  templates
+POST templates/save    { id?, name, title?, description?, criteria? }
+POST templates/delete  { id }
+```
+
+- `GET` 与 `acceptance-criteria` 一样是本地只读查询，不要求 token。
+- 两个 `POST` 要求 token，返回 `{ templates }`。
+- `TaskError` 映射原有状态码。
+
+#### 设置页（`src/client/settings-page.ts`）
+
+- 新增「发布模板」Card：
+  - 列表：模板名称、标题、编辑与删除按钮。
+  - 编辑区：名称、标题、描述、验收标准（每行一条）。
+  - 保存 / 取消；保存成功后刷新列表并清空编辑态。
+  - 删除后刷新列表；删除前使用现有确认弹窗（或与验收标准库一致的低风险直接删除 + Toast，二选一，优先复用现有 Modal）。
+- 复用现有 `Card`、`CardHead`、`TextInput`、`Btn`、`IconBtn` 与 `dshw-criteria-*` 样式，不新增第二套视觉。
+
+#### 发布弹窗（`src/client/publish.ts`、`src/client/publish-state.ts`）
+
+- 新增纯函数：
+
+```ts
+export function applyPublishTemplate(
+  template: TaskTemplate,
+  library: string[],
+): { title: string; description: string; picked: string[]; manual: string }
+```
+
+  - `picked = template.criteria.filter((item) => library.includes(item))`
+  - `manual = template.criteria.filter((item) => !library.includes(item)).join('\n')`
+  - `title` / `description` 原样返回。
+
+- 弹窗挂载时并行请求 `acceptance-criteria` 与 `templates`。
+- 顶部新增模板选择（无模板时不渲染选择，只显示「可在设置页创建模板」的提示）。
+- 选择模板后调用 `applyPublishTemplate`，写入标题、描述、`picked`、`manual`。
+- 模板选择不改变项目、基线、自定义分支、模型与「发布后启动」开关。
+- 用户修改任一字段后，模板选择仍保留（只表示来源，不反向覆盖）。
+
+#### 文案
+
+`templates`、`template`、`templateHint`、`templateEmpty`、`templateName`、`templateTitle`、`templateDescription`、`templateCriteria`、`templateSave`、`templateSaved`、`templateDelete`、`templateDeleted`、`templateEdit`、`templateNew`、`templateCancel`、`templateDeleteConfirm`、`templateNameRequired`。
+
+### 3.6 验收标准
+
+- [x] 设置页可新建、编辑、删除模板；刷新后保持。
+- [x] 模板名称为空时保存被拒绝并提示。
+- [x] 发布弹窗选择模板后标题、描述、验收标准被填充。
+- [x] 模板标准不在标准库时进入手动补充区，发布后仍作为验收标准保存。
+- [x] 切换项目/基线不会被模板改写。
+- [x] 两个 Store 实例交替保存模板时结果都保留（锁内读改写）。
+- [x] 无 token 调用 `templates/save` 返回 403。
+
+---
+
+## 4. 任务置顶（`pinnedAt`）
+
+### 4.1 功能说明
+
+任务行新增「置顶 / 取消置顶」动作。置顶任务在所属项目分组内始终排在最前，并显示置顶标记。
+
+### 4.2 为什么做
+
+看板按创建时间倒序排列。正在盯的、等待评审的、需要每天跟进的任务，一旦有新任务发布就会被挤下去。用户需要一个不改变任务状态、也不改变 Git 状态的轻量排序手段。
+
+### 4.3 预期效果
+
+- 置顶任务在项目分组顶部，按置顶时间倒序；未置顶任务仍按创建时间倒序。
+- 刷新、重启、换端口打开后保持。
+- 取消置顶后回到正常排序。
+
+### 4.4 收益
+
+- **对用户**：把注意力固定在当前最重要的任务上，减少滚动和搜索。
+- **对插件**：置顶是纯展示元数据，不影响状态推导与生命周期，风险低。
+- **对工具链路**：`worktree_act` 支持 pin/unpin，Agent 也能整理看板。
+
+### 4.5 实现方案
+
+#### 模型（`src/models.ts`）
+
+```ts
+export interface WorktreeTask {
+  // ...
+  /** 置顶时间；存在时任务在项目分组内置顶。 */
+  pinnedAt?: number
+}
+```
+
+#### Store（`src/store.ts`）
+
+```ts
+export type PinResult =
   | { ok: true; task: WorktreeTask }
-  | { ok: false; reason: 'missing' | 'unknown' }
+  | { ok: false; reason: 'missing' }
+
+setTaskPinned(taskId: string, pinned: boolean): PinResult
 ```
 
-`setCriterionChecked(taskId, text, checked)`：
+- `withLock` → `refreshTasks()` → 任务不存在返回 `missing`。
+- `pinned` 为真且 `pinnedAt` 为空时写入 `Date.now()`；为假时删除字段。
+- 写入 `updatedAt`，`saveTasks()`。
 
-1. `withLock` + `refreshTasks()`；
-2. 任务不存在 → `missing`；
-3. `normalizeCriteria(task.acceptanceCriteria)` 不包含 `text` → `unknown`；
-4. 用 `Set` 增删后按原标准顺序写回 `checkedCriteria`（只保留仍存在的标准）；
-5. `saveTasks()`，返回最新任务。
+#### Runtime / HTTP / 工具
 
-### 7.3 Runtime（`src/runtime/lifecycle.ts`、`src/runtime.ts`）
+- `Runtime.setTaskPinned(id, pinned)` 映射 `missing` → `TaskError('任务不存在：<id>', 404)`。
+- `POST task/pin` 走现有 `act(...)`，请求体 `{ id, pinned }`，返回最新 `view`。
+- `worktree_act` 的 `action` 枚举增加 `pin` / `unpin`，分别调用 `setTaskPinned(id, true/false)`。
 
-- `setCriterionChecked(ctx, id, text, checked)`：
-  - 空文本 → `TaskError('验收标准不能为空')`；
-  - Store 返回 `missing` → `TaskError('任务不存在：<id>', 404)`；
-  - Store 返回 `unknown` → `TaskError('该任务没有这条验收标准', 400, 'unknown-criterion')`。
-- `Runtime` 暴露同名方法，供 HTTP 路由调用。
+#### 排序
 
-### 7.4 HTTP（`src/http.ts`）
+- `src/runtime/projects.ts` 的 `projectViews` 排序改为：
+  `(pinnedAt 倒序) → (createdAt 倒序)`。
+- `src/client/board-data.ts` 的 `upsertPublishedTask` 使用同一规则，避免发布后短暂回到旧顺序。
 
-在现有 `act(...)` 注册区新增：
+#### 左栏（`src/client/rail.ts`、`src/client/board.ts`、`src/client/icons.ts`）
+
+- `ICONS` 增加 `pin` 图标。
+- 任务行操作区增加置顶按钮：`aria-pressed`、`title` 为「置顶 / 取消置顶」，置顶时使用强调色。
+- 置顶任务在标题前显示一个小型置顶标记（可用同一图标 + `aria-hidden`），未置顶不显示。
+- `RailProps` 增加 `onPinTask: (taskId: string, pinned: boolean) => void`。
+- `board.ts` 传入 `actions.runPin`。
+
+#### 操作（`src/client/board/use-board-actions.ts`）
 
 ```ts
-act('criteria', async (id, body) =>
-  app.runtime.setCriterionChecked(id, String(body.text || ''), body.checked === true))
+async function runPin(taskId: string, pinned: boolean) {
+  if (busy) return
+  setBusy('pin')
+  try {
+    await post('task/pin', { id: taskId, pinned })
+    say(pinned ? t.taskPinned : t.taskUnpinned)
+  } catch (e: any) {
+    say(String((e && e.message) || t.failed), true)
+  } finally {
+    setBusy('')
+    void refresh()
+  }
+}
 ```
 
-### 7.5 客户端派生（`src/client/model.ts`）
+#### 文案
 
-`criteria(task, status)`：
+`pinTask`、`unpinTask`、`taskPinned`、`taskUnpinned`、`pinned`。
 
-- `merged` / `cleaned` → 全部 `checked: true`（保持现状）；
-- 其他状态 → `checked: (task.checkedCriteria || []).includes(text)`。
+### 4.6 验收标准
 
-新增纯函数 `criteriaProgress(items)` 返回 `{ checked, total, missing }`，供概览与合并确认共用。
+- [x] 置顶后任务移动到项目分组顶部，取消后回到创建时间顺序。
+- [x] 刷新页面、重新打开工作台后保持。
+- [x] 多个置顶任务按置顶时间倒序。
+- [x] `task/pin` 无 token 返回 403，未知任务返回 404。
+- [x] `worktree_act` 的 `pin` / `unpin` 可用。
+- [x] 置顶不影响任务状态、合并、清理与 diff。
 
-### 7.6 工作台（`src/client/stage.ts`、`src/client/board.ts`、`src/client/board/use-board-actions.ts`）
+---
 
-- `StageProps` 新增 `criteriaBusy?: boolean` 与 `onToggleCriterion?: (text, checked) => void`。
-- `Overview`：可交互状态下把每条标准渲染为 `button[role=checkbox]`；只读状态保持现有静态勾选样式；标题带进度。
-- `board.ts` 接线：`criteriaBusy: busy === 'criteria'`，`onToggleCriterion: actions.runCriterion`。
-- `useBoardActions` 新增 `runCriterion(text, checked)`：`setBusy('criteria')` → `post('task/criteria', ...)` → 失败 Toast → `finally` 清 busy 并 `refresh()`；成功不弹 Toast，避免逐项勾选时刷屏。
-- `runMerge`：在确认详情中加入验收清单进度；有未核对项时在 `body` 追加提示（不阻止合并）。
+## 5. 会话快捷指令（Quick Prompts）
 
-### 7.7 文案与样式
+### 5.1 功能说明
 
-- `locale/zh.json` / `locale/en.json` 新增：
-  - `boardCriteriaProgress`（`已核对 {n}/{total}`）
-  - `boardCriteriaAllDone`（`全部核对完成`）
-  - `boardCriteriaToggleHint`（`点击核对这一项`）
-  - `boardMergeCriteriaMissing`（`还有 {n} 项验收标准未核对`）
-- `src/client/styles/workbench.ts` 新增复选项按钮的 reset、hover 与 `focus-visible` 样式。
+任务「实时会话」标签新增指令输入区：
 
-### 7.8 文档
+- 四个快捷指令：继续完成、修复验证、总结进度、整理提交。
+- 点击快捷指令把文本填入输入框，可编辑后再发送；也可直接输入任意指令。
+- 发送走宿主 `session.prompt`（queue 模式），不新建会话、不改变任务绑定。
 
-- 本文件 `feature.md`：功能说明、原因、预期效果、收益、方案与验收标准。
-- `README.md`：功能概览与工作台交互各补一条。
-- `docs/frontend-design.md`：任务摘要 / 验收组件规范补充复选交互。
-- `CHANGELOG.md`：新增 `1.10.0` 条目；`package.json` 版本升至 `1.10.0`。
+### 5.2 为什么做
 
-## 8. 验收标准
+看板目前能看会话时间线，但发现问题时只能「打开原生会话」再输入。用户在验收时最常说的是「继续」「把失败的测试修一下」「总结一下」，这些动作在看板里就能完成，没必要跳转。
 
-- [ ] 发布时带验收标准的任务，在「概览」中每条标准可点击勾选 / 取消。
-- [ ] 勾选后刷新页面、重新打开工作台，状态保持。
-- [ ] 分区标题显示 `已核对 n/total`，全部核对后显示完成态。
-- [ ] 已合并 / 已清理任务的清单只读且显示全部完成。
-- [ ] 合并确认弹窗显示验收进度；存在未核对项时给出数量提示，且仍可合并。
-- [ ] 勾选请求走 token 校验；未知任务返回 404，未知标准返回 400。
-- [ ] 两个进程同时勾选不同标准时，两项结果都保留（Store 锁内读改写）。
-- [ ] 明暗主题下复选项、hover 与焦点环显示正常，键盘可操作。
-- [ ] `npm run verify`（typecheck + locale 检查 + 测试 + 构建）通过。
-- [ ] `feature.md`、`README.md`、设计文档与 `CHANGELOG.md` 已更新。
+### 5.3 预期效果
 
-## 9. 测试与验证计划
+- 有会话的任务可直接发送指令；会话运行中时指令排队，并明确提示。
+- 会话等待审批 / 回答时禁止发送，提示先去原生会话处理。
+- 没有绑定会话时显示原有「启动会话」入口，不显示指令区。
+- 发送成功有 Toast，输入框清空；失败保留文本并提示。
 
-- **纯逻辑**：`criteria()` 在 `merged` / `cleaned` / `review` 下的勾选派生；`checkedCriteria` 与当前标准的交集；`criteriaProgress` 计数。
-- **Store**：勾选、取消、未知标准、未知任务、重复勾选幂等、标准顺序保持。
-- **HTTP**：发布带标准的任务 → `POST task/criteria` 勾选 → `GET tasks` 可见；无 token 403；未知任务 404；未知标准 400。
-- **回归**：`npm run verify` 全量通过（现有 271 项基础上新增用例）。
-- **人工**：在 DSH Web 中发布任务、勾选、刷新、打开合并确认，检查明暗主题与键盘操作。
+### 5.4 收益
 
-## 10. 风险、边界与回滚
+- **对用户**：在看板内完成「看进度 → 追问 → 继续验收」的闭环，减少页面切换。
+- **对插件**：看板从只读仪表盘变成可操作的控制面，提升日活与留存。
+- **对团队**：快捷指令把常用跟进话术标准化，减少反复输入。
+- **风险低**：复用现有会话 prompt 通道，不新增写 Git 的操作。
 
-- **兼容性**：`checkedCriteria` 为可选字段，旧记录缺省视为全未核对；已合并 / 已清理任务沿用“全部完成”语义。
-- **并发**：写入走 Store 跨进程锁；勾选粒度是单条标准，不做批量覆盖。
-- **不阻断合并**：本版只提示不拦截，避免在未确认用户意图前改变既有合并行为；门禁化留作后续可配置项。
-- **回滚**：移除路由与 UI 接线后，`checkedCriteria` 字段留在记录中也不影响旧版本读取。
+### 5.5 实现方案
 
-## 11. 后续计划（不在本次范围）
+#### 纯函数模块（`src/client/quick-prompts.ts`）
 
-- 合并门禁可配置：项目级开关「存在未核对项时禁止合并」。
-- 发布时选择“标准模板”，自动带出常用验收项。
-- 任务验收报告导出（Markdown）：标准、勾选结果、提交与 diff 摘要。
-- Agent 在完成任务时给出逐条自检建议，用户仍需手动确认。
-- `worktree_act` 增加 `criteria` 动作，供模型工具链路使用。
+```ts
+export type QuickPromptKey = 'continue' | 'tests' | 'summary' | 'commit'
 
-## 12. 文件清单
+export interface QuickPrompt {
+  key: QuickPromptKey
+  /** locale key for the chip label */
+  label: string
+}
+
+export const QUICK_PROMPTS: QuickPrompt[]
+
+/** Build the instruction text; `{title}` is filled with the task title. */
+export function quickPromptText(key: QuickPromptKey, task: { title: string }): string
+
+export type QuickPromptBlock = '' | 'no-session' | 'pending' | 'busy'
+
+export function quickPromptDisabledReason(input: {
+  hasSession: boolean
+  pendingKind?: string
+  busy?: boolean
+}): QuickPromptBlock
+
+export function quickPromptReasonKey(reason: QuickPromptBlock): string
+```
+
+指令文本：
+
+- `continue`：`请继续完成「{title}」的剩余工作；开始前先检查当前 diff 与验收标准，完成后按阶段提交。`
+- `tests`：`请运行项目的验证命令，修复失败项并重新验证；不要修改与失败无关的代码。`
+- `summary`：`请总结当前进展：已完成的改动、未完成项、风险与下一步；不要修改代码。`
+- `commit`：`请检查工作区改动，按逻辑分组提交，写清楚每个提交的目的；不要合并或推送分支。`
+
+#### 实时会话 UI（`src/client/stage.ts`）
+
+- `StageProps` 增加 `onSendPrompt?: (text: string) => Promise<void>` 与 `promptBusy?: boolean`。
+- `Live` 组件在日志下方增加指令区（仅 `props.sessionId` 存在时渲染）：
+  - 快捷指令 chips（点击填入输入框）。
+  - `<textarea>`，placeholder「给会话发一条指令…」，`Ctrl/Cmd+Enter` 发送。
+  - 发送按钮；禁用条件由 `quickPromptDisabledReason` 决定。
+  - 状态提示：无会话 / 等待处理 / 处理中 / 会话运行中指令将排队。
+- 发送成功后清空输入框；失败保留内容。
+
+#### 看板接线（`src/client/board.ts`、`src/client/board/use-board-actions.ts`）
+
+- `runPrompt(text)`：
+  - 未选中任务或没有 `sessionId` → 抛错；
+  - `busy` 非空 → 抛错；
+  - `setBusy('prompt')` → `sendSessionPrompt(remotes, sessionId, text)` → `say(t.quickPromptSent)`；
+  - 失败 Toast 后继续抛出，交给输入区保留文本；
+  - `finally` 清 busy。
+- Board 传 `onSendPrompt: actions.runPrompt`、`promptBusy: !!busy`（任一全局操作进行中都禁用，与 `runPrompt` 的 busy 拒绝逻辑保持一致）。
+
+#### 样式（`src/client/styles/workbench.ts`）
+
+- 新增 `.dshwd-prompt`、`.dshwd-prompt-chips`、`.dshwd-prompt-chip`、`.dshwd-prompt-box`、`.dshwd-prompt-foot`。
+- 复用现有颜色 token 与按钮高度，明暗主题一致；输入区获得焦点时使用现有 `focus-visible` 外环。
+
+#### 文案
+
+`quickPromptTitle`、`quickPromptContinue`、`quickPromptTests`、`quickPromptSummary`、`quickPromptCommit`、`quickPromptPlaceholder`、`quickPromptSend`、`quickPromptSent`、`quickPromptNoSession`、`quickPromptPending`、`quickPromptBusy`、`quickPromptQueued`。
+
+### 5.6 验收标准
+
+- [x] 有会话任务显示指令区；无会话任务不显示。
+- [x] 四个快捷指令点击后填入对应文本，可编辑后发送。
+- [x] 发送成功：Toast、输入框清空、会话时间线在下一轮轮询出现新指令。
+- [x] 发送失败：Toast、输入框保留文本。
+- [x] 等待审批 / 回答时发送按钮禁用并说明原因。
+- [x] 会话运行中允许发送并提示「指令将排队」。
+- [x] `Ctrl/Cmd+Enter` 可发送，纯键盘可完成操作。
+
+---
+
+## 6. 通用实现约定
+
+- **中英文同步**：所有新文案同时加入 `locale/zh.json` 与 `locale/en.json`，`npm run check:locale` 必须通过。
+- **测试**：每个功能至少覆盖纯逻辑 + Store + HTTP 中的两层；客户端纯函数测试放在 `test/client-*.test.ts`。
+- **版本**：`package.json` 与 `package-lock.json` 升到 `1.11.0`。
+- **文档**：
+  - `README.md`：功能概览、工作台交互、HTTP API、模型工具各补对应条目。
+  - `CHANGELOG.md`：新增 `1.11.0` 条目，按「新增 / 接口 / 测试」分组。
+  - `docs/frontend-design.md`：补充合并门禁、验收报告、发布模板、置顶、快捷指令的交互说明。
+- **代码风格**：沿用现有模块边界与命名；纯逻辑放独立文件，React 组件只做展示与接线。
+- **安全**：所有写接口沿用 `task/*` 的 token 校验与同源检查；不新增任意文件读写入口。
+- **并发**：模板、置顶、门禁配置的写操作必须在 Store 的跨进程锁内读改写。
+- **向后兼容**：`mergeGate`、`pinnedAt`、`TaskTemplate` 均为新增可选数据；旧记录无需迁移，旧版本读取时忽略新字段。
+
+## 7. 批次验收标准
+
+- [x] 5 个功能按本文档完成，界面文案中英文齐全。
+- [x] `npm run verify` 全部通过（typecheck + locale + 测试 + 构建）。
+- [x] 新增测试覆盖：合并门禁预检/拒绝、验收报告内容、模板 Store/HTTP、置顶 Store/HTTP/排序、快捷指令纯逻辑。
+- [x] `feature.md`、`README.md`、`CHANGELOG.md`、`docs/frontend-design.md` 已更新。
+- [x] 不改变既有任务状态机、合并流程与 Git 安全边界。
+- [ ] 改动以单个 PR 提交到 `master`，PR 描述包含 5 个功能摘要与验证结果（本提交推送后创建）。
+
+## 8. 风险、边界与回滚
+
+| 风险 | 处理 |
+| --- | --- |
+| 门禁误伤没有验收标准的任务 | 只在 `acceptanceCriteria` 非空且存在未核对项时拦截 |
+| 门禁阻止「再次合并」 | `task.mergedAt` 存在时跳过门禁 |
+| 模板标准不在标准库导致丢失 | 自动放入手动补充区，发布时仍保存 |
+| 模板选择覆盖用户已填内容 | 只在用户主动选择模板时填充，之后可自由修改 |
+| 置顶影响状态 | `pinnedAt` 只参与排序，不参与 `statusOf` 或任何 Git 判断 |
+| 快捷指令误发 | 快捷 chip 只填入不直接发送；发送按钮与 Ctrl/Cmd+Enter 才提交 |
+| 多进程写冲突 | 模板/置顶/项目配置全部走 Store 锁 |
+| 回滚 | 删除新增路由与 UI；保留的 `mergeGate` / `pinnedAt` / 模板文件不影响旧版本读取 |
+
+## 9. 文件清单
 
 | 文件 | 改动 |
 | --- | --- |
-| `src/models.ts` | 新增 `checkedCriteria` 字段 |
-| `src/store.ts` | 新增 `CriterionResult` 与 `setCriterionChecked` |
-| `src/runtime/lifecycle.ts` | 新增 `setCriterionChecked` 校验与错误映射 |
-| `src/runtime.ts` | 暴露 `setCriterionChecked` |
-| `src/http.ts` | 新增 `task/criteria` 路由 |
-| `src/client/model.ts` | `criteria()` 读取勾选状态；新增 `criteriaProgress` |
-| `src/client/stage.ts` | 概览复选交互与进度 |
-| `src/client/board.ts` | Stage 接线 |
-| `src/client/board/use-board-actions.ts` | `runCriterion` 与合并确认提示 |
-| `src/client/styles/workbench.ts` | 复选项交互样式 |
-| `locale/zh.json`、`locale/en.json` | 新增 4 条文案 |
-| `test/client-model.test.ts`、`test/criteria-checks.test.ts` | 新增 / 更新用例 |
-| `README.md`、`docs/frontend-design.md`、`CHANGELOG.md`、`package.json` | 文档与版本 |
+| `src/models.ts` | `Project.mergeGate`、`WorktreeTask.pinnedAt`、`TaskTemplate` |
+| `src/store.ts` | 模板 CRUD、`setTaskPinned`、templates 文件读写 |
+| `src/runtime.ts` | 模板方法、`setTaskPinned`、`updateProject` 类型 |
+| `src/runtime/projects.ts` | 门禁字段校验、置顶排序 |
+| `src/runtime/merge.ts` | `criteria-incomplete` 预检 blocker |
+| `src/http.ts` | `templates*`、`task/pin`、`projects/update` 透传 |
+| `src/tools.ts` | `worktree_act` 增加 `pin` / `unpin` |
+| `src/client/report.ts` | 验收报告纯函数 |
+| `src/client/quick-prompts.ts` | 快捷指令纯函数 |
+| `src/client/publish-state.ts` | `applyPublishTemplate` |
+| `src/client/model.ts` | `mergeGateMissing` |
+| `src/client/action-gate.ts` | 门禁 blocker 原因 |
+| `src/client/board.ts` | 门禁计算、报告生成、置顶与指令接线 |
+| `src/client/board/use-board-actions.ts` | `runMerge` 门禁检查、`runPin`、`runPrompt` |
+| `src/client/board-data.ts` | 发布后置顶排序 |
+| `src/client/rail.ts` | 置顶按钮与标记 |
+| `src/client/stage.ts` | 报告区块、快捷指令输入区 |
+| `src/client/publish.ts` | 模板选择与填充 |
+| `src/client/settings-page.ts` | 模板管理 |
+| `src/client/project-detail.ts` | 合并门禁开关 |
+| `src/client/format.ts` | `downloadTextFile` |
+| `src/client/icons.ts` | `pin` 图标 |
+| `src/client/styles/workbench.ts` | 置顶、报告、指令区样式 |
+| `src/client/styles/legacy.ts` | 设置页发布模板样式 |
+| `locale/zh.json`、`locale/en.json` | 新增文案 |
+| `test/*.test.ts` | 5 个功能的测试 |
+| `README.md`、`CHANGELOG.md`、`docs/frontend-design.md`、`package.json`、`package-lock.json` | 文档与版本 |
+
+## 10. 验收记录（2026-11-22）
+
+### 自动化验证
+
+- `npm run verify`：`tsc --noEmit` + 中英文 locale 校验 + **305 个测试全部通过** + `dist/index.js` / `dist/client.js` 构建成功。
+- 新增测试与功能对应：
+
+| 功能 | 测试文件 | 覆盖点 |
+| --- | --- | --- |
+| 项目合并门禁 | `test/merge-gate.test.ts` | 预检阻断、`merge` 拒绝、无标准放行、关闭门禁、未知值 400、已合并跳过 |
+| 验收报告导出 | `test/client-report.test.ts` | 报告结构、标准勾选、diff/提交/备注、表格转义、截断、diff 不可用降级、文件名 |
+| 发布模板 | `test/templates.test.ts` | 模板拆分、Store CRUD/锁/多实例、排序稳定、Runtime 校验、HTTP token |
+| 任务置顶 | `test/task-pin.test.ts` | 置顶时间戳幂等、取消、排序、发布后排序、HTTP 403/404 |
+| 会话快捷指令 | `test/client-quick-prompts.test.ts` | chip 顺序、指令文本、禁用原因、locale key 映射 |
+
+### 人工复核与修复
+
+主线程逐文件复核后端（Store 锁内读改写、门禁预检、HTTP token 校验、模型工具）与客户端（门禁原因、报告生成、模板填充、置顶排序、快捷指令接线）。复核发现并修复 4 处问题：
+
+1. 设置页模板样式误放在 `src/client/styles/workbench.ts`，而设置页使用 legacy 样式表，导致模板管理界面无样式 → 移入 `src/client/styles/legacy.ts`。
+2. `promptBusy` 仅在 `busy === 'prompt'` 时为真，其他全局操作进行中按钮仍可点击但 `runPrompt` 会拒绝 → 改为 `!!busy`。
+3. 切换模板时仅在字段非空时覆盖，会残留上一个模板的标题/描述 → 改为无条件覆盖。
+4. 设置页模板标准 chip 的尺寸类名写成不存在的 `dshw-chip-sm` → 改为 `dshw-chip--sm`。
+
+### 说明
+
+- 本批次未做浏览器端 E2E 点击验收；Toast、剪贴板、下载、`Ctrl/Cmd+Enter`、按钮禁用态等交互项通过代码走查与纯函数测试确认。
+- 任务状态机、合并流程与 Git 安全边界未改动；所有新增字段均为可选，旧记录无需迁移。
+- PR 在本记录提交推送后创建，描述包含 5 个功能摘要与验证结果。

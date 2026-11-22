@@ -1,6 +1,7 @@
 import { React, h } from './ui'
 import { fmtK, pad2, relTime, taskStamp } from './format'
 import type { TaskDiff, TaskView } from '../models'
+import { QUICK_PROMPTS, quickPromptDisabledReason, quickPromptReasonKey, quickPromptText } from './quick-prompts'
 import { acceptanceHintFor, criteria, criteriaProgress, boardStatus, boardStatusLabel, diffCount, diffHeadSha, diffLineKind, shortSha, type BoardAction, type BoardCta } from './model'
 import { pendingLabel } from './status'
 import type { SessionHealth } from './task-attention'
@@ -53,6 +54,14 @@ export interface StageProps {
   partial?: { message: string } | null
   onDismissPartial?: () => void
   onBackToList?: () => void
+  /** Generated Markdown acceptance report for the overview tab. */
+  reportText?: string
+  reportFileName?: string
+  onCopyReport?: () => void
+  onDownloadReport?: () => void
+  /** Send a free-form prompt into this task's session. */
+  onSendPrompt?: (text: string) => Promise<void>
+  promptBusy?: boolean
 }
 
 export function Stage(props: StageProps) {
@@ -273,7 +282,22 @@ function Overview(props: StageProps) {
             h('span', { className: 'dshwd-check-box' + (item.checked ? '' : ' dshwd-todo'), 'aria-hidden': 'true' }, item.checked ? '✓' : ''),
             h('span', null, item.text))))
         : h('div', { className: 'dshwd-hint' }, t.boardNoCriteria),
-      hint ? h('div', { className: 'dshwd-hint', style: { marginTop: '6px' } }, hint) : null))
+      hint ? h('div', { className: 'dshwd-hint', style: { marginTop: '6px' } }, hint) : null),
+    h('section', { className: 'dshwd-block' },
+      h('div', { className: 'dshwd-block-label' }, t.acceptanceReport),
+      h('div', { className: 'dshwd-report-actions' },
+        h('button', {
+          className: 'dshwd-btn',
+          disabled: !props.reportText,
+          onClick: props.onCopyReport,
+        }, t.copyReport),
+        h('button', {
+          className: 'dshwd-btn',
+          disabled: !props.reportText,
+          title: props.reportFileName || undefined,
+          onClick: props.onDownloadReport,
+        }, t.downloadReport)),
+      h('div', { className: 'dshwd-hint dshwd-mono' }, props.reportFileName || '')))
 }
 
 function Live(props: StageProps) {
@@ -281,7 +305,10 @@ function Live(props: StageProps) {
   const bodyRef = React.useRef(null)
   const live = readLive(props.live)
   const [showAll, setShowAll] = React.useState(false)
+  const [prompt, setPrompt] = React.useState('')
+  const [sending, setSending] = React.useState(false)
   React.useEffect(() => { setShowAll(false) }, [props.sessionId])
+  React.useEffect(() => { setPrompt('') }, [props.sessionId])
   React.useEffect(() => {
     const el: any = bodyRef.current
     if (el) el.scrollTop = el.scrollHeight
@@ -310,6 +337,24 @@ function Live(props: StageProps) {
   const RECENT_STEPS = 5
   const visible = showAll ? history : history.slice(-RECENT_STEPS)
   const offset = showAll ? 0 : Math.max(0, history.length - RECENT_STEPS)
+  const block = quickPromptDisabledReason({ hasSession: !!props.sessionId, pendingKind: props.pendingKind, busy: props.promptBusy })
+  const canSend = !!props.onSendPrompt && !block && !sending && !!prompt.trim()
+  const send = async () => {
+    if (!canSend || !props.onSendPrompt) return
+    setSending(true)
+    try {
+      // The parent toasts failures; the textarea keeps the text for a retry.
+      await props.onSendPrompt(prompt)
+      setPrompt('')
+    } catch {
+      /* keep the draft */
+    } finally {
+      setSending(false)
+    }
+  }
+  const promptHint = block
+    ? String(t[quickPromptReasonKey(block)] || '')
+    : props.running ? t.quickPromptQueued : ''
 
   return h('div', { className: 'dshwd-measure' },
     h('div', { className: 'dshwd-live-bar' },
@@ -364,7 +409,44 @@ function Live(props: StageProps) {
             h('span', { className: 'dshwd-mono' }, pct === null ? '—' : pct + '%'),
             h('span', { className: 'dshwd-hint' }, cache ? cache + ' ' + t.liveTokensCache : '')),
           h('div', { className: 'dshwd-meter', role: 'img', 'aria-label': t.livePressure + ' ' + (pct === null ? '—' : pct + '%') },
-            h('i', { style: { width: (pct === null ? 0 : pct) + '%' } }))))))
+            h('i', { style: { width: (pct === null ? 0 : pct) + '%' } }))))),
+
+    h('div', { className: 'dshwd-prompt' },
+      h('div', { className: 'dshwd-prompt-chips' },
+        h('span', { className: 'dshwd-prompt-title' }, t.quickPromptTitle),
+        QUICK_PROMPTS.map((item) => h('button', {
+          key: item.key,
+          type: 'button',
+          className: 'dshwd-prompt-chip',
+          disabled: !!block,
+          onClick: () => setPrompt(quickPromptText(item.key, props.taskView.task)),
+        }, t[item.label]))),
+      h('div', { className: 'dshwd-prompt-box' },
+        h('textarea', {
+          className: 'dshwd-prompt-input',
+          rows: 3,
+          value: prompt,
+          placeholder: t.quickPromptPlaceholder,
+          disabled: !!block,
+          'aria-label': t.quickPromptTitle,
+          onChange: (e: any) => setPrompt(e.target.value),
+          onKeyDown: (e: any) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+              e.preventDefault()
+              void send()
+            }
+          },
+        }),
+        h('div', { className: 'dshwd-prompt-foot' },
+          h('span', { className: 'dshwd-hint' }, promptHint),
+          h('button', {
+            type: 'button',
+            className: 'dshwd-btn dshwd-btn-cta',
+            disabled: !canSend,
+            title: block ? String(t[quickPromptReasonKey(block)] || '') : undefined,
+            onClick: () => void send(),
+          }, t.quickPromptSend))))
+  )
 }
 
 function Diff(props: StageProps) {

@@ -1,3 +1,5 @@
+import type { TaskTemplate } from '../models'
+
 /**
  * Pure helpers for the publish modal's in-session draft and for reconciling a
  * publish whose result was unknown (timeout) with the refreshed task list.
@@ -72,4 +74,26 @@ export function findPublishedTask<T extends { branch?: string | null; title?: st
     if (byTitle) return byTitle
   }
   return null
+}
+
+/**
+ * Fill the publish form from a saved template.
+ *
+ * Template criteria that exist in the global library become checkbox picks; the
+ * rest go to the manual textarea so nothing is silently dropped. The template
+ * intentionally carries no project/base/branch: choosing one must never move a
+ * task to another branch.
+ */
+export function applyPublishTemplate(
+  template: TaskTemplate,
+  library: string[],
+): { title: string; description: string; picked: string[]; manual: string } {
+  const known = (Array.isArray(library) ? library : []).map(String)
+  const items = (template && Array.isArray(template.criteria) ? template.criteria : []).map(String)
+  return {
+    title: String((template && template.title) || ''),
+    description: String((template && template.description) || ''),
+    picked: items.filter((item) => known.includes(item)),
+    manual: items.filter((item) => !known.includes(item)).join('\n'),
+  }
 }

@@ -37,7 +37,7 @@ export async function addProject(ctx: RuntimeContext, input: AddProjectInput): P
 export async function updateProject(
   ctx: RuntimeContext,
   id: string,
-  patch: { name?: string; baseBranch?: string; dirName?: string; branchPrefix?: string },
+  patch: { name?: string; baseBranch?: string; dirName?: string; branchPrefix?: string; mergeGate?: 'off' | 'criteria' },
 ): Promise<Project> {
   const project = ctx.store.getProject(id)
   if (!project) throw new TaskError(`项目不存在：${id}`, 404)
@@ -49,6 +49,10 @@ export async function updateProject(
   }
   if (typeof patch.dirName === 'string') project.dirName = patch.dirName.trim() || undefined
   if (typeof patch.branchPrefix === 'string') project.branchPrefix = patch.branchPrefix.trim() || undefined
+  if (patch.mergeGate !== undefined) {
+    if (patch.mergeGate !== 'off' && patch.mergeGate !== 'criteria') throw new TaskError('合并门禁取值无效', 400)
+    project.mergeGate = patch.mergeGate
+  }
   ctx.store.putProject(project)
   return project
 }
@@ -167,7 +171,9 @@ export async function projectViews(ctx: RuntimeContext, opts: { includeArchived?
   }
   const out = [...byId.values()]
   for (const b of out) {
-    b.tasks.sort((x, y) => y.task.createdAt - x.task.createdAt)
+    // Pinned tasks first, then newest-created: pinning is a presentation bit
+    // and must not reorder the rest of the group.
+    b.tasks.sort((x, y) => (Number(y.task.pinnedAt) || 0) - (Number(x.task.pinnedAt) || 0) || y.task.createdAt - x.task.createdAt)
     b.stats.tasks = b.tasks.length
     for (const v of b.tasks) {
       const s = v.snapshot.status

@@ -1,6 +1,6 @@
 # DeepSeek Worktree 任务插件
 
-`@5318vo/dsh-worktree` · v1.10.0 · 最后更新：2026-11-22
+`@5318vo/dsh-worktree` · v1.11.0 · 最后更新：2026-11-22
 
 每个任务对应一个真实的 DSH 会话。发布任务时创建独立的 Git worktree 和任务分支，会话以 worktree 为工作目录出现在左侧工作区。任务对话、审批、追问、中止和继续均使用 DSH 原生能力，工作台负责发布、查看状态和验收。
 
@@ -17,6 +17,11 @@
 - **会话一体化**：任务详情可直接打开已有会话，没有会话时可创建会话。
 - **完整验收流程**：切到主仓库验收、返回原分支、直接合并、清理 worktree、删除记录。
 - **验收清单逐项勾选**：待验收任务的每条验收标准可点击核对 / 取消，进度随任务记录持久化，并在概览标题与合并确认中显示。
+- **项目级合并门禁**：项目可开启「验收标准未全部核对时禁止合并」；开启后合并预检与执行都会以 `criteria-incomplete` 拦截，并给出还差几项。没有验收标准的任务不受影响。
+- **验收报告导出**：概览页可一键复制 Markdown 或下载 `.md`，内容含任务信息、验收标准、相对基线提交、改动文件统计、未提交改动与暂存，不包含完整 patch。
+- **发布模板**：设置页维护可复用的发布模板（名称、标题、描述、验收标准），发布弹窗选择后自动填充，验收标准只采用库中已有条目，其余进入手动标准。
+- **任务置顶**：左栏任务行可置顶 / 取消置顶，置顶任务始终排在项目分组最前，再按创建时间倒序。
+- **会话快捷指令**：实时会话提供「继续 / 跑测试 / 总结进展 / 提交改动」四个快捷 chip 和指令输入框，`Ctrl/Cmd+Enter` 发送；运行中的会话自动排队，等待审批 / 回答时禁用。
 - **验收查看改动**：任务处于「待验收 / 验收中」时，任务详情展示相对基线分支的改动文件列表与逐文件 diff，包含已提交、未提交和未跟踪文件。
 - **安全的危险操作**：清理和合并会展示确认信息；删除分支、强制清理只在对应操作可用时出现。
 - **响应式工作台**：宽屏 Rail / Stage / Inspector 三栏，窄屏收起左栏并把右栏变为覆盖式抽屉。
@@ -143,7 +148,10 @@ Git 状态与会话状态分开显示：`review` 只表示 worktree 有待验收
 - 搜索按项目名、任务标题、分支和状态过滤；`/` 或 `Ctrl/Cmd+K` 聚焦搜索，`Esc` 清空。
 - 项目详情提供任务总数、进行中、待验收、已合并统计，并把待审批任务汇总为可跳转提示。
 - 任务「概览」标签集中展示任务摘要与验收操作，「实时会话」展示会话时间线，「代码改动」展示待验收 diff；技术信息与危险操作固定在右栏。
-- 概览中的验收标准可逐项点击核对：标题显示「已核对 n/total」，全部核对后显示完成态；勾选状态写入任务记录，刷新或重启后保持。已合并 / 已清理任务保持只读并显示全部完成。合并确认弹窗会列出验收进度，存在未核对项时提示数量，但不阻止合并。
+- 概览中的验收标准可逐项点击核对：标题显示「已核对 n/total」，全部核对后显示完成态；勾选状态写入任务记录，刷新或重启后保持。已合并 / 已清理任务保持只读并显示全部完成。合并确认弹窗会列出验收进度；项目开启合并门禁时，未核对项会同时阻止合并并提示还差几项。
+- 概览的「验收报告」区可复制 Markdown 或下载 `dshw-report-<id8>-<YYYYMMDD>.md`；报告只汇总状态、标准、提交与文件统计，不导出完整 diff。
+- 左栏任务行提供置顶按钮（`aria-pressed`），置顶任务显示图钉标记并固定在分组顶部；重复置顶保留首次时间，不会因为再点一次而重新排序。
+- 实时会话底部提供快捷指令：chip 只负责填充输入框，发送前可修改；`Ctrl/Cmd+Enter` 或「发送」提交。会话运行中提示「指令会排队执行」，等待审批 / 回答时输入区禁用并说明原因。
 - 发布弹窗支持选择项目/基线、标题与描述（均必填）、从全局验收标准库勾选 + 手动补充、高级选项里的自定义分支与模型选择；提交中禁用关闭与重复提交。续作任务会预填「原标题（续）」和原合并目标，并可选择「作为普通任务发布」或带上合并后新增的提交。
 - 「切到主仓库验收」仅在任务进入待验收（`review`）后可用；待开始、进行中（`developing`）时在概览页说明原因，避免在开发完成前进入验收。
 - 已合并任务详情的主操作为「派生后续任务」，「打开会话」降为次级；点击后打开发布弹窗并预填标题（原标题加「（续）」）、**基线为原任务的合并目标**和「关联前序任务」说明，描述留空由用户填写新需求。
@@ -192,7 +200,9 @@ src/client/
 ├─ styles.ts                  # 项目详情/设置页 CSS + 看板 WORKBENCH_CSS
 ├─ i18n.ts                    # 直接引用 locale/*.json
 ├─ icons.ts
-├─ format.ts                  # 时间、路径、文本、diff、复制
+├─ format.ts                  # 时间、路径、文本、diff、复制、下载
+├─ report.ts                  # 验收报告 Markdown 纯函数
+├─ quick-prompts.ts           # 会话快捷指令文本与禁用原因
 ├─ timeline.ts                # 会话时间线与稳定 key
 ├─ status.ts                  # 状态到 tone / 文案的映射
 ├─ primitives.ts              # 原语适配器（Button/Tag/StateDot/Input/Checkbox/Modal/Toast）
@@ -230,6 +240,9 @@ GET  config
 GET  recents
 POST recents/clear
 GET  branches?path=
+GET  templates
+POST templates/save
+POST templates/delete
 POST publish
 GET  projects
 POST projects/add
@@ -243,9 +256,13 @@ POST task/merge
 POST task/merge-preview
 POST task/cleanup
 POST task/delete
+POST task/pin
 ```
 
-- `publish`、`projects/*`、`tasks`、`bind`、`task/*` 需要 `x-dsh-worktree-token`。
+- `publish`、`projects/*`、`tasks`、`bind`、`task/*`、`templates/save`、`templates/delete` 需要 `x-dsh-worktree-token`。
+- `templates` 只读接口返回全部发布模板；保存与删除在 Store 的跨进程锁内读改写，响应始终是完整的 `{ templates }` 列表。
+- `projects/update` 可带 `mergeGate: 'off' | 'criteria'`；其他取值返回 400。
+- `task/pin` 请求体 `{ id, pinned }`，只写入展示字段 `pinnedAt`，不改变任务状态与 Git。
 - `session` 用于申请工作台 token；`config`、`recents`、`branches` 是本地查询接口。
 - `cleanup` 可带 `force`、`deleteBranch`。
 - `publish` 未传 `branchName` 时使用 Hash 命名规则。
@@ -263,7 +280,7 @@ worktree_act     { id, action, force?, delete_branch? }
 `worktree_act.action` 取值：
 
 ```text
-checkout | back | merge | cleanup | delete
+checkout | back | merge | cleanup | delete | pin | unpin
 ```
 
 ## 配置

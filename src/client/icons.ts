@@ -34,6 +34,10 @@ export const ICONS: Record<string, any[]> = {
     ['circle', { cx: 11, cy: 11, r: 7 }],
     ['path', { d: 'm20 20-3.5-3.5' }],
   ],
+  pin: [
+    ['path', { d: 'M12 17v5' }],
+    ['path', { d: 'M9 10.8a2 2 0 0 1-1.1 1.8l-1.8.9A2 2 0 0 0 5 15.2V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.8a2 2 0 0 0-1.1-1.7l-1.8-.9A2 2 0 0 1 15 10.8V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1Z' }],
+  ],
   plus: [['path', { d: 'M12 5v14M5 12h14' }]],
   chevronDown: [['path', { d: 'm6 9 6 6 6-6' }]],
   arrowLeft: [
