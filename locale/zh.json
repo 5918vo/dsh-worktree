@@ -529,6 +529,7 @@
   "boardStartAfterPublish": "发布后立即启动 Agent 会话",
   "boardStartAfterPublishHint": "创建 Worktree 后自动绑定会话并发送首条提示词。",
   "boardSwitchDirty": "工作区有 {n} 处未提交改动，将先 stash 再切换。",
+  "boardCheckoutDetached": "注意：切换后主仓库处于 detached HEAD（不在任何分支上），这是验收所需；用「返回原分支」恢复。",
   "boardTargetBase": "目标基线",
   "boardTaskHead": "任务 HEAD",
   "boardThemeDark": "切换深色",

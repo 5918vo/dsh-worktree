@@ -181,6 +181,16 @@ export function railEmptyKind(
   return filter === 'all' ? '' : 'filter'
 }
 
+/** Body copy for the checkout/back confirm; checkout always explains the
+ * detached HEAD it creates, whether or not the repo also needs a stash. */
+export function switchConfirmText(t: any, action: 'checkout' | 'back', obstacleCount: number): string {
+  const parts: string[] = []
+  if (action === 'checkout') parts.push(String(t.boardCheckoutDetached))
+  const n = Number(obstacleCount) || 0
+  if (n > 0) parts.push(String(t.boardSwitchDirty).replace('{n}', String(n)))
+  return parts.filter(Boolean).join(' ')
+}
+
 export function criteria(task: WorktreeTask, status: TaskStatus): Array<{ text: string; checked: boolean }> {
   const done = status === 'merged' || status === 'cleaned'
   const marked = new Set(task.checkedCriteria || [])

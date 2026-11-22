@@ -8,7 +8,7 @@ import { getJson, post, postLong } from '../context'
 import { openNativeSession, sendSessionPrompt, startTask } from '../actions'
 import { SYNC_BUSY, syncPromptText } from '../review-surfaces'
 import type { BoardAction } from '../model'
-import { criteria, criteriaProgress } from '../model'
+import { criteria, criteriaProgress, switchConfirmText } from '../model'
 import type { ProjectView, TaskView } from '../../models'
 import type { ConfirmState, StashViewState } from './dialogs'
 import type { BoardTab } from '../stage'
@@ -87,15 +87,15 @@ export function useBoardActions(args: UseBoardActionsArgs) {
       const r: any = await post(action === 'checkout' ? 'task/checkout-preflight' : 'task/back-preflight', { id: selectedTask.task.id })
       const pre = r && r.preflight
       if (!pre) throw new Error(t.failed)
-      if (pre.safe) {
+      if (pre.safe && action !== 'checkout') {
         await executeSwitch(action, undefined, pre)
       } else {
         const count = (pre.obstacles || []).length
         setConfirm({
           title: action === 'checkout' ? t.checkoutTitle : t.backTitle,
-          body: String(t.boardSwitchDirty).replace('{n}', String(count)),
+          body: switchConfirmText(t, action, count),
           label: action === 'checkout' ? t.checkout : t.back,
-          run: () => executeSwitch(action, 'stash', pre),
+          run: () => executeSwitch(action, pre.safe ? undefined : 'stash', pre),
         })
       }
     } catch (e: any) {

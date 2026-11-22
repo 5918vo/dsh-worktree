@@ -529,6 +529,7 @@
   "boardStartAfterPublish": "Start an agent session after publishing",
   "boardStartAfterPublishHint": "Bind the worktree and send the first prompt automatically.",
   "boardSwitchDirty": "The worktree has {n} uncommitted changes; they will be stashed before switching.",
+  "boardCheckoutDetached": "Note: the main repository will be on a detached HEAD (not on any branch) while you review; use \"Return to original branch\" to restore it.",
   "boardTargetBase": "Target base",
   "boardTaskHead": "Task HEAD",
   "boardThemeDark": "Switch to dark",

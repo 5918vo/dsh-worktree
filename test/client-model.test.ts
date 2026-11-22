@@ -18,6 +18,7 @@ import {
   pathPreview,
   railEmptyKind,
   shortSha,
+  switchConfirmText,
   taskMergeSummary,
   themeFor,
   type BoardStatus,
@@ -216,6 +217,14 @@ test('railEmptyKind only reports an empty state for an actually empty result', (
   // An all-filter with no rows would mean no projects at all.
   assert.equal(railEmptyKind(one, empty, '', 'all'), '')
   assert.equal(railEmptyKind(empty, empty, 'x', 'all'), 'no-projects')
+})
+
+test('switchConfirmText warns about detached HEAD before review checkout', () => {
+  const t = { boardCheckoutDetached: 'detached HEAD', boardSwitchDirty: 'stash {n}' }
+  assert.equal(switchConfirmText(t, 'checkout', 0), 'detached HEAD')
+  assert.equal(switchConfirmText(t, 'checkout', 2), 'detached HEAD stash 2')
+  assert.equal(switchConfirmText(t, 'back', 1), 'stash 1')
+  assert.equal(switchConfirmText(t, 'back', 0), '')
 })
 
 test('taskMergeSummary keeps a cleaned, unmerged branch honest', () => {
