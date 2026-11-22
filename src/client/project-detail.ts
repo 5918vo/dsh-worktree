@@ -3,7 +3,7 @@ import { Banner, Btn, Card, CardHead, Checkbox, CopyBtn, Icon, KV, MenuItem, Mod
 import { useBranchInfo } from './hooks'
 import { post } from './context'
 import { copyText, cx, relTime } from './format'
-import { resolveStatus } from './status'
+import { resolveStatus, pendingLabel } from './status'
 
 export function ProjectDetail(props: any) {
     const t = props.t
@@ -49,7 +49,8 @@ export function ProjectDetail(props: any) {
     }
     // Same bucket as the stat above, so the banner and the number never disagree.
     const attentionTasks = v.tasks.filter((item: any) => bucketOf(item) === 'attention')
-    const firstPending = attentionTasks[0]
+    // Every waiting prompt, not just the first: one project can hold several.
+    const pendingTasks = v.tasks.filter((item: any) => !!(item.task.sessionId && props.pendingMap && props.pendingMap[item.task.sessionId]))
     const reviewingTasks = v.tasks.filter((item: any) => item.snapshot.status === 'reviewing')
 
     const act = async (label: string, fn: () => Promise<any>) => {
@@ -220,9 +221,22 @@ export function ProjectDetail(props: any) {
           ? h('div', { className: 'dshw-attention' },
             h(Icon, { name: 'clock' }),
             h('span', null, String(t.attention).replace('{n}', String(attentionTasks.length))),
-            firstPending
-              ? h('button', { type: 'button', className: 'dshw-link-btn', onClick: () => props.onSelectTask(firstPending.task.id, project.id) }, t.view)
+            pendingTasks.length
+              ? h('button', { type: 'button', className: 'dshw-link-btn', onClick: () => props.onSelectTask(pendingTasks[0].task.id, project.id) }, t.view)
               : null)
+          : null,
+        pendingTasks.length
+          ? h(Card, null,
+            h(CardHead, { icon: 'message', title: t.attentionPending }),
+            h('div', { className: 'dshw-acts' }, pendingTasks.map((item: any) => h('button', {
+              key: item.task.id,
+              type: 'button',
+              className: 'dshw-act-row',
+              onClick: () => props.onSelectTask(item.task.id, project.id),
+            },
+              h('span', { className: 'dshw-act-dot dshw-act-dot--review' }),
+              h('span', { className: 'dshw-act-title' }, item.task.title),
+              h('span', { className: 'dshw-act-time dshw-mono' }, pendingLabel(t, props.pendingMap[item.task.sessionId]))))))
           : null,
         h(Card, null,
           h(CardHead, { title: t.lastActivity }),

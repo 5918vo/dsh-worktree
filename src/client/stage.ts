@@ -2,6 +2,8 @@ import { React, h } from './ui'
 import { relTime, taskStamp } from './format'
 import type { TaskDiff, TaskView } from '../models'
 import { criteria, boardStatus, boardStatusLabel, diffCount, diffHeadSha, diffLineKind, shortSha, type BoardAction, type BoardCta } from './model'
+import { pendingLabel } from './status'
+import type { SessionHealth } from './task-attention'
 import type { TimelineEntry } from './timeline'
 
 export type BoardTab = 'overview' | 'live' | 'diff'
@@ -11,6 +13,10 @@ export interface StageProps {
   taskView: TaskView
   projectName: string
   running: boolean
+  /** Pending interaction kind when the session is waiting on the user. */
+  pendingKind?: string
+  /** How the session's last turn ended, when it did not end cleanly. */
+  health?: SessionHealth | null
   tab: BoardTab
   onTab: (tab: BoardTab) => void
   ctas: BoardCta
@@ -40,6 +46,13 @@ export function Stage(props: StageProps) {
   const { t, taskView, ctas } = props
   const task = taskView.task
   const status = boardStatus(taskView.snapshot.status, props.running)
+  const pendingKind = props.pendingKind || ''
+  // While a fresh turn runs, the previous turn's failure is history, not state.
+  const health = props.health && !props.running ? props.health : null
+  const sessionTone = health ? (health.kind === 'interrupted' ? 'warn' : 'err') : props.running ? 'accent' : ''
+  const sessionLabel = health
+    ? (health.kind === 'interrupted' ? t.sessionInterrupted : t.sessionError)
+    : props.running ? t.sessionRunning : t.sessionIdle
   const updated = taskStamp(task, taskView.snapshot)
   const count = diffCount(props.diff)
   return h('main', { className: 'dshwd-stage' },
@@ -65,6 +78,24 @@ export function Stage(props: StageProps) {
             h('span', { className: 'dshwd-chip ' + (status.chip ? 'dshwd-' + status.chip : '') },
               h('span', { className: 'dshwd-dot dshwd-' + status.dot, style: { width: '5px', height: '5px' } }),
               boardStatusLabel(t, status)),
+            pendingKind
+              ? h('span', { className: 'dshwd-chip dshwd-warn' }, pendingLabel(t, pendingKind))
+              : null,
+            task.sessionId
+              ? h('span', {
+                className: 'dshwd-chip' + (sessionTone ? ' dshwd-' + sessionTone : ''),
+                title: health
+                  ? (health.kind === 'interrupted' ? t.sessionInterruptedHint : t.sessionErrorHint) + (health.message ? ' · ' + health.message : '')
+                  : undefined,
+              }, sessionLabel)
+              : null,
+            pendingKind && task.sessionId
+              ? h('button', {
+                className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini',
+                title: t.handlePending,
+                onClick: props.onOpenSession,
+              }, t.handlePending)
+              : null,
             h('span', { className: 'dshwd-mono', style: { color: 'var(--text-3)', fontSize: '11px' } },
               `${shortSha(props.baseSha)}..${shortSha(props.headSha)} · ${relTime(updated, t)}`))),
         h('div', { style: { display: 'flex', gap: '8px', flexShrink: '0' } },

@@ -1,6 +1,8 @@
 import type { ProjectView, TaskDiff, TaskSnapshot, TaskStatus, TaskView, WorktreeTask } from '../models'
+import type { AttentionCategory } from './task-attention'
 
-export type BoardFilter = 'all' | 'review' | 'developing'
+/** The rail filter is an attention category, never a lifecycle status. */
+export type BoardFilter = AttentionCategory | 'all'
 export type BoardTheme = 'dark' | 'light'
 
 export interface BoardStatus {
@@ -86,7 +88,11 @@ export function boardCta(status: BoardStatus, hasSession: boolean): BoardCta {
     case 'ready':
       return {
         secondary: { action: 'logs', label: 'boardViewLogs' },
-        primary: { action: 'start', label: 'boardStartAgent' },
+        // A task with no session yet must offer "create and start", not a start
+        // of something that does not exist; a bound session only reopens.
+        primary: hasSession
+          ? { action: 'open', label: 'boardOpenSession' }
+          : { action: 'create', label: 'boardCreateSession' },
       }
     case 'merged':
       return {
@@ -119,27 +125,41 @@ export function boardStat(snapshot: TaskSnapshot | null | undefined): string {
   return ''
 }
 
-export function taskMatches(task: TaskView, filter: BoardFilter, query: string, running: boolean): boolean {
-  const status = boardStatus(task.snapshot ? task.snapshot.status : 'ready', running)
-  if (filter === 'review' && status.key !== 'review') return false
-  if (filter === 'developing' && status.key !== 'developing' && status.key !== 'running' && status.key !== 'reviewing') return false
+/**
+ * Case-insensitive board search over any set of fields. An empty query matches
+ * everything, so callers can combine it with a filter without special cases.
+ */
+export function matchesSearch(query: string, fields: Array<string | null | undefined>): boolean {
   const q = String(query || '').trim().toLowerCase()
   if (!q) return true
-  return String(task.task.title || '').toLowerCase().includes(q) || String(task.task.branch || '').toLowerCase().includes(q)
+  return fields.some((field) => String(field || '').toLowerCase().includes(q))
 }
 
-/** Filter tasks but keep project groups (with empty task lists removed). */
-export function filterViews(views: ProjectView[], filter: BoardFilter, query: string, runningOf: (task: WorktreeTask) => boolean): ProjectView[] {
+/**
+ * Filter project groups by attention category and search text, dropping groups
+ * that lost every task. With no filter and no query every project stays, so a
+ * freshly added repository remains selectable before its first task exists.
+ */
+export function filterProjectViews(
+  views: ProjectView[],
+  filter: BoardFilter,
+  query: string,
+  get: (view: TaskView) => { categories: Set<AttentionCategory> },
+  pendingText: (task: WorktreeTask) => string,
+): ProjectView[] {
   const q = String(query || '').trim()
-  // With no active filter, keep every project so a freshly added repository
-  // stays selectable even before its first task exists. Searching or filtering
-  // by status still hides groups that have nothing to show.
   const keepEmpty = filter === 'all' && !q
   return views
-    .map((view) => ({
-      ...view,
-      tasks: view.tasks.filter((tv) => taskMatches(tv, filter, query, runningOf(tv.task))),
-    }))
+    .map((view) => {
+      const projectHit = matchesSearch(q, [view.project.name, view.project.repoPath])
+      const tasks = view.tasks.filter((tv) => {
+        const attention = get(tv)
+        if (filter !== 'all' && !(attention && attention.categories.has(filter))) return false
+        if (!q || projectHit) return true
+        return matchesSearch(q, [tv.task.title, tv.task.branch, pendingText(tv.task)])
+      })
+      return { ...view, tasks }
+    })
     .filter((view) => view.tasks.length > 0 || keepEmpty)
 }
 

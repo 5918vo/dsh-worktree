@@ -17,6 +17,14 @@ import { Inspector } from './inspector'
 import { PublishModal } from './publish'
 import { AddProjectModal } from './add-project'
 import { openNativeSession } from './actions'
+import { pendingLabel } from './status'
+import {
+  EMPTY_ATTENTION,
+  computeFilterCounts,
+  deriveTaskAttention,
+  type QuickAction,
+  type TaskAttention,
+} from './task-attention'
 import { ConfirmDialog, StashDiffModal, type ConfirmState, type StashViewState } from './board/dialogs'
 import { useBoardData } from './board/use-board-data'
 import { useBoardActions } from './board/use-board-actions'
@@ -24,7 +32,7 @@ import {
   boardCta,
   boardStatus,
   diffBaseSha,
-  filterViews,
+  filterProjectViews,
   themeFor,
   type BoardFilter,
 } from './model'
@@ -132,6 +140,8 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     remotes,
     sessionMap,
     pendingMap,
+    healthMap,
+    lastOkAt,
     entries,
     entriesReady,
     sessionId,
@@ -285,7 +295,64 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
   const canArchive = !!(selectedTask && (selectedTask.snapshot.status === 'merged' || selectedTask.snapshot.status === 'cleaned' || archived))
   const archiveReason = selectedTask && !canArchive ? t.archiveMergedOnly : ''
   const archivedCount = views.reduce((n: number, v: ProjectView) => n + v.tasks.filter((x: TaskView) => x.task.archivedAt).length, 0)
-  const filtered = filterViews(visibleProjectViews(views, showArchived), filter, query, runningOf)
+
+  // One attention map feeds the rows, the filter counts and the summary bar, so
+  // they can never disagree about what needs attention.
+  const allViews = React.useMemo(() => {
+    const out: TaskView[] = []
+    for (const view of views) for (const tv of view.tasks) out.push(tv)
+    return out
+  }, [views])
+  const shownViews = React.useMemo(() => visibleProjectViews(views, showArchived), [views, showArchived])
+  const pendingOf = (task: any) => task && task.sessionId ? (pendingMap[task.sessionId] || '') : ''
+  const healthOf = (task: any) => task && task.sessionId ? (healthMap[task.sessionId] || null) : null
+  const attentionMap = React.useMemo(() => {
+    const map = new Map<string, TaskAttention>()
+    for (const tv of allViews) {
+      const sid = tv.task.sessionId ? String(tv.task.sessionId) : ''
+      map.set(tv.task.id, deriveTaskAttention({
+        task: tv.task,
+        snapshot: tv.snapshot,
+        pendingKind: sid ? pendingMap[sid] : '',
+        running: sid ? !!sessionMap[sid] : false,
+        health: sid ? healthMap[sid] || null : null,
+        stale: !!err,
+      }))
+    }
+    return map
+  }, [allViews, pendingMap, sessionMap, healthMap, err])
+  const attentionOf = React.useCallback((tv: TaskView) => attentionMap.get(tv.task.id) || EMPTY_ATTENTION, [attentionMap])
+  const visibleTasks = React.useMemo(() => {
+    const out: TaskView[] = []
+    for (const view of shownViews) for (const tv of view.tasks) out.push(tv)
+    return out
+  }, [shownViews])
+  // Recovery also counts (and shows) archived tasks: they must be repaired too.
+  const counts = computeFilterCounts(visibleTasks, allViews, attentionOf)
+  const filtered = filterProjectViews(
+    filter === 'recovery' ? visibleProjectViews(views, true) : shownViews,
+    filter,
+    query,
+    attentionOf,
+    (task: any) => pendingLabel(t, pendingOf(task)),
+  )
+  const hasSearch = !!String(query || '').trim()
+  const emptyKind = !views.length
+    ? 'no-projects'
+    : hasSearch
+      ? 'search'
+      : filter !== 'all'
+        ? 'filter'
+        : ''
+
+  const runQuick = (action: QuickAction, tv: TaskView, projectId: string) => {
+    if (action === 'handle' || action === 'open-session') {
+      const sid = tv.task.sessionId ? String(tv.task.sessionId) : ''
+      if (!sid || !openNativeSession(sid)) say(t.openSessionFailed, true)
+      return
+    }
+    selectTask(tv.task.id, projectId)
+  }
 
   return h('div', { ref: rootRef, className: 'dshw-board', 'data-theme': theme },
     h('div', {
@@ -305,11 +372,20 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
         archivedCount,
         theme,
         runningOf,
+        pendingOf,
+        healthOf,
+        attentionOf,
+        counts,
+        attentionTotal: counts.total,
+        attentionStale: !!err,
+        lastOkAt,
+        emptyKind,
         onQuery: setQuery,
         onFilter: setFilter,
         onToggleArchived: toggleArchived,
         onSelectTask: selectTask,
         onSelectProject: selectProject,
+        onQuick: runQuick,
         onPublish: () => openPublish(),
         onAddProject: () => setAddOpen(true),
         onToggleTheme: toggleTheme,
@@ -322,6 +398,8 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           taskView: selectedTask,
           projectName: projectOfTask.project.name,
           running: runningOf(selectedTask.task),
+          pendingKind: selectedTask.task.sessionId ? pendingMap[selectedTask.task.sessionId] || '' : '',
+          health: selectedTask.task.sessionId ? healthMap[selectedTask.task.sessionId] || null : null,
           tab,
           onTab: setTab,
           ctas: cta,

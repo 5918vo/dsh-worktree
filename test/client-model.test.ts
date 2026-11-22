@@ -10,12 +10,12 @@ import {
   diffCount,
   diffHeadSha,
   diffLineKind,
-  filterViews,
+  filterProjectViews,
+  matchesSearch,
   mergeSummary,
   mergeSummaryText,
   pathPreview,
   shortSha,
-  taskMatches,
   themeFor,
   type BoardStatus,
 } from '../src/client/model.js'
@@ -113,32 +113,46 @@ test('rail formatting strips the worktree prefix and summarises the snapshot', (
   assert.equal(shortSha(''), '—')
 })
 
-test('taskMatches filters by status, title and branch', () => {
-  const review = view()
-  assert.equal(taskMatches(review, 'all', '', false), true)
-  assert.equal(taskMatches(review, 'review', '', false), true)
-  assert.equal(taskMatches(review, 'developing', '', false), false)
-  assert.equal(taskMatches(review, 'review', 'login', false), true)
-  assert.equal(taskMatches(review, 'review', 'fix-login', false), true)
-  assert.equal(taskMatches(review, 'review', 'nope', false), false)
-  assert.equal(taskMatches(view({ snapshot: { status: 'developing' } }), 'developing', '', true), true)
+test('matchesSearch covers title, branch, project and pending text', () => {
+  assert.equal(matchesSearch('', ['x']), true)
+  assert.equal(matchesSearch('login', ['Fix login']), true)
+  assert.equal(matchesSearch('LOGIN', ['fix-login']), true)
+  assert.equal(matchesSearch('nope', ['Fix login', null, undefined]), false)
 })
 
-test('filterViews removes project groups that lost every task', () => {
-  const one = { project: { id: 'p1' }, tasks: [view()], stats: {} } as any
-  const two = { project: { id: 'p2' }, tasks: [view({ task: { id: 't2', title: 'Other' }, snapshot: { status: 'merged' } })], stats: {} } as any
-  const out = filterViews([one, two], 'review', '', () => false)
-  assert.equal(out.length, 1)
-  assert.equal(out[0].project.id, 'p1')
+test('filterProjectViews intersects attention category with search text', () => {
+  const text = (task: any) => String(task.pendingLabel || '')
+  const one = { project: { id: 'p1', name: 'Repo', repoPath: '/repo' }, tasks: [view()], stats: {} } as any
+  const two = { project: { id: 'p2', name: 'Other', repoPath: '/other' }, tasks: [view({ task: { id: 't2', title: 'Ship it' }, snapshot: { status: 'merged' } })], stats: {} } as any
+  // Only t1 carries the review category; t2 stays out of it.
+  const categoriesOf = (tv: any) => ({ categories: new Set(tv.task.id === 't1' ? ['review'] : []) } as any)
+
+  // category only: p2's task carries no category, so its group disappears
+  const reviewed = filterProjectViews([one, two], 'review', '', categoriesOf, text)
+  assert.deepEqual(reviewed.map((v: any) => v.project.id), ['p1'])
+
+  // a project-name hit widens the search but never bypasses the category
+  const byProjectName = filterProjectViews([one, two], 'review', 'other', categoriesOf, text)
+  assert.deepEqual(byProjectName.map((v: any) => v.project.id), [])
+
+  // search matches the project name, so all of its tasks survive
+  const byProject = filterProjectViews([one, two], 'all', 'repo', categoriesOf, text)
+  assert.deepEqual(byProject.map((v: any) => v.project.id), ['p1'])
+
+  // search matches a pending label carried by the task
+  const withPending = { project: { id: 'p3', name: 'Zed', repoPath: '/zed' }, tasks: [view({ task: { id: 't3', title: 'Alpha', branch: 'a' } })], stats: {} } as any
+  const byPending = filterProjectViews([withPending], 'pending', '待审批', () => ({ categories: new Set(['pending']) } as any), (task) => (task.id === 't3' ? '待审批' : ''))
+  assert.equal(byPending.length, 1)
+  assert.equal(filterProjectViews([withPending], 'pending', 'nope', () => ({ categories: new Set(['pending']) } as any), () => '待审批').length, 0)
 })
 
-test('filterViews keeps empty projects only when nothing is filtered', () => {
-  const empty = { project: { id: 'p1' }, tasks: [], stats: {} } as any
-  const filled = { project: { id: 'p2' }, tasks: [view()], stats: {} } as any
-  const all = filterViews([empty, filled], 'all', '', () => false)
-  assert.equal(all.length, 2)
-  assert.equal(filterViews([empty, filled], 'review', '', () => false).length, 1)
-  assert.equal(filterViews([empty, filled], 'all', 'login', () => false).length, 1)
+test('filterProjectViews keeps empty projects only when nothing is filtered', () => {
+  const empty = { project: { id: 'p1', name: 'Repo', repoPath: '/repo' }, tasks: [], stats: {} } as any
+  const filled = { project: { id: 'p2', name: 'Other', repoPath: '/other' }, tasks: [view()], stats: {} } as any
+  const get = () => ({ categories: new Set(['review']) } as any)
+  assert.equal(filterProjectViews([empty, filled], 'all', '', get, () => '').length, 2)
+  assert.equal(filterProjectViews([empty, filled], 'review', '', get, () => '').length, 1)
+  assert.equal(filterProjectViews([empty, filled], 'all', 'login', get, () => '').length, 1)
 })
 
 test('diff helpers prefer the recorded review/merge tips', () => {
@@ -185,5 +199,6 @@ test('pathPreview uses the project worktree directory', () => {
 test('snapshot-less task rows still resolve their CTA', () => {
   const bare = { task: task(), snapshot: null } as any
   assert.equal(boardStatus('ready', false).key, 'ready')
-  assert.equal(taskMatches(bare, 'all', '', false), true)
+  assert.equal(boardCta(boardStatus('ready', false), false).primary.action, 'create')
+  assert.equal(matchesSearch('', [bare.task.title]), true)
 })

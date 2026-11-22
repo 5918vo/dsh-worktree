@@ -450,6 +450,7 @@
   "quickReview": "查看验收",
   "attentionSummaryRecovery": "有 {n} 个任务尚未切回原分支，请先处理恢复。",
   "attentionSummaryPending": "有 {n} 个任务等待你处理。",
+  "attentionSummaryReview": "有 {n} 个任务待验收。",
   "attentionSummaryBroken": "有 {n} 个任务异常，请检查。",
   "attentionViewRecovery": "查看恢复任务",
   "attentionViewPending": "查看待处理",

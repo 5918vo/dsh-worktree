@@ -450,6 +450,7 @@
   "quickReview": "View review",
   "attentionSummaryRecovery": "{n} task(s) have not switched back; resolve the recovery first.",
   "attentionSummaryPending": "{n} task(s) are waiting for you.",
+  "attentionSummaryReview": "{n} task(s) are ready for review.",
   "attentionSummaryBroken": "{n} task(s) are broken; please check.",
   "attentionViewRecovery": "View recovery tasks",
   "attentionViewPending": "View pending",

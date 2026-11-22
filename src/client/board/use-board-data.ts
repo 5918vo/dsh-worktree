@@ -12,11 +12,15 @@ import { visibleProjectViews } from '../board-data'
 import { createPreviewController, shouldPollPreview } from '../merge-preview'
 import { buildHistoryEntries } from '../timeline'
 import { diffHeadSha } from '../model'
+import { parseTurnEndHealth, type SessionHealth } from '../task-attention'
 import type { ProjectView, TaskDiff, TaskView, WorktreeTask } from '../../models'
 
 /** Board poll cadence. 4s re-fetched the whole project list far too often; */
 /** actions refresh explicitly, so a slower background tick loses nothing. */
 const POLL_MS = 10_000
+
+/** How often each bound session reports how its last turn ended. */
+const HEALTH_MS = 12_000
 
 export interface UseBoardDataArgs {
   t: Record<string, any>
@@ -34,6 +38,8 @@ export function useBoardData(args: UseBoardDataArgs) {
   const [err, setErr] = React.useState('')
   const [sessionMap, setSessionMap] = React.useState({} as Record<string, boolean>)
   const [pendingMap, setPendingMap] = React.useState({} as Record<string, string>)
+  const [healthMap, setHealthMap] = React.useState({} as Record<string, SessionHealth>)
+  const [lastOkAt, setLastOkAt] = React.useState(0)
   const [entries, setEntries] = React.useState([] as any[])
   const [entriesReady, setEntriesReady] = React.useState(false)
   const [diff, setDiff] = React.useState(null as TaskDiff | null)
@@ -47,6 +53,7 @@ export function useBoardData(args: UseBoardDataArgs) {
   const failures = React.useRef(0)
   const online = React.useRef(true)
   const bindingRef = React.useRef(new Set<string>())
+  const healthRef = React.useRef({} as Record<string, SessionHealth>)
   const previewRef = React.useRef(null as any)
   const remotes = appCtx && appCtx.remote
   const remotesRef = React.useRef(remotes)
@@ -73,6 +80,7 @@ export function useBoardData(args: UseBoardDataArgs) {
       failures.current = 0
       online.current = true
       setErr('')
+      setLastOkAt(Date.now())
       setLoaded(true)
       // Keep archived tasks selected too: the board fetches them all, and the
       // "show archived" toggle must be able to open one without the next poll
@@ -158,6 +166,85 @@ export function useBoardData(args: UseBoardDataArgs) {
   }, [])
 
   const runningOf = (task: WorktreeTask | null | undefined) => task && task.sessionId ? !!sessionMap[task.sessionId] : false
+
+  // Session health: one tiny follow() per bound session reports how its last
+  // turn ended. uiSession only says running/stopped, so without this a session
+  // that crashed or was interrupted keeps looking like it is still working.
+  const healthIds = React.useMemo(() => {
+    const out: string[] = []
+    for (const view of views) {
+      for (const tv of view.tasks) {
+        const id = tv.task.sessionId ? String(tv.task.sessionId) : ''
+        if (id && out.indexOf(id) < 0) out.push(id)
+      }
+    }
+    return out
+  }, [views])
+  const healthKey = healthIds.join(',')
+
+  React.useEffect(() => {
+    const remote: any = remotesRef.current
+    const ids = healthKey ? healthKey.split(',') : []
+    if (!ids.length || !remote || !remote.session) {
+      healthRef.current = {}
+      setHealthMap({})
+      return
+    }
+    let cancelled = false
+    let pulling = false
+    const pullOne = async (id: string, next: Record<string, SessionHealth>) => {
+      const keep = () => {
+        const previous = healthRef.current[id]
+        if (previous) next[id] = previous
+      }
+      const stream: any = await Promise.race([
+        remote.session.follow({ address: { kind: 'session', sessionId: id }, maxMessages: 1 }),
+        new Promise((resolve) => setTimeout(() => resolve(null), 2000)),
+      ])
+      // A timeout or an unreadable stream is "unknown", not "healthy".
+      if (!stream) { keep(); return }
+      const iterator = typeof stream[Symbol.asyncIterator] === 'function' ? stream[Symbol.asyncIterator]() : null
+      if (!iterator) { keep(); return }
+      let frame: any = null
+      try {
+        const first: any = await Promise.race([iterator.next(), new Promise((resolve) => setTimeout(() => resolve(null), 2000))])
+        frame = first && first.done !== true ? first.value : null
+      } finally {
+        if (typeof iterator.return === 'function') { try { await iterator.return() } catch { /* closed */ } }
+      }
+      if (!frame) { keep(); return }
+      // Session events carry their payload under `data`; the reason lives at
+      // `turn/end.data.reason`. Reading `event.reason` silently loses it.
+      const health = parseTurnEndHealth(frame && frame.records)
+      if (health) next[id] = health
+    }
+    const pull = async () => {
+      if (cancelled || pulling) return
+      pulling = true
+      const next: Record<string, SessionHealth> = {}
+      try {
+        await Promise.all(ids.map(async (id: string) => {
+          try {
+            await pullOne(id, next)
+          } catch {
+            // A failed follow() says nothing about the session: keep the last
+            // known health instead of dropping the alert for one tick.
+            const previous = healthRef.current[id]
+            if (previous) next[id] = previous
+          }
+        }))
+      } finally {
+        pulling = false
+      }
+      if (!cancelled) {
+        healthRef.current = next
+        setHealthMap(next)
+      }
+    }
+    void pull()
+    const timer = setInterval(() => { if (!document.hidden) void pull() }, HEALTH_MS)
+    return () => { cancelled = true; clearInterval(timer) }
+  }, [healthKey])
 
   // Auto-bind tasks published by tools (start requested, no session yet).
   React.useEffect(() => {
@@ -300,6 +387,8 @@ export function useBoardData(args: UseBoardDataArgs) {
     remotes,
     sessionMap,
     pendingMap,
+    healthMap,
+    lastOkAt,
     entries,
     entriesReady,
     sessionId,
