@@ -2,12 +2,15 @@ import { h } from './ui'
 import type { TaskView } from '../models'
 import { mergeSummary, mergeSummaryText, shortSha } from './model'
 import { displayPath, pathParts } from './format'
+import { readLive } from './live-session'
 
 export interface InspectorProps {
   t: any
   taskView: TaskView
   archived: boolean
   previewState: any
+  /** Raw session projections `values`, when a live session is available. */
+  live?: any
   baseSha: string
   headSha: string
   baseLabel: string
@@ -46,6 +49,13 @@ export function Inspector(props: InspectorProps) {
   const dirty = Number(snap.worktree && snap.worktree.dirtyCount) || 0
   const blockers = preview && Array.isArray(preview.blockers) ? preview.blockers : []
   const worktree = displayPath(task.worktreePath)
+  // The session can still be running in the base checkout (or another dir)
+  // while the task is published; compare normalised paths so Windows casing
+  // and trailing separators do not raise a false warning.
+  const liveData = readLive(props.live)
+  const liveCwd = liveData && liveData.cwd ? displayPath(liveData.cwd) : ''
+  const normPath = (value: string) => value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+  const cwdOff = !!liveCwd && !!task.worktreePath && normPath(liveCwd) !== normPath(worktree)
   return h('aside', { className: 'dshwd-inspector' },
     props.narrow && props.onClose
       ? h('div', { className: 'dshwd-insp-narrow-head' },
@@ -86,6 +96,12 @@ export function Inspector(props: InspectorProps) {
       h('div', { className: 'dshwd-kv' },
         h('span', { className: 'dshwd-kv-k' }, t.session),
         h('span', { className: 'dshwd-kv-v dshwd-mono', title: task.sessionId || '' }, task.sessionId || '—')),
+      h('div', { className: 'dshwd-kv dshwd-kv-live', style: { alignItems: 'flex-start' } },
+        h('span', { className: 'dshwd-kv-k' }, t.liveCwd),
+        h('span', { className: 'dshwd-kv-live-value' },
+          h('span', { className: 'dshwd-kv-v dshwd-mono dshwd-path-wrap', title: liveCwd || worktree },
+            pathParts(liveCwd || worktree).map((seg, i) => h('span', { key: i }, seg, h('wbr')))),
+          cwdOff ? h('span', { className: 'dshwd-chip dshwd-warn dshwd-chip-sm', title: t.liveCwdOff }, t.liveCwdOff) : null)),
       // One worktree path only (the row *is* the copy affordance). Segments wrap
       // at separators, so a long path breaks at directory boundaries.
       h('div', { className: 'dshwd-kv dshwd-kv-path', style: { alignItems: 'flex-start' } },
@@ -97,8 +113,8 @@ export function Inspector(props: InspectorProps) {
             ? null
             : h('button', {
               className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-copy',
-              title: t.boardCopyPath,
-              'aria-label': t.boardCopyPath,
+              title: t.copyWorktree,
+              'aria-label': t.copyWorktree,
               onClick: () => props.onCopy(task.worktreePath),
             }, '⧉')))),
 

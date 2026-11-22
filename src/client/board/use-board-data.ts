@@ -42,6 +42,7 @@ export function useBoardData(args: UseBoardDataArgs) {
   const [lastOkAt, setLastOkAt] = React.useState(0)
   const [entries, setEntries] = React.useState([] as any[])
   const [entriesReady, setEntriesReady] = React.useState(false)
+  const [live, setLive] = React.useState(null as { sessionId: string; values: any } | null)
   const [diff, setDiff] = React.useState(null as TaskDiff | null)
   const [diffLoading, setDiffLoading] = React.useState(false)
   const [diffError, setDiffError] = React.useState('')
@@ -307,6 +308,38 @@ export function useBoardData(args: UseBoardDataArgs) {
     return () => { cancelled = true; clearInterval(timer) }
   }, [sessionId, selectedTask && selectedTask.task.id])
 
+  // Live session projections (model, cwd, pressure, tokens, stats, todos,
+  // turn outline) for the selected task. Timeline polling above stays the
+  // single follow() stream; this is a separate cheap projections call.
+  const liveSessionId = sessionId
+  React.useEffect(() => {
+    const remote: any = remotesRef.current
+    setLive(null)
+    if (!liveSessionId || !remote || !remote.session || typeof remote.session.projections !== 'function') return
+    let cancelled = false
+    let pulling = false
+    const pull = async () => {
+      if (!online.current || pulling) return
+      pulling = true
+      try {
+        const r: any = await remote.session.projections({ sessionId: liveSessionId })
+        // A failed pull keeps the previous snapshot: dropping it would blank
+        // the panel on every blip.
+        if (!cancelled && r && r.ok && r.value && r.value.values) {
+          setLive({ sessionId: liveSessionId, values: r.value.values })
+        }
+      } catch {
+        /* keep last */
+      } finally {
+        pulling = false
+      }
+    }
+    void pull()
+    const timer = setInterval(() => { if (!document.hidden) void pull() }, 4000)
+    return () => { cancelled = true; clearInterval(timer) }
+  }, [liveSessionId])
+  const liveValues = live && live.sessionId === liveSessionId ? live.values : null
+
   // Diff is versioned by HEAD, so a commit refresh invalidates the fetched patch.
   const headSha = selectedTask ? diffHeadSha(selectedTask.task, selectedTask.snapshot) : ''
   React.useEffect(() => {
@@ -391,6 +424,7 @@ export function useBoardData(args: UseBoardDataArgs) {
     lastOkAt,
     entries,
     entriesReady,
+    live: liveValues,
     sessionId,
     diff,
     diffLoading,
