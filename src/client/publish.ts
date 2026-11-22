@@ -2,6 +2,7 @@ import { React, h } from './ui'
 import { appCtx, getJson, postLong, bindSession } from './context'
 import { useBranchInfo } from './hooks'
 import { normalizeCriteria, parseCriteriaText } from '../criteria'
+import { initialPublishForm, publishDraftDirty, type PublishCheckInfo, type PublishDraft } from './publish-state'
 import type { ProjectView, TaskView } from '../models'
 
 export interface PublishModalProps {
@@ -10,9 +11,13 @@ export interface PublishModalProps {
   initialProjectId: string
   parentId: string
   parentView: TaskView | null
+  /** In-session draft restored when the modal is reopened. */
+  draft?: any
+  /** Persist (or clear, with null) the draft in the parent's session state. */
+  onDraft?: (draft: any | null) => void
   onClose: () => void
   onPublished: (task: any, project: any, warning?: string, continued?: boolean) => void
-  onCheckPublished: () => Promise<TaskView | undefined>
+  onCheckPublished: (info: PublishCheckInfo) => Promise<TaskView | undefined>
 }
 
 type ModelRow = { provider: string; providerName: string; model: string; modelName: string; reasoningEffort?: string }
@@ -24,15 +29,26 @@ export function PublishModal(props: PublishModalProps) {
   const parentTask = props.parentView && props.parentView.task ? props.parentView.task : null
   const parentAhead = Number(props.parentView && props.parentView.snapshot && props.parentView.snapshot.postMergeAhead) || 0
 
+  const form0Ref = React.useRef(null as PublishDraft | null)
+  if (form0Ref.current === null) {
+    form0Ref.current = initialPublishForm(
+      props.draft,
+      parentTask ? String(parentTask.title) + String(t.continueTitleSuffix) : '',
+    )
+  }
+  const form0 = form0Ref.current
+
   const [projectId, setProjectId] = React.useState(initial ? initial.project.id : '')
   const view = props.views.find((v) => v.project.id === projectId) || initial
   const project = view ? view.project : null
   // Continuing always starts from the predecessor's real merge target.
   const [base, setBase] = React.useState(parentTask ? parentTask.baseBranch : project ? project.baseBranch : '')
-  const [title, setTitle] = React.useState(parentTask ? String(parentTask.title) + String(t.continueTitleSuffix) : '')
-  const [description, setDescription] = React.useState('')
-  const [advanced, setAdvanced] = React.useState(false)
-  const [branch, setBranch] = React.useState('')
+  const [title, setTitle] = React.useState(form0.title)
+  const [description, setDescription] = React.useState(form0.description)
+  // A restored branch means the advanced panel was in use; reopen it so the
+  // draft is visibly applied instead of looking like a silent override.
+  const [advanced, setAdvanced] = React.useState(!!form0.branchName)
+  const [branch, setBranch] = React.useState(form0.branchName)
   const [start, setStart] = React.useState(true)
   const [asPlain, setAsPlain] = React.useState(false)
   const [carryLeftover, setCarryLeftover] = React.useState(false)
@@ -40,9 +56,10 @@ export function PublishModal(props: PublishModalProps) {
   const [err, setErr] = React.useState('')
   const [fieldErrors, setFieldErrors] = React.useState({} as Record<string, string>)
   const [unknown, setUnknown] = React.useState(false)
+  const [closeConfirm, setCloseConfirm] = React.useState(false)
   const [library, setLibrary] = React.useState([] as string[])
-  const [picked, setPicked] = React.useState([] as string[])
-  const [manual, setManual] = React.useState('')
+  const [picked, setPicked] = React.useState(form0.pickedCriteria)
+  const [manual, setManual] = React.useState(form0.manualCriteria)
   const [models, setModels] = React.useState([] as ModelRow[])
   const [modelKey, setModelKey] = React.useState('')
   const [modelError, setModelError] = React.useState('')
@@ -54,6 +71,11 @@ export function PublishModal(props: PublishModalProps) {
   // dialog; an effect would already see the focused input.
   if (restoreFocus.current === null && typeof document !== 'undefined') restoreFocus.current = document.activeElement
   const submitRef = React.useRef(false)
+  // Read through a ref: the parent passes a fresh onDraft closure each render,
+  // and depending on it would re-emit (and re-render) in a loop.
+  const onDraftRef = React.useRef(props.onDraft)
+  onDraftRef.current = props.onDraft
+  const closeRef = React.useRef(() => {})
   const branchInfo = useBranchInfo(project ? project.repoPath : '')
   const branches = branchInfo.data && Array.isArray(branchInfo.data.branches) ? branchInfo.data.branches : []
   const branchNames = branches.map((b: any) => (typeof b === 'string' ? b : b && b.name)).filter(Boolean)
@@ -118,11 +140,38 @@ export function PublishModal(props: PublishModalProps) {
     setBranch('')
   }, [projectId])
 
+  const currentForm = (): PublishDraft => ({ title, description, manualCriteria: manual, pickedCriteria: picked, branchName: branch })
+  const dirty = publishDraftDirty(form0, currentForm())
+  const handleClose = () => {
+    if (busy) return
+    // The banner itself is dismissible: Escape or the X first puts it away.
+    if (closeConfirm) { setCloseConfirm(false); return }
+    if (dirty) { setCloseConfirm(true); return }
+    props.onClose()
+  }
+  closeRef.current = handleClose
+  const keepDraftAndClose = () => {
+    if (onDraftRef.current) onDraftRef.current(currentForm())
+    props.onClose()
+  }
+  const discardAndClose = () => {
+    if (onDraftRef.current) onDraftRef.current(null)
+    props.onClose()
+  }
+
+  // Persist on every form change, but not on mount: an untouched form should
+  // not create a draft that outlives the defaults it was opened with.
+  const changedOnce = React.useRef(false)
+  React.useEffect(() => {
+    if (!changedOnce.current) { changedOnce.current = true; return }
+    if (onDraftRef.current) onDraftRef.current(currentForm())
+  }, [title, description, manual, picked, branch])
+
   React.useEffect(() => {
     const onKey = (e: any) => {
-      if (e.key === 'Escape' && !busy) {
+      if (e.key === 'Escape') {
         e.stopPropagation()
-        props.onClose()
+        closeRef.current()
         return
       }
       if (e.key !== 'Tab') return
@@ -143,7 +192,7 @@ export function PublishModal(props: PublishModalProps) {
     }
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
-  }, [busy, props.onClose])
+  }, [])
 
   const toggleCriterion = (item: string) => {
     setPicked((list: string[]) => (list.includes(item) ? list.filter((x: string) => x !== item) : list.concat(item)))
@@ -221,20 +270,25 @@ export function PublishModal(props: PublishModalProps) {
   async function check() {
     if (busy) return
     setBusy(true)
-    const found = await props.onCheckPublished()
+    setErr('')
+    const found = await props.onCheckPublished({
+      projectId: project ? project.id : '',
+      branchName: advanced ? branch.trim() : '',
+      title: title.trim(),
+    })
     setBusy(false)
     if (!found) {
-      setErr(t.publishTimeoutHint)
+      setErr(t.publishResultNotFound)
       return
     }
     props.onPublished(found.task, project, '', false)
   }
 
   if (!project) {
-    return modal(t, props, project, null, busy, start, h('div', { className: 'dshwd-empty' },
+    return modal(t, project, null, busy, start, handleClose, h('div', { className: 'dshwd-empty' },
       h('div', { className: 'dshwd-empty-title' }, t.noProjectsHint),
       h('div', { className: 'dshwd-hint' }, t.boardAddProjectFirst)),
-    h('button', { className: 'dshwd-btn', onClick: props.onClose }, t.close))
+    h('button', { className: 'dshwd-btn', onClick: handleClose }, t.close))
   }
 
   const branchPlaceholder = `${project.branchPrefix || 'dsh-wt/'}<id8>`
@@ -242,7 +296,17 @@ export function PublishModal(props: PublishModalProps) {
   // 否则 <select> 会显示成第一个分支（＝悄悄改掉续作目标）。
   const baseBranches = base && branchNames.length && !branchNames.includes(base) ? [base, ...branchNames] : branchNames
 
-  return modal(t, props, project, submit, busy, start,
+  return modal(t, project, submit, busy, start, handleClose,
+    closeConfirm
+      ? h('div', { className: 'dshwd-notice dshwd-alert dshwd-alert-warn', role: 'alert' },
+        h('div', { className: 'dshwd-notice-text' },
+          h('div', { className: 'dshwd-notice-title' }, t.draftConfirmTitle),
+          h('div', { className: 'dshwd-hint' }, t.draftConfirmHint)),
+        h('div', { className: 'dshwd-notice-actions' },
+          h('button', { className: 'dshwd-btn', disabled: busy, onClick: keepDraftAndClose }, t.draftKeep),
+          h('button', { className: 'dshwd-btn dshwd-btn-danger', disabled: busy, onClick: discardAndClose }, t.draftDiscard)))
+      : null,
+
     h('div', { className: 'dshwd-field-row-2' },
       field(t, t.boardProject, h('select', {
         className: 'dshwd-select',
@@ -384,8 +448,8 @@ export function PublishModal(props: PublishModalProps) {
   }
 }
 
-function modal(t: any, props: PublishModalProps, project: any, onSubmit: (() => void) | null, busy: boolean, start: boolean, ...children: any[]) {
-  const close = () => { if (!busy) props.onClose() }
+function modal(t: any, project: any, onSubmit: (() => void) | null, busy: boolean, start: boolean, onClose: () => void, ...children: any[]) {
+  const close = () => { if (!busy) onClose() }
   return h('div', {
     className: 'dshwd-modal-backdrop',
     onMouseDown: (e: any) => { if (e.target === e.currentTarget) close() },
