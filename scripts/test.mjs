@@ -78,7 +78,24 @@ if (testFiles.length === 0) {
 const forward = process.argv.slice(2)
 const args = ['--test', '--test-reporter=spec', '--test-force-exit', '--test-concurrency=1', ...forward, ...testFiles]
 
-const child = spawn(process.execPath, args, { stdio: 'inherit' })
+// Git exports repo-targeting variables to hooks. The tests create their own
+// temporary repositories, so inheriting `GIT_DIR` would make every `git init` /
+// `git commit` inside a test write to the caller's repository instead — a
+// pre-push `npm run verify` once committed fixtures onto the feature branch.
+const testEnv = { ...process.env }
+for (const key of [
+  'GIT_DIR',
+  'GIT_WORK_TREE',
+  'GIT_INDEX_FILE',
+  'GIT_OBJECT_DIRECTORY',
+  'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+  'GIT_COMMON_DIR',
+  'GIT_NAMESPACE',
+  'GIT_PREFIX',
+  'GIT_CEILING_DIRECTORIES',
+]) delete testEnv[key]
+
+const child = spawn(process.execPath, args, { stdio: 'inherit', env: testEnv })
 child.on('exit', (code, signal) => {
   if (signal) process.kill(process.pid, signal)
   else process.exit(code ?? 1)

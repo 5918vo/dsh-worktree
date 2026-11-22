@@ -14,13 +14,38 @@ export async function rmrf(dir: string): Promise<void> {
   await fs.rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
 }
 
+/**
+ * Git exports repo-targeting variables (notably `GIT_DIR`) to hooks. A child
+ * git command that creates its own temp repository must not inherit them, or
+ * `npm run verify` inside a pre-push hook would commit the fixtures into the
+ * caller's repository. Strip them so every helper invocation discovers the
+ * repository under its own `cwd`.
+ */
+const REPO_ENV_KEYS = [
+  'GIT_DIR',
+  'GIT_WORK_TREE',
+  'GIT_INDEX_FILE',
+  'GIT_OBJECT_DIRECTORY',
+  'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+  'GIT_COMMON_DIR',
+  'GIT_NAMESPACE',
+  'GIT_PREFIX',
+  'GIT_CEILING_DIRECTORIES',
+]
+
+function isolatedEnv(env?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = { ...process.env }
+  for (const key of REPO_ENV_KEYS) delete out[key]
+  return { ...out, ...(env || {}) }
+}
+
 /** Run git with an args array (no shell quoting) and resolve stdout. */
 export function git(cwd: string, args: string[], env?: NodeJS.ProcessEnv): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
       'git',
       args,
-      { cwd, windowsHide: true, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, ...(env || {}) } },
+      { cwd, windowsHide: true, maxBuffer: 16 * 1024 * 1024, env: isolatedEnv(env) },
       (error, stdout, stderr) => {
         if (error) reject(new Error(`git ${args.join(' ')} failed: ${String(stderr || error.message)}`))
         else resolve(String(stdout ?? ''))
