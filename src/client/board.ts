@@ -603,14 +603,23 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
       label: confirm.label,
       danger: !!confirm.danger,
       checks: confirm.checks || [],
+      labelFor: confirm.labelFor,
+      error: confirm.error,
       busy: !!busy,
       onCancel: () => setConfirm(null),
       onConfirm: (values: Record<string, boolean>) => {
         if (!confirm.run) return
         setBusy('confirm')
         Promise.resolve(confirm.run(values || {}))
-          .catch((e: any) => say(String((e && e.message) || t.failed), true))
-          .finally(() => { setBusy(''); setConfirm(null) })
+          .then(() => setConfirm(null))
+          .catch((e: any) => {
+            // A 409 (new blocker, dirty tree) must not throw the dialog away:
+            // the checks the user just ticked still describe what they wanted.
+            const message = String((e && e.message) || t.failed)
+            say(message, true)
+            setConfirm((prev: any) => (prev ? Object.assign({}, prev, { error: message }) : prev))
+          })
+          .finally(() => setBusy(''))
       },
     }) : null,
 

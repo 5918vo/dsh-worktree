@@ -1,28 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {
-  criteria,
-  criteriaProgress,
-  boardBranch,
-  boardCta,
-  boardStat,
-  boardStatus,
-  diffBaseSha,
-  diffCount,
-  diffHeadSha,
-  diffLineKind,
-  filterProjectViews,
-  matchesSearch,
-  mergeSummary,
-  mergeSummaryText,
-  pathPreview,
-  railEmptyKind,
-  shortSha,
-  switchConfirmText,
-  taskMergeSummary,
-  themeFor,
-  type BoardStatus,
-} from '../src/client/model.js'
+import { criteria, criteriaProgress, boardBranch, boardCta, boardStat, boardStatus, diffBaseSha, diffCount, diffHeadSha, diffLineKind, filterProjectViews, matchesSearch, mergeSummary, mergeSummaryText, pathPreview, railEmptyKind, shortSha, switchConfirmText, taskMergeSummary, themeFor, type BoardStatus, cleanupPrimaryLabel } from '../src/client/model.js'
 
 const T = {
   boardReady: '待开始',
@@ -276,4 +254,12 @@ test('snapshot-less task rows still resolve their CTA', () => {
   assert.equal(boardStatus('ready', false).key, 'ready')
   assert.equal(boardCta(boardStatus('ready', false), false).primary.action, 'create')
   assert.equal(matchesSearch('', [bare.task.title]), true)
+})
+
+test('cleanupPrimaryLabel only changes when commits would be discarded', () => {
+  const t = { cleanup: '清理', forceDeleteBranchConfirm: '强制清理并丢弃 {n} 个提交' }
+  assert.equal(cleanupPrimaryLabel(t, {}, 3), '清理')
+  assert.equal(cleanupPrimaryLabel(t, { deleteBranch: true }, 3), '清理')
+  assert.equal(cleanupPrimaryLabel(t, { deleteBranch: true, forceDeleteBranch: true }, 0), '清理')
+  assert.equal(cleanupPrimaryLabel(t, { deleteBranch: true, forceDeleteBranch: true }, 3), '强制清理并丢弃 3 个提交')
 })

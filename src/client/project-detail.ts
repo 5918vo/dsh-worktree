@@ -17,7 +17,7 @@ export function ProjectDetail(props: any) {
     const branches = useBranchInfo(project.repoPath)
     const [deleteTarget, setDeleteTarget] = React.useState(null as { id: string; name: string; baseBranch: string; total: number } | null)
     const [withTasks, setWithTasks] = React.useState(false)
-    const [withWorktrees, setWithWorktrees] = React.useState(true)
+    const [withWorktrees, setWithWorktrees] = React.useState(false)
     const [busy, setBusy] = React.useState('')
     const [msg, setMsg] = React.useState('')
     const [err, setErr] = React.useState('')
@@ -101,7 +101,8 @@ export function ProjectDetail(props: any) {
       // from live props, and a project switch must not retarget the open panel.
       setDeleteTarget({ id: project.id, name: project.name, baseBranch: project.baseBranch || '', total: counts.total })
       setWithTasks(false)
-      setWithWorktrees(true)
+      // Removing folders is destructive and cannot be undone; keep it opt-in.
+      setWithWorktrees(false)
       setErr('')
     }
     const closeDelete = () => {
@@ -153,7 +154,7 @@ export function ProjectDetail(props: any) {
       },
         deleteTarget.total > 0
           ? h(Banner, { tone: 'warn', icon: 'alert', title: String(t.deleteProjectWarning).replace('{n}', String(deleteTarget.total)) }, t.deleteProjectWarningHint)
-          : h(Banner, { tone: 'info', icon: 'info' }, t.deleteProjectWarningHint),
+          : h(Banner, { tone: 'info', icon: 'info' }, t.deleteProjectEmptyHint),
         reviewingTasks.length
           ? h(Banner, { tone: 'warn', icon: 'alert', title: t.reviewingBlockTitle }, t.reviewingBlockHint)
           : null,
@@ -214,9 +215,7 @@ export function ProjectDetail(props: any) {
             h('summary', { className: 'dshw-icon-btn', 'aria-label': t.operations, title: t.operations }, h(Icon, { name: 'more' })),
             h('div', { className: 'dshw-menu-pop' },
               h(MenuItem, { icon: 'plus', onClick: () => props.onPublish(project) }, t.publish),
-              h(MenuItem, { icon: 'copy', onClick: () => { void copyText(project.repoPath).then((ok) => props.notify(ok ? t.copied : t.copyFailed, ok ? 'ok' : 'error')) } }, t.copyRepoPath),
-              h('div', { className: 'dshw-menu-sep' }),
-              h(MenuItem, { icon: 'trash', danger: true, onClick: openDelete }, t.deleteProject))))),
+              h(MenuItem, { icon: 'copy', onClick: () => { void copyText(project.repoPath).then((ok) => props.notify(ok ? t.copied : t.copyFailed, ok ? 'ok' : 'error')) } }, t.copyRepoPath))))),
       h('nav', { className: 'dshw-tabs' },
         tabBtn('overview', t.overview),
         tabBtn('settings', t.projectSettings)))

@@ -191,6 +191,16 @@ export function switchConfirmText(t: any, action: 'checkout' | 'back', obstacleC
   return parts.filter(Boolean).join(' ')
 }
 
+/**
+ * Primary button label for the cleanup dialog. Force-deleting a branch with
+ * unmerged commits is a different act than removing a worktree, so the label
+ * has to state the commit count instead of repeating "cleanup".
+ */
+export function cleanupPrimaryLabel(t: any, values: Record<string, boolean>, ahead: number): string {
+  if (!values || !values.deleteBranch || !values.forceDeleteBranch || !(ahead > 0)) return t.cleanup
+  return String(t.forceDeleteBranchConfirm).replace('{n}', String(ahead))
+}
+
 export function criteria(task: WorktreeTask, status: TaskStatus): Array<{ text: string; checked: boolean }> {
   const done = status === 'merged' || status === 'cleaned'
   const marked = new Set(task.checkedCriteria || [])

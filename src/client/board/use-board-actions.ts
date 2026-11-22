@@ -8,7 +8,7 @@ import { getJson, post, postLong } from '../context'
 import { openNativeSession, sendSessionPrompt, startTask } from '../actions'
 import { SYNC_BUSY, syncPromptText } from '../review-surfaces'
 import type { BoardAction } from '../model'
-import { criteria, criteriaProgress, switchConfirmText } from '../model'
+import { cleanupPrimaryLabel, criteria, criteriaProgress, switchConfirmText } from '../model'
 import type { ProjectView, TaskView } from '../../models'
 import type { ConfirmState, StashViewState } from './dialogs'
 import type { BoardTab } from '../stage'
@@ -187,10 +187,17 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     if (!selectedTask || busy) return
     const taskId = selectedTask.task.id
     const dirty = Number(selectedTask.snapshot.worktree && selectedTask.snapshot.worktree.dirtyCount) || 0
+    const ahead = Number(selectedTask.snapshot.worktree && selectedTask.snapshot.worktree.ahead) || 0
     setConfirm({
       title: t.cleanup,
       body: t.boardCleanupConfirm,
       label: t.cleanup,
+      details: ahead > 0
+        ? [{ label: t.cleanupDiscardLabel, value: String(t.cleanupDiscardValue).replace('{n}', String(ahead)), mono: true }]
+        : [],
+      // Ticking "force delete branch" turns the action from "remove a worktree"
+      // into "throw away commits"; the primary button must say so.
+      labelFor: (values: Record<string, boolean>) => cleanupPrimaryLabel(t, values, ahead),
       danger: true,
       checks: [
         { key: 'force', label: t.force, hint: t.cleanupForceHint, disabled: dirty === 0 },
