@@ -364,6 +364,7 @@
   "acceptNotOnBase": "主仓库当前在 {branch} 分支，请先切到基线分支",
   "acceptInProgress": "主仓库有未完成的合并或变基，请先处理",
   "acceptAgentRunning": "Agent 正在运行，请等本轮结束再操作",
+  "acceptAgentPending": "会话正在等待你的处理，请先处理待审批/待回答后再操作",
   "acceptOtherReviewing": "任务「{task}」正在验收，请先切回",
   "acceptReviewOther": "切到该任务",
   "acceptBusy": "正在执行：{action}",

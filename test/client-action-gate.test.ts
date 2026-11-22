@@ -11,6 +11,7 @@ const T: any = {
   acceptInProgress: 'in-progress',
   acceptOtherReviewing: 'other-reviewing {task}',
   acceptAgentRunning: 'agent-running',
+  acceptAgentPending: 'agent-pending',
   acceptMergeReviewing: 'merge-reviewing',
   acceptNotOnBase: 'not-on-base {branch}',
   acceptanceHintRepoDirtyMerge: 'repo-dirty {n}',
@@ -118,6 +119,11 @@ test('checkout: a running agent blocks the switch', () => {
   assert.deepEqual(g.reasons.checkout, ['agent-running'])
 })
 
+test('checkout: a pending interaction wins over the running label', () => {
+  const g = gate({ pending: true, running: true, status: 'running' })
+  assert.deepEqual(g.reasons.checkout, ['agent-pending'])
+})
+
 test('checkout: stable order when several facts block at once', () => {
   const g = gate({
     running: true,
@@ -180,6 +186,11 @@ test('merge: an unfinished main-repo operation blocks the merge', () => {
 test('merge: a running agent blocks the merge', () => {
   const g = gate({ running: true, status: 'running' })
   assert.deepEqual(g.reasons.merge, ['agent-running'])
+})
+
+test('merge: a pending interaction blocks the merge', () => {
+  const g = gate({ pending: true })
+  assert.deepEqual(g.reasons.merge, ['agent-pending'])
 })
 
 test('merge: a predicted conflict blocks the merge', () => {

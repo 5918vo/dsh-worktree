@@ -364,6 +364,7 @@
   "acceptNotOnBase": "Main repo is on {branch}; switch to the base branch first",
   "acceptInProgress": "The main repo has an unfinished merge/rebase; resolve it first",
   "acceptAgentRunning": "The agent is running; wait for this turn to finish",
+  "acceptAgentPending": "The session is waiting for your response; handle the pending approval or question first",
   "acceptOtherReviewing": "Task \"{task}\" is being reviewed; switch back first",
   "acceptReviewOther": "Go to that task",
   "acceptBusy": "Running: {action}",

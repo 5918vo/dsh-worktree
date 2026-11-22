@@ -19,6 +19,8 @@ export interface ActionGateInput {
   /** Resolved board status key (`review` reads as `running` while the agent works). */
   status?: string
   running?: boolean
+  /** The session is waiting for an approval / plan review / answer. */
+  pending?: boolean
   /** `MergePreviewState` from the board data hook. */
   previewState?: any
   /** Another uncleaned task the main repo is currently accepting. */
@@ -51,7 +53,7 @@ function previewOf(previewState: any): any {
 }
 
 export function deriveActionGate(input: ActionGateInput): ActionGate {
-  const { t, task, snapshot: snap, status = '', running = false, previewState, otherReviewing } = input
+  const { t, task, snapshot: snap, status = '', running = false, pending = false, previewState, otherReviewing } = input
   const reasons: Partial<Record<BoardAction, string[]>> = {}
   if (!snap) return { disabled: {}, reasons }
 
@@ -85,7 +87,10 @@ export function deriveActionGate(input: ActionGateInput): ActionGate {
     if (dirty > 0) push('checkout', fill(t.acceptWorktreeDirtyCommit, 'n', String(dirty)))
     if (inProgress) push('checkout', t.acceptInProgress)
     if (otherReviewing) push('checkout', fill(t.acceptOtherReviewing, 'task', otherReviewing.task ? otherReviewing.task.title : ''))
-    if (running) push('checkout', t.acceptAgentRunning)
+    // A pending approval/question keeps the turn open even when `running` is
+    // not reported yet; both states own the worktree.
+    if (pending) push('checkout', t.acceptAgentPending)
+    else if (running) push('checkout', t.acceptAgentRunning)
   }
 
   // ---- back: return the main repo to its original branch ----
@@ -110,7 +115,8 @@ export function deriveActionGate(input: ActionGateInput): ActionGate {
     if (!onBase && !currentBranch) push('merge', fill(t.acceptNotOnBase, 'branch', currentBranch || '—'))
     if (repoDirty > 0) push('merge', fill(t.acceptanceHintRepoDirtyMerge, 'n', String(repoDirty)))
     if (inProgress) push('merge', t.acceptInProgress)
-    if (running) push('merge', t.acceptAgentRunning)
+    if (pending) push('merge', t.acceptAgentPending)
+    else if (running) push('merge', t.acceptAgentRunning)
 
     // Only a real, failed conflict check blocks; an unsupported/old Git does
     // not (the UI shows a risk warning instead).
