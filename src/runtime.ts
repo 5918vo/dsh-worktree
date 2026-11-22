@@ -126,7 +126,7 @@ export class Runtime {
     return addProject(this.ctx, input)
   }
 
-  updateProject(id: string, patch: { name?: string; baseBranch?: string; dirName?: string; branchPrefix?: string }): Project {
+  updateProject(id: string, patch: { name?: string; baseBranch?: string; dirName?: string; branchPrefix?: string }): Promise<Project> {
     return updateProject(this.ctx, id, patch)
   }
 

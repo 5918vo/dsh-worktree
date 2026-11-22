@@ -196,7 +196,7 @@ export function registerHttp(app: App): () => void {
     requireToken(req)
     const body = await readJson(req)
     try {
-      const project = app.runtime.updateProject(String(body.id || ''), {
+      const project = await app.runtime.updateProject(String(body.id || ''), {
         name: body.name === undefined ? undefined : String(body.name),
         baseBranch: body.baseBranch === undefined ? undefined : String(body.baseBranch),
         dirName: body.dirName === undefined ? undefined : String(body.dirName),

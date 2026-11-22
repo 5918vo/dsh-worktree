@@ -34,17 +34,17 @@ export async function addProject(ctx: RuntimeContext, input: AddProjectInput): P
   return project
 }
 
-export function updateProject(
+export async function updateProject(
   ctx: RuntimeContext,
   id: string,
   patch: { name?: string; baseBranch?: string; dirName?: string; branchPrefix?: string },
-): Project {
+): Promise<Project> {
   const project = ctx.store.getProject(id)
   if (!project) throw new TaskError(`项目不存在：${id}`, 404)
   if (typeof patch.name === 'string' && patch.name.trim()) project.name = patch.name.trim()
   if (typeof patch.baseBranch === 'string' && patch.baseBranch.trim()) {
     const b = patch.baseBranch.trim()
-    if (!gitx.branchExists(ctx.gitPath, project.repoPath, b)) throw new TaskError(`基线分支不存在：${b}`)
+    if (!(await gitx.branchExists(ctx.gitPath, project.repoPath, b))) throw new TaskError(`基线分支不存在：${b}`)
     project.baseBranch = b
   }
   if (typeof patch.dirName === 'string') project.dirName = patch.dirName.trim() || undefined
