@@ -24,6 +24,8 @@ export interface InspectorProps {
   partialRestore: any
   /** Whether the bound session is currently running a turn. */
   running: boolean
+  /** Pending interaction kind while the session waits on the user. */
+  pending: string
   /** Narrow container: the inspector is an overlay drawer and needs a close. */
   narrow?: boolean
   onClose?: () => void
@@ -52,6 +54,10 @@ export function Inspector(props: InspectorProps) {
   // The blocker list is owned by the stage: showing it here too repeated the
   // same sentence twice. The summary still reflects the same gate reasons.
   const gateBlocked = Array.isArray(props.mergeReasons) && props.mergeReasons.length > 0
+  // A busy or stashed task must not lose its worktree/record from under it.
+  const agentBusy = props.running || !!props.pending
+  const reviewing = snap.status === 'reviewing'
+  const hasStashes = Array.isArray(props.stashes) && props.stashes.length > 0
   const summary: MergeSummary = gateBlocked ? { key: 'blocked', tone: 'warn' } : taskMergeSummary(snap, task, preview, state.phase, error)
   const dotClass = summary.tone === 'err' ? 'dshwd-text-err' : summary.tone === 'warn' ? 'dshwd-text-warn' : summary.tone === 'ok' ? 'dshwd-text-ok' : 'dshwd-text-muted'
   const dirty = Number(snap.worktree && snap.worktree.dirtyCount) || 0
@@ -193,12 +199,26 @@ export function Inspector(props: InspectorProps) {
         }, props.archived ? t.unarchive : t.archive),
         h('button', {
           className: 'dshwd-btn dshwd-btn-danger',
-          disabled: props.busy !== '' || snap.status === 'cleaned',
+          disabled: props.busy !== '' || snap.status === 'cleaned' || agentBusy || reviewing || hasStashes,
+          title: props.running
+            ? t.acceptAgentRunning
+            : props.pending
+              ? t.acceptAgentPending
+              : reviewing
+                ? t.reviewingBlockTitle
+                : hasStashes ? t.stashBlocksLifecycle : undefined,
           onClick: props.onCleanup,
         }, t.cleanup),
         h('button', {
           className: 'dshwd-btn dshwd-btn-danger',
-          disabled: props.busy !== '',
+          disabled: props.busy !== '' || agentBusy || reviewing || hasStashes,
+          title: props.running
+            ? t.acceptAgentRunning
+            : props.pending
+              ? t.acceptAgentPending
+              : reviewing
+                ? t.reviewingBlockTitle
+                : hasStashes ? t.stashBlocksLifecycle : undefined,
           onClick: props.onDelete,
         }, t.deleteRecord))),
 

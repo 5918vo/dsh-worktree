@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { criteria, criteriaProgress, boardBranch, boardCta, boardStat, boardStatus, diffBaseSha, diffCount, diffHeadSha, diffLineKind, filterProjectViews, matchesSearch, mergeSummary, mergeSummaryText, pathPreview, railEmptyKind, shortSha, switchConfirmText, taskMergeSummary, themeFor, type BoardStatus, cleanupPrimaryLabel, commitRangeText, boardStatTitle, railStatsText } from '../src/client/model.js'
+import { acceptanceHintFor, boardBranch, boardCta, boardStat, boardStatTitle, boardStatus, branchHeadSha, cleanupPrimaryLabel, commitRangeText, criteria, criteriaProgress, diffBaseSha, diffCount, diffHeadSha, diffLineKind, filterProjectViews, matchesSearch, mergeSummary, mergeSummaryText, pathPreview, railEmptyKind, railStatsText, shortSha, switchConfirmText, taskMergeSummary, themeFor, type BoardStatus } from '../src/client/model.js'
 
 const T = {
   boardReady: '待开始',
@@ -27,6 +27,10 @@ const T = {
   boardPreviewSafe: '安全',
   boardPreviewIdle: '等待',
   boardPreviewBlocked: '阻塞',
+  acceptanceHintClean: 'worktree 已清理',
+  acceptanceHintMerged: '已合并进基线',
+  acceptanceHintDeveloping: '任务进行中',
+  acceptanceHintPostMerge: '还有 {n} 个新提交',
 }
 
 const task = (over: any = {}) => ({
@@ -195,6 +199,8 @@ test('railEmptyKind only reports an empty state for an actually empty result', (
   // An all-filter with no rows would mean no projects at all.
   assert.equal(railEmptyKind(one, empty, '', 'all'), '')
   assert.equal(railEmptyKind(empty, empty, 'x', 'all'), 'no-projects')
+  // The first paint is not evidence that there are no projects.
+  assert.equal(railEmptyKind(empty, empty, 'x', 'all', false), '')
 })
 
 test('switchConfirmText warns about detached HEAD before review checkout', () => {
@@ -289,4 +295,34 @@ test('railStatsText avoids English singular/plural mistakes', () => {
   assert.equal(railStatsText(zh, 1, 1), '1 个仓库 · 1 个任务')
   assert.equal(railStatsText(en, 1, 1), '1 repo · 1 task')
   assert.equal(railStatsText(en, 2, 5), '2 repos · 5 tasks')
+})
+
+test('branchHeadSha pins a detached review and follows the live tip otherwise', () => {
+  const reviewing = view({ task: { reviewSha: 'review123456' }, snapshot: { status: 'reviewing' } })
+  assert.equal(branchHeadSha(reviewing.task, reviewing.snapshot), 'review123456')
+  // A merged task with a stale reviewSha still shows its newest branch commit.
+  const merged = view({
+    task: { reviewSha: 'stale123456' },
+    snapshot: { status: 'merged', worktree: { ahead: 1, commits: [{ hash: 'newtip123456' }] } },
+  })
+  assert.equal(branchHeadSha(merged.task, merged.snapshot), 'newtip123456')
+  const empty = view({ task: { mergedBranchTip: 'merged123456' }, snapshot: { status: 'merged', worktree: { ahead: 0, commits: [] } } })
+  assert.equal(branchHeadSha(empty.task, empty.snapshot), diffHeadSha(empty.task, empty.snapshot))
+  assert.equal(branchHeadSha(task(), null), '')
+})
+
+test('acceptanceHintFor explains the gate for every lifecycle state', () => {
+  assert.equal(acceptanceHintFor(T, 'developing', 0), T.acceptanceHintDeveloping)
+  assert.equal(acceptanceHintFor(T, 'ready', 0), T.acceptanceHintDeveloping)
+  assert.equal(acceptanceHintFor(T, 'merged', 0), T.acceptanceHintMerged)
+  assert.equal(acceptanceHintFor(T, 'merged', 2), '还有 2 个新提交')
+  assert.equal(acceptanceHintFor(T, 'cleaned', 0), T.acceptanceHintClean)
+  assert.equal(acceptanceHintFor(T, 'review', 0), '')
+  assert.equal(acceptanceHintFor(T, 'reviewing', 0), '')
+})
+
+test('mergeSummaryText reports a cleaned worktree', () => {
+  const t = { ...T, boardPreviewCleaned: 'cleaned', boardPreviewCleanedMerged: 'cleaned+merged' }
+  assert.equal(mergeSummaryText(t, { key: 'cleaned', tone: 'warn' }), 'cleaned')
+  assert.equal(mergeSummaryText(t, { key: 'cleanedMerged', tone: 'ok' }), 'cleaned+merged')
 })

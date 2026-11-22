@@ -33,6 +33,7 @@ import { useBoardActions } from './board/use-board-actions'
 import {
   boardCta,
   boardStatus,
+  boardStatusLabel,
   diffBaseSha,
   filterProjectViews,
   railEmptyKind,
@@ -287,12 +288,24 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     setShowArchived((v: boolean) => !v)
   }
 
+  // Status drives both the Stage chip and the acceptance report label, so it is
+  // resolved once before the action hook reads it.
+  const archived = !!(selectedTask && selectedTask.task.archivedAt)
+  const running = selectedTask ? runningOf(selectedTask.task) : false
+  const pending = !!(selectedTask && selectedTask.task.sessionId && pendingMap[selectedTask.task.sessionId])
+  const status = selectedTask ? boardStatus(selectedTask.snapshot.status, running) : null
+  const statusKey = status ? status.key : ''
+  const cta = selectedTask && status ? boardCta(status, !!selectedTask.task.sessionId) : null
+  const statusLabel = status ? boardStatusLabel(t, status) : ''
+
   const actions = useBoardActions({
     t,
     remotes,
     selectedTask,
     selectedProjectId,
     projectOfTask,
+    diff,
+    statusLabel,
     busy,
     setBusy,
     setConfirm,
@@ -305,13 +318,6 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     say,
     refresh,
   })
-
-  const archived = !!(selectedTask && selectedTask.task.archivedAt)
-  const running = selectedTask ? runningOf(selectedTask.task) : false
-  const pending = !!(selectedTask && selectedTask.task.sessionId && pendingMap[selectedTask.task.sessionId])
-  const status = selectedTask ? boardStatus(selectedTask.snapshot.status, running) : null
-  const statusKey = status ? status.key : ''
-  const cta = selectedTask && status ? boardCta(status, !!selectedTask.task.sessionId) : null
 
   // Another uncleaned task the main repo is currently accepting blocks
   // checkout, because switching away would drop its review context. The stage
@@ -392,8 +398,9 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     (task: any) => pendingLabel(t, pendingOf(task)),
   )
   // Only an actually empty result may own the rail; a search or filter that
-  // still matched rows must keep rendering them.
-  const emptyKind = railEmptyKind(views, filtered, query, filter)
+  // still matched rows must keep rendering them. While the first load is in
+  // flight, show nothing rather than claiming there are no projects.
+  const emptyKind = loaded ? railEmptyKind(views, filtered, query, filter) : ''
 
   const runQuick = (action: QuickAction, tv: TaskView, projectId: string) => {
     if (action === 'handle' || action === 'open-session') {
@@ -430,6 +437,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
         attentionStale: !!err,
         lastOkAt,
         emptyKind,
+        loaded,
         onQuery: setQuery,
         onFilter: setFilter,
         onToggleArchived: toggleArchived,
@@ -459,6 +467,10 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           onAction: actions.runAction,
           criteriaBusy: !!busy,
           onToggleCriterion: actions.runCriterion,
+          onCopyReport: actions.runCopyReport,
+          onDownloadReport: actions.runDownloadReport,
+          // Any in-flight action freezes the snapshot the report would read.
+          reportBusy: !!busy,
           entries,
           entriesReady,
           live,
@@ -527,6 +539,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           stashes: selectedTask.task.pendingStashes || [],
           partialRestore,
           running: runningOf(selectedTask.task),
+          pending: pendingOf(selectedTask.task),
           narrow,
           onClose: () => setInspectorHidden(true),
           onCopy: (text: string) => { copyText(text); say(t.copied) },

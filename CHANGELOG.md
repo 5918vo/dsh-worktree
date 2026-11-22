@@ -2,6 +2,24 @@
 
 本文件记录 `@5318vo/dsh-worktree` 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.11.0] - 2026-11-22
+
+### 新增
+
+- 验收报告导出：任务详情「概览」的「验收标准」分区标题右侧新增「复制报告」「下载 .md」两个 ghost mini 按钮（`dshwd-btn-ghost` + `dshwd-btn-mini`）。前者把报告写入剪贴板，后者保存为 `acceptance-<id8>-<YYYYMMDD>-<HHmm>.md`（本地时间，文件名只含 ASCII 字符）。
+- 报告由新增的纯函数模块 `src/client/report.ts` 生成：`reportFilename(task, now)` 与 `buildAcceptanceReport(input)`，复用 `model.ts` 的 `criteria` / `criteriaProgress` / `branchHeadSha` 与 `format.ts` 的 `pad2`，可为测试注入 `now`。
+- 报告内容随界面语言：标题、项目 / 任务分支 / 基线分支 / 状态 / 任务 HEAD / 合并提交 / 会话 / 生成时间、任务描述、验收标准（含已核对进度）、提交列表、改动文件表（路径、变更类型、行数增删）与工作区统计（未提交改动、待恢复暂存）。**不含 diff 正文**，只含路径与计数，避免把大段补丁带出工作台。
+- 所有异常状态都有可读降级：无验收标准、无提交、无改动文件、worktree 已清理、找不到 merge-base、读取 diff 失败各有一句说明；diff 被截断时明确提示。表格中的 `|` 与换行会被转义，路径不会撑破表格。
+- 任一操作进行中时两个报告按钮同时禁用，成功 / 失败均有 Toast（`reportCopied` / `reportDownloaded` / `reportFailed`）；回调未注入时按钮不渲染，SSR 渲染与只读嵌入不受影响。
+
+### 测试
+
+- 新增 `test/client-report.test.ts`：覆盖文件名规则（id8 截取与清洗、空 id 回退、补零、同一分钟稳定）、元信息与可选行、验收标准三态（部分 / 全部 / 无）与已合并 / 已清理全勾、提交多行与特殊字符、五种文件状态、空改动、截断、`diff` 为 `null` 与三种失败原因（含原始 git 错误）、未知原因回退、工作区计数、已清理场景降级、中英文报告与占位符填充、中英 key 集合与占位符一致。`npm run verify` 共 302 项测试通过。
+
+### 文档
+
+- `README.md`、`docs/frontend-design.md`（概览结构、验收标准组件、验收清单、`report.ts` 代码结构）、`docs/i18n-terminology.md`（验收报告术语与 `{title}` / `{total}` / `{add}` / `{del}` 占位符）同步更新；`locale/zh.json` 与 `locale/en.json` 新增 `report*` 系列 35 个 key。
+
 ## [1.10.0] - 2026-11-22
 
 ### 新增

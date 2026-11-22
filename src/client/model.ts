@@ -179,14 +179,17 @@ export function filterProjectViews(
  * Which empty state the rail should show. A search or filter may report no
  * matches without widening to the generic "no tasks" copy: only an actually
  * empty filtered list earns an empty state, and the query wins over the filter
- * because it is the more specific thing the user just typed.
+ * because it is the more specific thing the user just typed. `loaded` guards
+ * the first paint, when an empty project list is not yet authoritative.
  */
 export function railEmptyKind(
   projects: ProjectView[],
   filtered: ProjectView[],
   query: string,
   filter: BoardFilter,
+  loaded = true,
 ): '' | 'no-projects' | 'search' | 'filter' {
+  if (!loaded) return ''
   if (!projects.length) return 'no-projects'
   if (filtered.length) return ''
   if (String(query || '').trim()) return 'search'
@@ -233,6 +236,32 @@ export function diffHeadSha(task: WorktreeTask, snapshot: TaskSnapshot | null | 
   if (commits.length && commits[0] && commits[0].hash) return String(commits[0].hash)
   if (task.mergedCommit) return task.mergedCommit
   return ''
+}
+
+/**
+ * HEAD to show for the task. A detached review is pinned to its recorded
+ * commit; otherwise the live worktree tip wins, so a post-merge commit is not
+ * hidden behind a stale review sha.
+ */
+export function branchHeadSha(task: WorktreeTask, snapshot: TaskSnapshot | null | undefined): string {
+  if (snapshot && snapshot.status === 'reviewing' && task.reviewSha) return String(task.reviewSha)
+  const commits = (snapshot && snapshot.worktree && snapshot.worktree.commits) || []
+  if (commits.length && commits[0] && commits[0].hash) return String(commits[0].hash)
+  return diffHeadSha(task, snapshot)
+}
+
+/** Why acceptance actions are unavailable, for the overview tab. */
+export function acceptanceHintFor(t: any, status: TaskStatus, postMergeAhead: number): string {
+  switch (status) {
+    case 'developing':
+    case 'ready': return t.acceptanceHintDeveloping
+    case 'merged':
+      return postMergeAhead > 0
+        ? String(t.acceptanceHintPostMerge).replace('{n}', String(postMergeAhead))
+        : t.acceptanceHintMerged
+    case 'cleaned': return t.acceptanceHintClean
+    default: return ''
+  }
 }
 
 export function diffBaseSha(task: WorktreeTask, snapshot: TaskSnapshot | null | undefined, mergeBase?: string | null): string {

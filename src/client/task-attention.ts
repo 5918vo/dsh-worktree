@@ -172,6 +172,16 @@ export function categoryKey(category: AttentionCategory | 'all'): string {
   }
 }
 
+/**
+ * Count shown on the active filter pill. It must follow the selected filter
+ * (`all` = every visible task, a category = that category's count), not the
+ * attention total, or the pill and the dropdown disagree.
+ */
+export function filterCount(counts: Record<string, number> | null | undefined, filter: AttentionCategory | 'all'): number {
+  const key = filter === 'all' ? 'all' : filter
+  return Number((counts && counts[key]) || 0)
+}
+
 const SEVERITY: Record<AttentionCategory, number> = { recovery: 4, broken: 3, pending: 2, review: 1 }
 
 /** Category order used by the summary bar: most severe first. */
