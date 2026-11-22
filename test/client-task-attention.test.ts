@@ -5,6 +5,7 @@ import {
   categoryKey,
   computeFilterCounts,
   deriveTaskAttention,
+  filterCount,
   filterViewsByAttention,
   parseTurnEndHealth,
   quickActionKey,
@@ -215,4 +216,14 @@ test('matchesSearch remembers every searchable field', () => {
   assert.equal(matchesSearch('log', ['fix-login', 'feat/x']), true)
   assert.equal(matchesSearch('FIX', ['fix-login']), true)
   assert.equal(matchesSearch('nope', ['fix-login', null, undefined]), false)
+})
+
+test('filterCount follows the active filter, not the attention total', () => {
+  const counts = { all: 7, pending: 2, review: 1, recovery: 0, broken: 3, total: 4 }
+  assert.equal(filterCount(counts, 'all'), 7)
+  assert.equal(filterCount(counts, 'pending'), 2)
+  assert.equal(filterCount(counts, 'review'), 1)
+  assert.equal(filterCount(counts, 'recovery'), 0)
+  assert.equal(filterCount(counts, 'broken'), 3)
+  assert.equal(filterCount(null, 'review'), 0)
 })

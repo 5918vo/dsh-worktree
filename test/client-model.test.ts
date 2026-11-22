@@ -1,6 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  acceptanceHintFor,
+  boardEmptyKind,
+  branchHeadSha,
   criteria,
   criteriaProgress,
   boardBranch,
@@ -46,6 +49,10 @@ const T = {
   boardPreviewSafe: '安全',
   boardPreviewIdle: '等待',
   boardPreviewBlocked: '阻塞',
+  acceptanceHintClean: 'worktree 已清理',
+  acceptanceHintMerged: '已合并进基线',
+  acceptanceHintDeveloping: '任务进行中',
+  acceptanceHintPostMerge: '还有 {n} 个新提交',
 }
 
 const task = (over: any = {}) => ({
@@ -229,4 +236,43 @@ test('snapshot-less task rows still resolve their CTA', () => {
   assert.equal(boardStatus('ready', false).key, 'ready')
   assert.equal(boardCta(boardStatus('ready', false), false).primary.action, 'create')
   assert.equal(matchesSearch('', [bare.task.title]), true)
+})
+
+test('boardEmptyKind only reports no-match when the filtered list is empty', () => {
+  const base = { loaded: true, projectCount: 1, query: '', filter: 'all' as const, taskCount: 0 }
+  assert.equal(boardEmptyKind({ ...base, query: 'login', taskCount: 1 }), '')
+  assert.equal(boardEmptyKind({ ...base, query: 'login' }), 'search')
+  assert.equal(boardEmptyKind({ ...base, query: '  ', taskCount: 0 }), '')
+  assert.equal(boardEmptyKind({ ...base, filter: 'review', taskCount: 1 }), '')
+  assert.equal(boardEmptyKind({ ...base, filter: 'review' }), 'filter')
+  assert.equal(boardEmptyKind({ ...base, loaded: false }), '')
+  assert.equal(boardEmptyKind({ ...base, projectCount: 0 }), 'no-projects')
+})
+
+test('branchHeadSha pins a detached review and follows the live tip otherwise', () => {
+  const reviewing = view({ task: { reviewSha: 'review123456' }, snapshot: { status: 'reviewing' } })
+  assert.equal(branchHeadSha(reviewing.task, reviewing.snapshot), 'review123456')
+  // A merged task with a stale reviewSha still shows its newest branch commit.
+  const merged = view({
+    task: { reviewSha: 'stale123456' },
+    snapshot: { status: 'merged', worktree: { ahead: 1, commits: [{ hash: 'newtip123456' }] } },
+  })
+  assert.equal(branchHeadSha(merged.task, merged.snapshot), 'newtip123456')
+  const empty = view({ task: { mergedBranchTip: 'merged123456' }, snapshot: { status: 'merged', worktree: { ahead: 0, commits: [] } } })
+  assert.equal(branchHeadSha(empty.task, empty.snapshot), diffHeadSha(empty.task, empty.snapshot))
+  assert.equal(branchHeadSha(task(), null), '')
+})
+
+test('acceptanceHintFor explains the gate for every lifecycle state', () => {
+  assert.equal(acceptanceHintFor(T, 'developing', 0), T.acceptanceHintDeveloping)
+  assert.equal(acceptanceHintFor(T, 'ready', 0), T.acceptanceHintDeveloping)
+  assert.equal(acceptanceHintFor(T, 'merged', 0), T.acceptanceHintMerged)
+  assert.equal(acceptanceHintFor(T, 'merged', 2), '还有 2 个新提交')
+  assert.equal(acceptanceHintFor(T, 'cleaned', 0), T.acceptanceHintClean)
+  assert.equal(acceptanceHintFor(T, 'review', 0), '')
+  assert.equal(acceptanceHintFor(T, 'reviewing', 0), '')
+})
+
+test('mergeSummaryText reports a cleaned worktree', () => {
+  assert.equal(mergeSummaryText(T, { key: 'cleaned', tone: 'neutral' }), T.acceptanceHintClean)
 })

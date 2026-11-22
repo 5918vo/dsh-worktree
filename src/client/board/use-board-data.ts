@@ -11,7 +11,7 @@ import { appCtx, getJson, post, bindSession } from '../context'
 import { visibleProjectViews } from '../board-data'
 import { createPreviewController, previewAppliesTo, shouldPollPreview } from '../merge-preview'
 import { buildHistoryEntries } from '../timeline'
-import { diffHeadSha } from '../model'
+import { branchHeadSha } from '../model'
 import { parseTurnEndHealth, type SessionHealth } from '../task-attention'
 import { findPublishedTask, type PublishCheckInfo } from '../publish-state'
 import type { ProjectView, TaskDiff, TaskView, WorktreeTask } from '../../models'
@@ -342,7 +342,7 @@ export function useBoardData(args: UseBoardDataArgs) {
   const liveValues = live && live.sessionId === liveSessionId ? live.values : null
 
   // Diff is versioned by HEAD, so a commit refresh invalidates the fetched patch.
-  const headSha = selectedTask ? diffHeadSha(selectedTask.task, selectedTask.snapshot) : ''
+  const headSha = selectedTask ? branchHeadSha(selectedTask.task, selectedTask.snapshot) : ''
   React.useEffect(() => {
     if (!selectedTask) { setDiff(null); setDiffError(''); setDiffLoading(false); return }
     let cancelled = false

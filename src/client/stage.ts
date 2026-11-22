@@ -1,7 +1,7 @@
 import { React, h } from './ui'
 import { fmtK, pad2, relTime, taskStamp } from './format'
 import type { TaskDiff, TaskView } from '../models'
-import { criteria, criteriaProgress, boardStatus, boardStatusLabel, diffCount, diffHeadSha, diffLineKind, shortSha, type BoardAction, type BoardCta } from './model'
+import { acceptanceHintFor, criteria, criteriaProgress, boardStatus, boardStatusLabel, diffCount, diffHeadSha, diffLineKind, shortSha, type BoardAction, type BoardCta } from './model'
 import { pendingLabel } from './status'
 import type { SessionHealth } from './task-attention'
 import { fallbackEntries, type TimelineEntry } from './timeline'
@@ -157,6 +157,11 @@ export function Stage(props: StageProps) {
         }, t.codeChanges, h('span', { className: 'dshwd-mono', style: { fontSize: '11px', color: 'var(--text-3)' } }, String(count))))),
 
     h('div', { className: 'dshwd-stage-body' },
+      taskView.snapshot.status === 'reviewing'
+        ? h('div', { className: 'dshwd-notice dshwd-alert dshwd-alert-info', role: 'status' },
+          h('div', { className: 'dshwd-notice-text' },
+            h('div', { className: 'dshwd-hint' }, String(t.reviewDetachedHint).replace('{sha}', shortSha(props.headSha)))))
+        : null,
       props.partial
         ? h('div', { className: 'dshwd-notice dshwd-alert dshwd-alert-warn', role: 'status' },
           h('div', { className: 'dshwd-notice-text' },
@@ -243,6 +248,7 @@ function Overview(props: StageProps) {
   const progressText = progress.missing === 0
     ? String(t.boardCriteriaAllDone)
     : String(t.boardCriteriaProgress).replace('{n}', String(progress.checked)).replace('{total}', String(progress.total))
+  const hint = acceptanceHintFor(t, status, Number(props.taskView.snapshot.postMergeAhead) || 0)
   return h('div', { className: 'dshwd-measure' },
     h('section', { className: 'dshwd-block' },
       h('div', { className: 'dshwd-block-label' }, t.taskDescription),
@@ -266,7 +272,8 @@ function Overview(props: StageProps) {
           : h('div', { key: i, className: 'dshwd-check-item' },
             h('span', { className: 'dshwd-check-box' + (item.checked ? '' : ' dshwd-todo'), 'aria-hidden': 'true' }, item.checked ? '✓' : ''),
             h('span', null, item.text))))
-        : h('div', { className: 'dshwd-hint' }, t.boardNoCriteria)))
+        : h('div', { className: 'dshwd-hint' }, t.boardNoCriteria),
+      hint ? h('div', { className: 'dshwd-hint', style: { marginTop: '6px' } }, hint) : null))
 }
 
 function Live(props: StageProps) {
