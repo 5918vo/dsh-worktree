@@ -547,6 +547,7 @@
   "boardTaskHead": "Task HEAD",
   "boardNoCommitYet": "No commit yet (the agent may still be writing)",
   "boardThemeDark": "Switch to dark",
+  "boardThemeScope": "this panel only",
   "boardThemeLight": "Switch to warm light",
   "boardTitlePlaceholder": "e.g. Fix the redirect after the login session expires",
   "boardWaitingReview": "In review",

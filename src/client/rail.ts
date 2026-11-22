@@ -150,8 +150,13 @@ export function Rail(props: RailProps) {
 
     h('div', { className: 'dshwd-rail-foot' },
       h('span', { className: 'dshwd-mono', style: { fontSize: '11px', color: 'var(--text-3)' } }, `${totalRepos} repos · ${totalTasks} tasks`),
-      h('button', { className: 'dshwd-btn dshwd-btn-ghost', style: { height: '24px', fontSize: '11px' }, onClick: props.onToggleTheme },
-        props.theme === 'dark' ? t.boardThemeLight : t.boardThemeDark)))
+      h('button', {
+        className: 'dshwd-btn dshwd-btn-ghost',
+        style: { height: '24px', fontSize: '11px' },
+        // The switch only restyles this panel; the host chrome keeps its own theme.
+        title: (props.theme === 'dark' ? t.boardThemeLight : t.boardThemeDark) + ' · ' + t.boardThemeScope,
+        onClick: props.onToggleTheme,
+      }, props.theme === 'dark' ? t.boardThemeLight : t.boardThemeDark)))
 }
 
 /** The bar reports every category with a count, even when the list is filtered. */

@@ -104,7 +104,9 @@ export function Stage(props: StageProps) {
     h('div', { className: 'dshwd-topbar' },
       h('div', { className: 'dshwd-topbar-left' },
         props.narrow
-          ? h('button', { className: 'dshwd-btn dshwd-btn-ghost', title: t.backToList, onClick: props.onBackToList || props.onToggleRail }, '‹ ', t.backToList)
+          ? h('button', { className: 'dshwd-btn dshwd-btn-ghost', title: t.backToList, 'aria-label': t.backToList, onClick: props.onBackToList || props.onToggleRail },
+            h('span', { key: 'i', 'aria-hidden': 'true' }, '‹'),
+            h('span', { key: 'l', className: 'dshwd-btn-label' }, t.backToList))
           : h('button', { className: 'dshwd-btn dshwd-btn-ghost', title: t.boardCollapseLeft, onClick: props.onToggleRail }, '◧'),
         h('div', { className: 'dshwd-breadcrumb' },
           h('span', null, props.projectName),
@@ -113,7 +115,9 @@ export function Stage(props: StageProps) {
           h('span', null, '→'),
           h('span', { className: 'dshwd-mono' }, task.baseBranch))),
       h('div', { className: 'dshwd-topbar-right' },
-        h('button', { className: 'dshwd-btn dshwd-btn-ghost', title: t.boardCollapseRight, onClick: props.onToggleInspector }, '◨ ', t.boardInspector))),
+        h('button', { className: 'dshwd-btn dshwd-btn-ghost', title: t.boardCollapseRight, 'aria-label': t.boardInspector, onClick: props.onToggleInspector },
+          h('span', { key: 'i', 'aria-hidden': 'true' }, '◨'),
+          h('span', { key: 'l', className: 'dshwd-btn-label' }, t.boardInspector)))),
 
     h('header', { className: 'dshwd-stage-head' },
       h('div', { className: 'dshwd-stage-title-row' },

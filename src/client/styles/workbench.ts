@@ -96,7 +96,7 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-attbar-warn .dshwd-attbar-icon { color: var(--warn); }
 .dshw-board .dshwd-attbar-error .dshwd-attbar-icon { color: var(--err); }
 .dshw-board .dshwd-attbar-neutral .dshwd-attbar-icon { color: var(--text-3); }
-.dshw-board .dshwd-attbar-text { color: var(--text-1); min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dshw-board .dshwd-attbar-text { color: var(--text-1); min-width: 0; flex: 1 1 200px; white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
 .dshw-board .dshwd-attbar-links { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
 .dshw-board .dshwd-attbar-link { border: 0; background: transparent; padding: 0; color: var(--accent); font-size: 11.5px; font-weight: 600; cursor: pointer; border-radius: 4px; }
 .dshw-board .dshwd-attbar-link:hover { text-decoration: underline; }
@@ -376,6 +376,23 @@ export const WORKBENCH_CSS = `
   .dshw-board .dshwd-live-grid { grid-template-columns: minmax(0,1fr); }
   .dshw-board .dshwd-live-side { border-left: none; border-top: 1px solid var(--line); }
   .dshw-board .dshwd-live-log { max-height: none; }
+}
+@container dshwboard (max-width: 480px) {
+  .dshw-board .dshwd-topbar { padding: 0 10px; gap: 6px; }
+  /* Header buttons keep their glyph only: a wrapped label reads as broken
+     layout at phone width. The full text stays in title/aria-label. */
+  .dshw-board .dshwd-topbar .dshwd-btn { white-space: nowrap; flex: none; height: 30px; }
+  .dshw-board .dshwd-topbar .dshwd-btn-label { display: none; }
+  .dshw-board .dshwd-topbar-left { flex: 1 1 auto; }
+  .dshw-board .dshwd-topbar-right { flex: none; }
+  .dshw-board .dshwd-topbar-count { white-space: nowrap; flex: none; }
+  .dshw-board .dshwd-breadcrumb { flex: 1 1 auto; }
+  .dshw-board .dshwd-stage-head { padding: 10px 12px 0; }
+  .dshw-board .dshwd-stage-title { font-size: 16px; }
+  .dshw-board .dshwd-stage-sub { flex-wrap: wrap; gap: 6px; min-width: 0; }
+  .dshw-board .dshwd-stage-sub > .dshwd-mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dshw-board .dshwd-stage-sub > .dshwd-btn,
+  .dshw-board .dshwd-stage-sub > button { flex: none; }
 }
 ${PANEL_CSS}
 `

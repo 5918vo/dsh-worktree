@@ -547,6 +547,7 @@
   "boardTaskHead": "任务 HEAD",
   "boardNoCommitYet": "尚无提交（Agent 可能还在写）",
   "boardThemeDark": "切换深色",
+  "boardThemeScope": "仅本面板",
   "boardThemeLight": "切换暖浅色",
   "boardTitlePlaceholder": "例如：修复登录态过期后的跳转",
   "boardWaitingReview": "待验收",
