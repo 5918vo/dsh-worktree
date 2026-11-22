@@ -16,6 +16,7 @@ import {
   mergeSummary,
   mergeSummaryText,
   pathPreview,
+  railEmptyKind,
   shortSha,
   themeFor,
   type BoardStatus,
@@ -199,6 +200,21 @@ test('diffLineKind classifies patch lines', () => {
   assert.equal(diffLineKind('+++ b/file'), 'context')
   assert.equal(diffLineKind('--- a/file'), 'context')
   assert.equal(diffLineKind('\\ No newline'), 'muted')
+})
+
+test('railEmptyKind only reports an empty state for an actually empty result', () => {
+  const one = [{ project: { id: 'p1', name: 'repo' }, tasks: [{ task: { id: 't1' } }] }] as any
+  const empty = [] as any
+  // Filtered rows still exist: no empty state may replace them.
+  assert.equal(railEmptyKind(one, one, '', 'all'), '')
+  assert.equal(railEmptyKind(one, one, 'repo', 'all'), '')
+  assert.equal(railEmptyKind(one, one, '', 'review'), '')
+  // Query wins over filter when nothing matched.
+  assert.equal(railEmptyKind(one, empty, ' nope ', 'review'), 'search')
+  assert.equal(railEmptyKind(one, empty, '', 'review'), 'filter')
+  // An all-filter with no rows would mean no projects at all.
+  assert.equal(railEmptyKind(one, empty, '', 'all'), '')
+  assert.equal(railEmptyKind(empty, empty, 'x', 'all'), 'no-projects')
 })
 
 test('mergeSummary maps preview signals to a tone and text', () => {

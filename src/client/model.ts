@@ -163,6 +163,24 @@ export function filterProjectViews(
     .filter((view) => view.tasks.length > 0 || keepEmpty)
 }
 
+/**
+ * Which empty state the rail should show. A search or filter may report no
+ * matches without widening to the generic "no tasks" copy: only an actually
+ * empty filtered list earns an empty state, and the query wins over the filter
+ * because it is the more specific thing the user just typed.
+ */
+export function railEmptyKind(
+  projects: ProjectView[],
+  filtered: ProjectView[],
+  query: string,
+  filter: BoardFilter,
+): '' | 'no-projects' | 'search' | 'filter' {
+  if (!projects.length) return 'no-projects'
+  if (filtered.length) return ''
+  if (String(query || '').trim()) return 'search'
+  return filter === 'all' ? '' : 'filter'
+}
+
 export function criteria(task: WorktreeTask, status: TaskStatus): Array<{ text: string; checked: boolean }> {
   const done = status === 'merged' || status === 'cleaned'
   const marked = new Set(task.checkedCriteria || [])

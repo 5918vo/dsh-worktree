@@ -35,6 +35,7 @@ import {
   boardStatus,
   diffBaseSha,
   filterProjectViews,
+  railEmptyKind,
   themeFor,
   type BoardFilter,
 } from './model'
@@ -384,14 +385,9 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     attentionOf,
     (task: any) => pendingLabel(t, pendingOf(task)),
   )
-  const hasSearch = !!String(query || '').trim()
-  const emptyKind = !views.length
-    ? 'no-projects'
-    : hasSearch
-      ? 'search'
-      : filter !== 'all'
-        ? 'filter'
-        : ''
+  // Only an actually empty result may own the rail; a search or filter that
+  // still matched rows must keep rendering them.
+  const emptyKind = railEmptyKind(views, filtered, query, filter)
 
   const runQuick = (action: QuickAction, tv: TaskView, projectId: string) => {
     if (action === 'handle' || action === 'open-session') {
