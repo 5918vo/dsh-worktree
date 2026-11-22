@@ -1,6 +1,6 @@
 import { h } from './ui'
 import type { TaskView } from '../models'
-import { mergeSummary, mergeSummaryText, shortSha } from './model'
+import { mergeSummaryText, shortSha, taskMergeSummary } from './model'
 import { displayPath, pathParts } from './format'
 import { readLive } from './live-session'
 import { SYNC_BUSY, mergePreviewFiles, mergeRiskChip, previewFilesText, previewNoCheck, syncApplicable } from './review-surfaces'
@@ -45,11 +45,9 @@ export function Inspector(props: InspectorProps) {
   const state = props.previewState || { phase: 'idle' }
   const preview = state.phase === 'ready' ? state.preview : state.previous && state.previous.preview
   const error = state.phase === 'error' ? state.message : ''
-  const merged = snap.status === 'merged' || snap.status === 'cleaned'
+  const merged = (snap.merged === true) || snap.status === 'merged' || (snap.status === 'cleaned' && !!task.mergedAt)
   const cleaned = snap.status === 'cleaned'
-  const summary = merged && !preview && state.phase !== 'checking' && state.phase !== 'error'
-    ? { key: 'merged' as const, tone: 'ok' as const }
-    : mergeSummary(preview, state.phase, error)
+  const summary = taskMergeSummary(snap, task, preview, state.phase, error)
   const dotClass = summary.tone === 'err' ? 'dshwd-text-err' : summary.tone === 'warn' ? 'dshwd-text-warn' : summary.tone === 'ok' ? 'dshwd-text-ok' : 'dshwd-text-muted'
   const dirty = Number(snap.worktree && snap.worktree.dirtyCount) || 0
   const blockers = preview && Array.isArray(preview.blockers) ? preview.blockers : []

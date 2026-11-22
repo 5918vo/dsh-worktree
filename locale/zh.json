@@ -545,6 +545,8 @@
   "boardFollowUp": "派生后续任务",
   "boardCleanup": "清理 Worktree",
   "boardPreviewMerged": "分支已合并，可以清理 worktree。",
+  "boardPreviewCleaned": "worktree 已清理；分支尚未合并，仍保留。",
+  "boardPreviewCleanedMerged": "worktree 已清理；分支已合并。",
   "stashSection": "待处理暂存",
   "stashSourceMerge": "合并前暂存",
   "stashSourceReview": "验收前暂存",

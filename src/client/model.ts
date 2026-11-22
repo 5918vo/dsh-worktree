@@ -225,7 +225,7 @@ export function diffLineKind(line: string): DiffLineKind {
 
 export interface MergeSummary {
   tone: 'idle' | 'ok' | 'warn' | 'err'
-  key: 'idle' | 'checking' | 'error' | 'blocked' | 'conflict' | 'overlap' | 'baseAhead' | 'safe' | 'merged'
+  key: 'idle' | 'checking' | 'error' | 'blocked' | 'conflict' | 'overlap' | 'baseAhead' | 'safe' | 'merged' | 'cleaned' | 'cleanedMerged'
   n?: number
   message?: string
 }
@@ -245,6 +245,22 @@ export function mergeSummary(preview: any, phase: string, errorMessage?: string)
   return { key: 'safe', tone: 'ok' }
 }
 
+/**
+ * Merge-state summary for the inspector. `snap.merged` cannot see a branch that
+ * cleanup already deleted, so the stored `mergedAt` backs it up: a cleaned
+ * worktree whose branch was never merged must not claim it is mergeable.
+ */
+export function taskMergeSummary(snap: any, task: any, preview: any, phase: string, errorMessage?: string): MergeSummary {
+  const status = (snap && snap.status) || ''
+  const cleaned = status === 'cleaned'
+  const merged = !!(snap && snap.merged === true) || status === 'merged' || (cleaned && !!(task && task.mergedAt))
+  if (!preview && phase !== 'checking' && phase !== 'error') {
+    if (cleaned) return merged ? { key: 'cleanedMerged', tone: 'ok' } : { key: 'cleaned', tone: 'warn' }
+    if (merged) return { key: 'merged', tone: 'ok' }
+  }
+  return mergeSummary(preview, phase, errorMessage)
+}
+
 export function mergeSummaryText(t: any, summary: MergeSummary): string {
   switch (summary.key) {
     case 'checking': return t.boardPreviewChecking
@@ -255,6 +271,8 @@ export function mergeSummaryText(t: any, summary: MergeSummary): string {
     case 'baseAhead': return String(t.boardPreviewBaseAhead).replace('{n}', String(summary.n || 0))
     case 'safe': return t.boardPreviewSafe
     case 'merged': return t.boardPreviewMerged
+    case 'cleaned': return t.boardPreviewCleaned
+    case 'cleanedMerged': return t.boardPreviewCleanedMerged
     default: return t.boardPreviewIdle
   }
 }

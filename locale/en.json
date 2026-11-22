@@ -545,6 +545,8 @@
   "boardFollowUp": "Create follow-up",
   "boardCleanup": "Clean up worktree",
   "boardPreviewMerged": "Branch is merged; the worktree can be cleaned up.",
+  "boardPreviewCleaned": "Worktree cleaned; the branch is unmerged and kept.",
+  "boardPreviewCleanedMerged": "Worktree cleaned; the branch is merged.",
   "stashSection": "Pending stashes",
   "stashSourceMerge": "Stashed before merge",
   "stashSourceReview": "Stashed before review",

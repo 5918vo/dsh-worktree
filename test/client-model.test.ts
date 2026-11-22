@@ -18,6 +18,7 @@ import {
   pathPreview,
   railEmptyKind,
   shortSha,
+  taskMergeSummary,
   themeFor,
   type BoardStatus,
 } from '../src/client/model.js'
@@ -215,6 +216,20 @@ test('railEmptyKind only reports an empty state for an actually empty result', (
   // An all-filter with no rows would mean no projects at all.
   assert.equal(railEmptyKind(one, empty, '', 'all'), '')
   assert.equal(railEmptyKind(empty, empty, 'x', 'all'), 'no-projects')
+})
+
+test('taskMergeSummary keeps a cleaned, unmerged branch honest', () => {
+  const t = { ...T, boardPreviewMerged: 'merged', boardPreviewCleaned: 'cleaned', boardPreviewCleanedMerged: 'cleaned+merged' }
+  const unmerged = taskMergeSummary({ status: 'cleaned', merged: false }, { cleanedAt: 1 }, null, 'idle')
+  assert.equal(unmerged.key, 'cleaned')
+  assert.equal(mergeSummaryText(t, unmerged), 'cleaned')
+  // A deleted branch hides the evidence: the stored merge time still counts.
+  const merged = taskMergeSummary({ status: 'cleaned', merged: false }, { mergedAt: 1 }, null, 'idle')
+  assert.equal(merged.key, 'cleanedMerged')
+  assert.equal(mergeSummaryText(t, merged), 'cleaned+merged')
+  // A live merge preview still wins over the stored state.
+  assert.equal(taskMergeSummary({ status: 'review' }, {}, { conflict: true, conflictFiles: ['a'] }, 'ready').key, 'conflict')
+  assert.equal(taskMergeSummary({ status: 'merged', merged: true }, {}, null, 'idle').key, 'merged')
 })
 
 test('mergeSummary maps preview signals to a tone and text', () => {
