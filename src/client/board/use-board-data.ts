@@ -9,7 +9,7 @@
 import { React } from '../ui'
 import { appCtx, getJson, post, bindSession } from '../context'
 import { visibleProjectViews } from '../board-data'
-import { createPreviewController, shouldPollPreview } from '../merge-preview'
+import { createPreviewController, previewAppliesTo, shouldPollPreview } from '../merge-preview'
 import { buildHistoryEntries } from '../timeline'
 import { diffHeadSha } from '../model'
 import { parseTurnEndHealth, type SessionHealth } from '../task-attention'
@@ -367,9 +367,9 @@ export function useBoardData(args: UseBoardDataArgs) {
     previewRef.current = null
     if (!selectedTask) { setPreviewState({ phase: 'idle' }); return }
     const snap = selectedTask.snapshot
-    // Merged/cleaned tasks keep whatever the last review-time preflight said;
-    // drop it so the inspector reports the completed lifecycle instead.
-    if (snap.status === 'merged' || snap.status === 'cleaned') { setPreviewState({ phase: 'idle' }); return }
+    // Cleared/merged tasks drop the review-time preflight, except a merged task
+    // with post-merge commits: its "merge again" action needs a fresh preview.
+    if (!previewAppliesTo(snap.status, snap.postMergeAhead)) { setPreviewState({ phase: 'idle' }); return }
     const controller = createPreviewController({
       taskId: selectedTask.task.id,
       request: (force: boolean) => post('task/merge-preview', { id: selectedTask.task.id, force }).then((r: any) => (r && r.preview) || null),

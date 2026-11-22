@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createPreviewController, shouldPollPreview } from '../src/client/merge-preview'
+import { createPreviewController, previewAppliesTo, shouldPollPreview } from '../src/client/merge-preview'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -126,6 +126,14 @@ test('a plain call while a request is running awaits it instead of starting anot
   await Promise.all([first, second])
   assert.equal(calls, 1)
   assert.equal(controller.getState().phase, 'ready')
+})
+
+test('preview stays relevant for post-merge commits, not for completed lifecycles', () => {
+  assert.equal(previewAppliesTo('review', 0), true)
+  assert.equal(previewAppliesTo('developing', 0), true)
+  assert.equal(previewAppliesTo('merged', 0), false)
+  assert.equal(previewAppliesTo('merged', 2), true)
+  assert.equal(previewAppliesTo('cleaned', 2), false)
 })
 
 test('poll gating stops when nothing is mergeable and resumes for post-merge commits', () => {

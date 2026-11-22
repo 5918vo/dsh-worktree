@@ -23,6 +23,8 @@ export interface StageProps {
   onTab: (tab: BoardTab) => void
   ctas: BoardCta
   disabledActions: Record<string, string | undefined>
+  /** Per-action blockers, already localized, in display order. */
+  actionReasons?: Partial<Record<string, string[]>>
   onAction: (action: BoardAction) => void
   entries: TimelineEntry[]
   entriesReady: boolean
@@ -64,6 +66,33 @@ export function Stage(props: StageProps) {
   const postMerge = postMergeCount(taskView.snapshot)
   const reviewStale = reviewStaleCount(status.key, taskView.snapshot)
   const cleanedNow = taskView.snapshot.status === 'cleaned'
+  // Explain every visible acceptance CTA up front: the buttons stay disabled,
+  // and this list says why. Deduplicate facts that block more than one action
+  // (a dirty worktree blocks both checkout and merge).
+  const blockerTexts: string[] = []
+  const seenBlockers = new Set<string>()
+  const visibleActions: Array<string | null | undefined> = [
+    ctas.primary && ctas.primary.action,
+    ctas.secondary && ctas.secondary.action,
+    postMerge > 0 ? 'merge' : null,
+  ]
+  for (const action of visibleActions) {
+    if (!action) continue
+    const list = props.actionReasons && props.actionReasons[action]
+    if (!Array.isArray(list)) continue
+    for (const text of list) {
+      const value = String(text || '')
+      if (!value || seenBlockers.has(value)) continue
+      seenBlockers.add(value)
+      blockerTexts.push(value)
+    }
+  }
+  const blockers = blockerTexts.length
+    ? h('div', { className: 'dshwd-notice dshwd-alert dshwd-alert-warn', role: 'status' },
+      h('div', { className: 'dshwd-notice-text' },
+        h('div', { className: 'dshwd-notice-title' }, t.boardBlockersTitle),
+        h('ul', { className: 'dshwd-blocker-list' }, blockerTexts.map((text, i) => h('li', { key: i }, text)))))
+    : null
   return h('main', { className: 'dshwd-stage' },
     h('div', { className: 'dshwd-topbar' },
       h('div', { className: 'dshwd-topbar-left' },
@@ -121,6 +150,7 @@ export function Stage(props: StageProps) {
         }, t.codeChanges, h('span', { className: 'dshwd-mono', style: { fontSize: '11px', color: 'var(--text-3)' } }, String(count))))),
 
     h('div', { className: 'dshwd-stage-body' },
+      blockers,
       postMerge > 0
         ? h('div', { className: 'dshwd-notice dshwd-alert dshwd-alert-warn' },
           h('div', { className: 'dshwd-notice-text' },
