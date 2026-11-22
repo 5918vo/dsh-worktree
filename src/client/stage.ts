@@ -1,10 +1,11 @@
 import { React, h } from './ui'
-import { relTime, taskStamp } from './format'
+import { fmtK, pad2, relTime, taskStamp } from './format'
 import type { TaskDiff, TaskView } from '../models'
 import { criteria, boardStatus, boardStatusLabel, diffCount, diffHeadSha, diffLineKind, shortSha, type BoardAction, type BoardCta } from './model'
 import { pendingLabel } from './status'
 import type { SessionHealth } from './task-attention'
-import type { TimelineEntry } from './timeline'
+import { fallbackEntries, type TimelineEntry } from './timeline'
+import { entryTag, entryTitle, liveStatsText, modelLabel, pressurePercent, readLive, stepStatusLabel, tokenSummary } from './live-session'
 
 export type BoardTab = 'overview' | 'live' | 'diff'
 
@@ -24,6 +25,8 @@ export interface StageProps {
   onAction: (action: BoardAction) => void
   entries: TimelineEntry[]
   entriesReady: boolean
+  /** Raw session projections `values` for the selected session, when available. */
+  live?: any
   sessionId: string
   onOpenSession: () => void
   onStartSession: () => void
@@ -170,32 +173,92 @@ function Overview(props: StageProps) {
 function Live(props: StageProps) {
   const { t } = props
   const bodyRef = React.useRef(null)
+  const live = readLive(props.live)
+  const [showAll, setShowAll] = React.useState(false)
+  React.useEffect(() => { setShowAll(false) }, [props.sessionId])
   React.useEffect(() => {
     const el: any = bodyRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [props.entries.length, props.sessionId])
+
+  if (!props.sessionId) {
+    return h('div', { className: 'dshwd-measure' },
+      h('div', { className: 'dshwd-stream' },
+        h('div', { className: 'dshwd-stream-head' }, h('span', { className: 'dshwd-mono' }, 'SESSION · —')),
+        h('div', { className: 'dshwd-empty', style: { minHeight: '160px' } },
+          h('div', { className: 'dshwd-empty-title' }, t.noSession),
+          h('div', { className: 'dshwd-hint' }, t.boardNoSessionHint),
+          h('button', { className: 'dshwd-btn dshwd-btn-cta', onClick: props.onStartSession }, t.startAgent))))
+  }
+
+  // Live projections can lag behind the timeline; fall back to the timeline's
+  // own turn outline so the panel is never blank while data arrives.
+  const history = props.entries.length ? props.entries : fallbackEntries(live ? live.turns : [])
+  const historySteps = new Set(history.map((entry) => entry.stepKey).filter(Boolean)).size
+  const modelText = modelLabel(live && live.model) || history.find((entry) => entry.model)?.model || '—'
+  const statsText = live || historySteps ? liveStatsText(live && live.stats, historySteps, t) : '—'
+  const tokenText = tokenSummary(live && live.tokens, t)
+  const todos = (live && live.todos) || []
+  const pct = pressurePercent(live && live.pressure)
+  const cache = live && live.tokens ? fmtK(live.tokens.cacheReadTokens) : null
+  const RECENT_STEPS = 5
+  const visible = showAll ? history : history.slice(-RECENT_STEPS)
+  const offset = showAll ? 0 : Math.max(0, history.length - RECENT_STEPS)
+
   return h('div', { className: 'dshwd-measure' },
-    h('div', { className: 'dshwd-stream' },
-      h('div', { className: 'dshwd-stream-head' },
-        h('span', { className: 'dshwd-mono' }, `SESSION · ${props.sessionId || '—'}`),
-        props.sessionId
-          ? h('button', { className: 'dshwd-btn dshwd-btn-ghost', style: { height: '22px', fontSize: '11px' }, onClick: props.onOpenSession }, t.boardOpenNative, ' ↗')
-          : null),
-      h('div', { ref: bodyRef, className: 'dshwd-stream-body', style: { maxHeight: '56vh', overflowY: 'auto' } },
-        !props.sessionId
-          ? h('div', { className: 'dshwd-empty', style: { minHeight: '160px' } },
-            h('div', { className: 'dshwd-empty-title' }, t.noSession),
-            h('div', { className: 'dshwd-hint' }, t.boardNoSessionHint),
-            h('button', { className: 'dshwd-btn dshwd-btn-cta', onClick: props.onStartSession }, t.startAgent))
-          : !props.entriesReady
-            ? h('div', { className: 'dshwd-hint' }, t.loading)
-            : props.entries.length
-              ? props.entries.slice(-60).map((entry) => h('div', { className: 'dshwd-log-row', key: entry.id },
-                h('span', { className: 'dshwd-log-tag dshwd-mono' }, entry.kind === 'think' ? 'THINK' : String(entry.kind || 'agent').toUpperCase()),
-                h('div', { className: 'dshwd-log-main' },
-                  h('strong', null, entry.title || '—'),
-                  entry.detail ? h('p', null, entry.detail) : null)))
-              : h('div', { className: 'dshwd-hint' }, t.boardNoActivity))))
+    h('div', { className: 'dshwd-live-bar' },
+      h('span', { className: 'dshwd-live-stat' }, h('span', { className: 'dshwd-live-bar-k' }, t.liveModel), h('strong', { className: 'dshwd-mono', title: modelText }, modelText)),
+      h('span', { className: 'dshwd-live-stat dshwd-mono' }, statsText),
+      tokenText ? h('span', { className: 'dshwd-live-stat dshwd-mono' }, tokenText) : null,
+      h('span', { className: 'dshwd-live-bar-grow' }),
+      history.length > RECENT_STEPS
+        ? h('button', {
+          className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini',
+          onClick: () => setShowAll((v: boolean) => !v),
+        }, showAll ? t.collapseAll : String(t.showRecentSteps).replace('{n}', String(RECENT_STEPS)))
+        : null,
+      h('button', { className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini', onClick: props.onOpenSession }, t.openInSession, ' ↗')),
+
+    h('div', { className: 'dshwd-live-grid' },
+      h('div', { ref: bodyRef, className: 'dshwd-live-log' },
+        !props.entriesReady
+          ? h('div', { className: 'dshwd-hint' }, t.loading)
+          : visible.length
+            ? visible.map((entry, index) => h('details', { key: entry.id || index, className: 'dshwd-step dshwd-step--' + entry.kind },
+              h('summary', { className: 'dshwd-step-head' },
+                h('span', { className: 'dshwd-step-gutter dshwd-mono' }, pad2(offset + index + 1)),
+                h('span', { className: 'dshwd-step-tag' }, entryTag(entry, t)),
+                h('span', { className: 'dshwd-step-title', title: entry.detail || entryTitle(entry, t) }, entryTitle(entry, t)),
+                entry.meta ? h('span', { className: 'dshwd-step-meta dshwd-mono' }, entry.meta) : null,
+                entry.status
+                  ? h('span', {
+                    className: 'dshwd-step-status ' + (entry.status === 'error' ? 'dshwd-text-err' : entry.status === 'running' ? 'dshwd-text-warn' : 'dshwd-text-ok'),
+                  }, stepStatusLabel(entry.status, t))
+                  : null),
+              h('div', { className: 'dshwd-step-body' }, entry.detail || '—')))
+            : h('div', { className: 'dshwd-step' },
+              h('div', { className: 'dshwd-step-head' },
+                h('span', { className: 'dshwd-step-gutter dshwd-mono' }, '—'),
+                h('span', { className: 'dshwd-step-title' }, t.noTurns)))),
+
+      h('div', { className: 'dshwd-live-side' },
+        h('div', { className: 'dshwd-live-side-block' },
+          h('div', { className: 'dshwd-live-side-title' }, t.liveTodos),
+          todos.length
+            ? h('ul', { className: 'dshwd-todo-mini' }, todos.slice(0, 10).map((todo: any, i: number) => {
+              const done = !!todo && todo.status === 'completed'
+              return h('li', { key: i, className: done ? 'dshwd-done' : '' },
+                h('span', { className: 'dshwd-todo-mark', 'aria-hidden': 'true' }, done ? '✓' : ''),
+                h('span', null, String((todo && todo.content) || '')))
+            }))
+            : h('div', { className: 'dshwd-hint' }, '—')),
+        h('div', { className: 'dshwd-live-side-block' },
+          h('div', { className: 'dshwd-live-side-title' }, t.livePressure),
+          h('div', { className: 'dshwd-meter-row' },
+            h('span', { className: 'dshwd-mono' }, pct === null ? '—' : pct + '%'),
+            h('span', { className: 'dshwd-hint' }, cache ? cache + ' ' + t.liveTokensCache : '')),
+          h('div', { className: 'dshwd-meter', role: 'img', 'aria-label': t.livePressure + ' ' + (pct === null ? '—' : pct + '%') },
+            h('i', { style: { width: (pct === null ? 0 : pct) + '%' } }))))))
 }
 
 function Diff(props: StageProps) {
