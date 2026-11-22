@@ -355,6 +355,13 @@ export function PublishModal(props: PublishModalProps) {
         branchInfo.status === 'error'
           ? h('button', { className: 'dshwd-btn', title: t.retry, disabled: busy, onClick: branchInfo.retry }, '↻')
           : null)),
+      hiddenBranches > 0 || showAllBranches
+        ? h('button', {
+          className: 'dshwd-btn dshwd-btn-ghost',
+          disabled: busy,
+          onClick: () => setShowAllBranches((v: boolean) => !v),
+        }, showAllBranches ? t.hideOtherBranches : String(t.showAllBranches).replace('{n}', String(hiddenBranches)))
+        : null,
       branchInfo.status === 'error'
         ? h('div', { className: 'dshwd-hint dshwd-text-warn' }, t.loadBranchesFailed)
         : null,
