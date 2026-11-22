@@ -1,0 +1,278 @@
+/**
+ * Action orchestration hook for the workbench board:
+ * checkout/back switching, preflighted merge, cleanup, delete, stash restore/drop,
+ * archive/unarchive, and native session launching.
+ */
+
+import { getJson, post, postLong } from '../context'
+import { openNativeSession, startTask } from '../actions'
+import type { BoardAction } from '../model'
+import type { ProjectView, TaskView } from '../../models'
+import type { ConfirmState, StashViewState } from './dialogs'
+import type { DemoTab } from '../stage'
+
+export interface UseBoardActionsArgs {
+  t: Record<string, any>
+  remotes: any
+  selectedTask: TaskView | null
+  selectedProjectId: string
+  projectOfTask: ProjectView | null
+  busy: string
+  setBusy: (value: string) => void
+  setConfirm: (state: ConfirmState | null) => void
+  setStashView: (state: StashViewState | null) => void
+  setPartialRestore: (state: { restoreFailed: boolean; reason: string } | null) => void
+  setSelectedTaskId: (id: string) => void
+  setTab: (tab: DemoTab) => void
+  openPublish: (projectId?: string, parentId?: string) => void
+  say: (message: string, error?: boolean) => void
+  refresh: (manual?: boolean) => Promise<void>
+}
+
+export function useBoardActions(args: UseBoardActionsArgs) {
+  const {
+    t,
+    remotes,
+    selectedTask,
+    selectedProjectId,
+    projectOfTask,
+    busy,
+    setBusy,
+    setConfirm,
+    setStashView,
+    setPartialRestore,
+    setSelectedTaskId,
+    setTab,
+    openPublish,
+    say,
+    refresh,
+  } = args
+
+  async function runAct(key: string, fn: () => Promise<any>, success: string) {
+    if (busy) return
+    setBusy(key)
+    try {
+      await fn()
+      say(success)
+    } catch (e: any) {
+      say(String((e && e.message) || t.failed), true)
+    } finally {
+      setBusy('')
+      void refresh()
+    }
+  }
+
+  async function executeSwitch(action: 'checkout' | 'back', strategy: string | undefined, pre: any) {
+    if (!selectedTask) return
+    await postLong(action === 'checkout' ? 'task/checkout' : 'task/back', {
+      id: selectedTask.task.id,
+      strategy,
+      expectedSha: pre && pre.targetSha ? pre.targetSha : undefined,
+    })
+    setConfirm(null)
+    setTab('overview')
+    say(action === 'checkout' ? t.checkoutDone : t.backDone)
+    void refresh()
+  }
+
+  async function runSwitch(action: 'checkout' | 'back') {
+    if (!selectedTask || busy) return
+    setBusy(action)
+    try {
+      const r: any = await post(action === 'checkout' ? 'task/checkout-preflight' : 'task/back-preflight', { id: selectedTask.task.id })
+      const pre = r && r.preflight
+      if (!pre) throw new Error(t.failed)
+      if (pre.safe) {
+        await executeSwitch(action, undefined, pre)
+      } else {
+        const dirty = Number(pre.dirty) || 0
+        setConfirm({
+          title: action === 'checkout' ? t.checkoutTitle : t.backTitle,
+          body: String(t.demoSwitchDirty).replace('{n}', String(dirty)),
+          label: action === 'checkout' ? t.checkout : t.back,
+          run: () => executeSwitch(action, 'stash', pre),
+        })
+      }
+    } catch (e: any) {
+      say(String((e && e.message) || t.failed), true)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function runMerge() {
+    if (!selectedTask || busy) return
+    const snap = selectedTask.snapshot
+    const curOnBase = snap.repo.currentBranch === selectedTask.task.baseBranch
+    setBusy('merge-pre')
+    try {
+      const r: any = await post('task/merge-preflight', { id: selectedTask.task.id, switchToBase: !curOnBase, restoreAfter: true })
+      const pf = r && r.preflight
+      if (!pf) throw new Error(t.failed)
+      if (!pf.canMerge) {
+        const first = (pf.blockers || [])[0]
+        throw new Error((first && first.message) || t.failed)
+      }
+      const task = selectedTask.task
+      setConfirm({
+        title: String(t.mergeTitle).replace('{base}', task.baseBranch),
+        body: String(t.demoMergeConfirm).replace('{branch}', task.branch).replace('{base}', task.baseBranch),
+        label: t.mergeConfirm,
+        danger: true,
+        run: async () => {
+          // The merge must lock exactly the tips the preflight inspected; the
+          // cached preview may be older than this preflight result.
+          const res: any = await postLong('task/merge', {
+            id: task.id,
+            switchToBase: !curOnBase,
+            restoreTo: true,
+            dirtyStrategy: 'refuse',
+            expectedTip: pf.tipSha || undefined,
+            expectedBase: pf.baseSha || undefined,
+          })
+          setConfirm(null)
+          setPartialRestore(res && res.partial && res.partial.restoreFailed ? res.partial : null)
+          say(String(t.mergeDone).replace('{base}', task.baseBranch))
+          void refresh()
+        },
+      })
+    } catch (e: any) {
+      say(String((e && e.message) || t.failed), true)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  function runCleanup() {
+    if (!selectedTask || busy) return
+    const taskId = selectedTask.task.id
+    const dirty = Number(selectedTask.snapshot.worktree && selectedTask.snapshot.worktree.dirtyCount) || 0
+    setConfirm({
+      title: t.cleanup,
+      body: t.demoCleanupConfirm,
+      label: t.cleanup,
+      danger: true,
+      checks: [
+        { key: 'force', label: t.force, hint: t.cleanupForceHint, disabled: dirty === 0 },
+        { key: 'deleteBranch', label: t.deleteBranch, hint: t.cleanupBranchHint },
+        { key: 'forceDeleteBranch', label: t.forceDeleteBranch, hint: t.forceDeleteBranchHint, dependsOn: 'deleteBranch' },
+      ],
+      run: async (values) => {
+        await postLong('task/cleanup', {
+          id: taskId,
+          force: !!values.force,
+          deleteBranch: !!values.deleteBranch,
+          forceDeleteBranch: !!values.deleteBranch && !!values.forceDeleteBranch,
+        })
+        say(values.deleteBranch ? t.cleanupDoneBranch : t.cleanupDone)
+        void refresh()
+      },
+    })
+  }
+
+  function runDeleteTask() {
+    if (!selectedTask || busy) return
+    const task = selectedTask.task
+    const cleaned = selectedTask.snapshot.status === 'cleaned'
+    setConfirm({
+      title: t.deleteTaskTitle,
+      body: cleaned ? t.demoDeleteConfirmCleaned : t.demoDeleteConfirm,
+      label: t.deleteRecordConfirm,
+      danger: true,
+      run: async () => {
+        await post('task/delete', { id: task.id })
+        setSelectedTaskId('')
+        setPartialRestore(null)
+        say(t.recordDeleted)
+        void refresh()
+      },
+    })
+  }
+
+  function runMergeRestore() {
+    if (!selectedTask || busy) return
+    const id = selectedTask.task.id
+    setBusy('merge-restore')
+    postLong('task/merge-restore', { id })
+      .then(() => {
+        setPartialRestore(null)
+        say(t.restoreOriginalBranch)
+      })
+      .catch((e: any) => say(String((e && e.message) || t.failed), true))
+      .finally(() => { setBusy(''); void refresh() })
+  }
+
+  const applyStash = (sha: string) => {
+    if (!selectedTask || busy) return
+    const id = selectedTask.task.id
+    void runAct('stash-apply', () => postLong('task/stash', { id, sha }), t.stashRestored)
+  }
+
+  const dropStash = (sha: string) => {
+    if (!selectedTask || busy) return
+    const id = selectedTask.task.id
+    setConfirm({
+      title: t.stashDrop,
+      body: t.demoStashDropConfirm,
+      label: t.stashDrop,
+      danger: true,
+      run: async () => {
+        await postLong('task/stash', { id, sha, action: 'drop' })
+        say(t.stashDropped)
+        void refresh()
+      },
+    })
+  }
+
+  const viewStash = async (sha: string) => {
+    if (!selectedTask) return
+    setStashView({ sha, patch: '', loading: true, error: '' })
+    try {
+      const d: any = await getJson('task/stash-diff?id=' + encodeURIComponent(selectedTask.task.id) + (sha ? '&sha=' + encodeURIComponent(sha) : ''))
+      setStashView({ sha, patch: String((d && d.patch) || ''), loading: false, error: '' })
+    } catch (e: any) {
+      setStashView({ sha, patch: '', loading: false, error: String((e && e.message) || t.failed) })
+    }
+  }
+
+  function runAction(action: BoardAction) {
+    if (!selectedTask) return
+    const task = selectedTask.task
+    const projectName = projectOfTask ? projectOfTask.project.name : ''
+    if (action === 'merge') { void runMerge(); return }
+    if (action === 'checkout' || action === 'back') { void runSwitch(action); return }
+    if (action === 'cleanup') { runCleanup(); return }
+    if (action === 'continue') { openPublish(task.projectId || selectedProjectId, task.id); return }
+    if (action === 'open') { if (!task.sessionId || !openNativeSession(task.sessionId)) say(t.openSessionFailed, true); return }
+    if (action === 'logs') { setTab('live'); return }
+    if (action === 'create' || action === 'start' || action === 'retry') {
+      if (!remotes) { say(t.failed, true); return }
+      setBusy(action)
+      startTask(remotes, task, projectName)
+        .then(() => { say(action === 'create' ? t.sessionCreated : t.sessionStarted); setTab('live'); void refresh() })
+        .catch((e: any) => say(String((e && e.message) || t.openSessionFailed), true))
+        .finally(() => setBusy(''))
+    }
+  }
+
+  function archiveTask(archived: boolean) {
+    if (!selectedTask || busy) return
+    const id = selectedTask.task.id
+    void runAct(
+      archived ? 'unarchive' : 'archive',
+      () => postLong(archived ? 'task/unarchive' : 'task/archive', { id }),
+      archived ? t.unarchiveDone : t.archiveDone,
+    )
+  }
+
+  return {
+    runAction,
+    runCleanup,
+    runDeleteTask,
+    runMergeRestore,
+    applyStash,
+    dropStash,
+    viewStash,
+    archiveTask,
+  }
+}

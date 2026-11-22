@@ -1,13 +1,20 @@
 import type { ProjectView, TaskDiff, TaskSnapshot, TaskStatus, TaskView, WorktreeTask } from '../models'
 
-export type DemoFilter = 'all' | 'review' | 'developing'
-export type DemoTheme = 'dark' | 'light'
+export type BoardFilter = 'all' | 'review' | 'developing'
+export type BoardTheme = 'dark' | 'light'
 
-export interface DemoStatus {
+/** @deprecated Prefer BoardFilter. */
+export type DemoFilter = BoardFilter
+/** @deprecated Prefer BoardTheme. */
+export type DemoTheme = BoardTheme
+
+export interface BoardStatus {
   key: 'ready' | 'developing' | 'running' | 'review' | 'reviewing' | 'merged' | 'cleaned' | 'broken'
   dot: 'ready' | 'developing' | 'review' | 'merged' | 'broken'
   chip: '' | 'warn' | 'accent' | 'ok' | 'err'
 }
+/** @deprecated Prefer BoardStatus. */
+export type DemoStatus = BoardStatus
 
 const STATUS: Record<TaskStatus, DemoStatus> = {
   ready: { key: 'ready', dot: 'ready', chip: '' },
@@ -40,7 +47,7 @@ export function demoStatusLabel(t: any, status: DemoStatus): string {
   }
 }
 
-export type DemoAction =
+export type BoardAction =
   | 'merge'
   | 'checkout'
   | 'back'
@@ -53,10 +60,15 @@ export type DemoAction =
   | 'retry'
   | 'none'
 
-export interface DemoCta {
-  secondary?: { action: DemoAction; label: string }
-  primary: { action: DemoAction; label: string; disabled?: boolean }
+/** @deprecated Prefer BoardAction. */
+export type DemoAction = BoardAction
+
+export interface BoardCta {
+  secondary?: { action: BoardAction; label: string }
+  primary: { action: BoardAction; label: string; disabled?: boolean }
 }
+/** @deprecated Prefer BoardCta. */
+export type DemoCta = BoardCta
 
 /** Exact demo CTA copy and action for a task. */
 export function demoCta(status: DemoStatus, hasSession: boolean): DemoCta {

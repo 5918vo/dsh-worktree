@@ -1,7 +1,7 @@
 import { initPrimitives, initReact, React, h } from './client/ui'
 import { setAppCtx } from './client/context'
 import { FALLBACK, pickDict } from './client/i18n'
-import { DemoBoardIcon, DemoBoardPage } from './client/board'
+import { WorkbenchBoardIcon, WorkbenchBoardPage } from './client/board'
 import { SettingsPage } from './client/settings-page'
 
 export const MODULE_ID = '@5318vo/dsh-worktree'
@@ -65,8 +65,8 @@ export function factory(require: Req) {
           }
         }
         reg('settings.section', () => ctx.slots.register({ name: 'settings.section', id: 'deepseek-worktree-settings', order: 61, label: dict.title }, withT(SettingsPage)))
-        reg('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: 'worktree-board', order: 41, label: dict.title }, withT(DemoBoardIcon)))
-        reg('main', function* () { yield ctx.slots.register({ name: 'main', key: 'worktree-board', label: dict.title }, withT(DemoBoardPage)) })
+        reg('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: 'worktree-board', order: 41, label: dict.title }, withT(WorkbenchBoardIcon)))
+        reg('main', function* () { yield ctx.slots.register({ name: 'main', key: 'worktree-board', label: dict.title }, withT(WorkbenchBoardPage)) })
         return () => {
           for (const off of offs) {
             try {
