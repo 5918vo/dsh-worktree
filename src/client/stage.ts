@@ -30,6 +30,12 @@ export interface StageProps {
   criteriaBusy?: boolean
   /** Toggle one acceptance criterion; omitted keeps the checklist read-only. */
   onToggleCriterion?: (text: string, checked: boolean) => void
+  /** Copy the acceptance report; omitted hides the entry (SSR / tests). */
+  onCopyReport?: () => void
+  /** Download the acceptance report as `.md`; omitted hides the entry. */
+  onDownloadReport?: () => void
+  /** A report action is in flight; both report buttons stay disabled. */
+  reportBusy?: boolean
   entries: TimelineEntry[]
   entriesReady: boolean
   /** Raw session projections `values` for the selected session, when available. */
@@ -254,7 +260,29 @@ function Overview(props: StageProps) {
       h('div', { className: 'dshwd-block-label' }, t.taskDescription),
       h('div', { className: 'dshwd-prose' }, props.taskView.task.description || '—')),
     h('section', { className: 'dshwd-block' },
-      h('div', { className: 'dshwd-block-label' }, items.length ? `${t.acceptanceCriteria} · ${progressText}` : t.acceptanceCriteria),
+      h('div', { className: 'dshwd-block-head' },
+        h('div', { className: 'dshwd-block-label' }, items.length ? `${t.acceptanceCriteria} · ${progressText}` : t.acceptanceCriteria),
+        props.onCopyReport || props.onDownloadReport
+          ? h('div', { className: 'dshwd-block-actions' },
+            props.onCopyReport
+              ? h('button', {
+                type: 'button',
+                className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini',
+                disabled: !!props.reportBusy,
+                title: props.reportBusy ? t.working : t.reportCopy,
+                onClick: props.onCopyReport,
+              }, t.reportCopy)
+              : null,
+            props.onDownloadReport
+              ? h('button', {
+                type: 'button',
+                className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini',
+                disabled: !!props.reportBusy,
+                title: props.reportBusy ? t.working : t.reportDownload,
+                onClick: props.onDownloadReport,
+              }, t.reportDownload)
+              : null)
+          : null),
       items.length
         ? h('div', { className: 'dshwd-check-list' }, items.map((item, i) => toggle
           ? h('button', {

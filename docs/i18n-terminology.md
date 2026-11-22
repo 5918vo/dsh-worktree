@@ -10,6 +10,9 @@
 | --- | --- | --- | --- |
 | 验收（动作/流程） | 验收 | review / acceptance | 动作「验收」用 review（如 `reviewing` 验收中）；「验收标准」固定 acceptance criteria |
 | 验收标准 | 验收标准 | acceptance criteria | `acceptanceCriteria` / `acceptanceLibrary` |
+| 验收报告 | 验收报告 | acceptance report | `reportTitle`（“验收报告：{title}” / "Acceptance report: {title}"）；导出文件 `acceptance-<id8>-<YYYYMMDD>-<HHmm>.md` |
+| 复制报告 | 复制报告 | Copy report | `reportCopy`；成功 `reportCopied` |
+| 下载 .md | 下载 .md | Download .md | `reportDownload`；成功 `reportDownloaded`，失败统一 `reportFailed` |
 | 待验收 | 待验收 | Ready for review | `review`（任务状态）；统计 `reviewTasks` 同为 "Ready for review" |
 | 待处理 | 待处理 | pending | 待审批/计划待审/待回答统称 pending |
 | 待审批 | 待审批 | Waiting approval | `pendingApproval` |
@@ -37,6 +40,7 @@
 ## 3. 占位符规则
 
 - 插值一律使用 `{n}`（数量）、`{name}`、`{base}`、`{branch}`、`{files}` 等具名占位符。
+- 验收报告使用 `{title}`（任务标题）、`{n}`/`{total}`（已核对 / 总数）、`{files}`/`{add}`/`{del}`（文件数与行数），中英两侧集合必须一致。
 - `duration` 从历史 `{s}` 统一为 `{n}`（代码已同步替换逻辑，避免插值失败）。
 - 任何模板必须同时在中英两边保留相同占位符集合。
 

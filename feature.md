@@ -1,208 +1,267 @@
-# 功能说明：验收清单逐项勾选
+# 功能说明：验收报告复制与下载
 
 - 日期：2026-11-22
-- 目标版本：1.10.0
+- 目标版本：1.11.0
 - 状态：待验收（随本 PR 提交）
-- 涉及模块：任务模型 / Store / Runtime / HTTP API / 工作台 Stage / 合并确认 / 文案与样式
+- 涉及模块：客户端报告生成 / 任务概览交互 / 文案 / 测试 / 文档
 
 ## 1. 一句话概述
 
-把「验收标准」从发布时录入的一段只读文字，变成验收阶段可以逐项勾选、带进度、可持久化的核对清单，并在合并确认时提示尚未核对的项。
+把任务详情里已经可勾选的验收清单、提交记录和改动统计，一键整理成一份 Markdown 验收报告，可复制到剪贴板或下载为 `.md` 文件。
 
 ## 2. 背景与问题
 
-发布任务时，用户可以从验收标准库勾选或手动补充 `acceptanceCriteria`。这些标准目前只有两个作用：
+1.10.0 让验收标准可以逐项勾选，任务记录里已经同时保存了「标准是什么」和「核对到哪一步」。但这些信息仍然只存在于工作台内部：
 
-1. 发布弹窗里录入；
-2. 任务详情「概览」中展示，且只在任务**已合并 / 已清理**后统一显示为完成（`src/client/model.ts` 的 `criteria()`）。
+- **验收结果带不走**：要把验收结论发到 PR、issue、群聊或交接文档，用户只能手工复制标题、分支、提交和文件列表，过程繁琐且容易漏项。
+- **合并前的判断难以复盘**：合并确认弹窗会提示未核对项，但合并完成后没有一个稳定的文本快照，事后无法快速回答「当时按什么标准验收、核对了多少、改了哪些文件」。
+- **报告格式取决于个人**：不同用户整理的验收信息结构不一致，评审者需要反复确认信息是否齐全。
 
-这带来三个实际问题：
-
-- **验收标准与验收动作脱节**：真正进入 `review` 状态验收时，清单仍然是只读的，用户无法记录「这一条我核对过了」。
-- **合并前没有遗漏提醒**：任务可以在清单一项未核对的情况下直接合并，验收标准无法起到把关作用。
-- **核对过程落在产品之外**：用户只能另开文档或凭记忆逐条检查，任务结束后也看不出当时核对到什么程度。
-
-验收标准是本插件「发布 → 开发 → 验收 → 合并」闭环里唯一描述“什么算完成”的数据，却恰好是闭环中唯一没有交互的一环。
+验收标准、勾选状态、提交列表和逐文件统计都已经在客户端内存里（任务快照 + 已加载的 diff），只差一个把它们组织成可交付文本的出口。
 
 ## 3. 功能说明
 
-### 3.1 逐项勾选
+### 3.1 报告入口
 
-- 任务详情「概览」中的每条验收标准变为可点击的复选项。
-- 点击一次标记为已核对，再点一次取消；状态立即持久化，刷新页面、重启 DSH、换端口打开都不丢失。
-- 任务已合并 / 已清理时，清单保持只读并显示为全部完成（沿用现有语义，避免历史任务出现“未完成”的误导）。
-- 正在执行验收切换、合并等操作时，勾选按钮禁用，避免与工作区操作并发。
+- 任务详情「概览」标签的「验收标准」分区标题右侧新增两个操作：
+  - **复制报告**：把 Markdown 文本写入剪贴板，成功后 Toast 提示；剪贴板权限不可用时回退到隐藏 `textarea` 复制，仍失败则给出错误提示。
+  - **下载 .md**：通过 `Blob` + 临时 `<a download>` 下载 Markdown 文件，成功后 Toast 提示。
+- 两个操作对所有状态的任务可用（待开始、进行中、待验收、已合并、已清理、异常），方便在任意阶段导出当前记录。
+- 任一 Git 操作或验收勾选进行中时按钮禁用，避免与工作区操作并发造成快照不一致。
+- 按钮是原生 `button`，有可见焦点环和可读文案，键盘可直接操作。
 
-### 3.2 进度展示
+### 3.2 报告内容
 
-- 「验收标准」分区标题显示进度，例如 `验收标准 · 2/4`；全部核对后显示完成态。
-- 合并确认弹窗新增一行「验收标准」进度；仍有未核对项时明确提示数量，但不阻止合并（是否合并由用户决定）。
+报告使用当前界面语言（中文 / English）生成，结构固定：
 
-### 3.3 数据与接口
+```markdown
+# 验收报告：<任务标题>
 
-- 任务记录新增可选字段 `checkedCriteria?: string[]`，保存已核对的标准文本。标准本身仍以 `acceptanceCriteria` 为准，勾选状态按文本取交集，天然容忍未来标准被移除。
-- Store 新增原子方法 `setCriterionChecked(taskId, text, checked)`：在跨进程账本锁内读取最新任务、校验标准存在、更新并落盘，避免两个 DSH 进程同时勾选时互相覆盖。
-- Runtime 新增 `setCriterionChecked(id, text, checked)`：校验参数并把 Store 的结果翻译成 `404`（任务不存在）或 `400`（该任务没有这条标准）。
-- 新增 HTTP 路由 `POST /dsh-worktree/api/task/criteria`，请求体 `{ id, text, checked }`，沿用 `task/*` 的 token 校验与统一响应（返回最新 `view`）。
+- 项目：<项目名>
+- 任务分支：`<branch>`
+- 基线分支：`<baseBranch>`
+- 状态：<状态文案>
+- 任务 HEAD：`<sha>`
+- 合并提交：`<sha>`（已合并时有）
+- 会话：`<sessionId>`（已绑定时有）
+- 生成时间：2026-11-22 20:30
 
-### 3.4 交互与可访问性
+## 任务描述
+<description>
 
-- 复选项使用 `button` + `role="checkbox"` + `aria-checked`，保留键盘 Tab / Space 操作与可见焦点环。
-- 文案同时加入 `locale/zh.json` 与 `locale/en.json`，不引入第二份字典。
-- 样式只改看板作用域（`src/client/styles/workbench.ts`），复用现有 `--ok` / `--accent` / `--line-strong` token，明暗主题一致。
+## 验收标准
+- [x] 已核对的标准
+- [ ] 未核对的标准
+进度：已核对 1/2
+
+## 提交
+- `abc1234` 提交标题
+
+## 改动文件
+| 文件 | 变更 | + | - |
+| --- | --- | --- | --- |
+| `src/a.ts` | 修改 | 10 | 2 |
+合计：1 个文件，+10 -2
+
+## 工作区
+- 未提交改动：0
+- 待恢复暂存：0
+```
+
+规则：
+
+- 验收标准最多原样列全，`checkedCriteria` 与当前标准取交集；已合并 / 已清理任务沿用概览页语义，显示为全部完成，避免报告与界面互相矛盾。
+- 任务没有验收标准时写「暂无验收标准」，不输出空列表。
+- 提交列表使用任务快照中的领先提交；没有提交时写「暂无提交」。提交标题中的换行压成空格，保证一行一个条目。
+- 改动文件表只列路径、变更类型和增删行数，**不包含 diff 正文**：报告保持可读、体量可控，也避免把大段代码或敏感内容复制到外部。
+- 文件路径中的 `|`、换行按 Markdown 表格规则转义；路径使用反引号包裹。
+- diff 被截断时追加说明；worktree 已清理、找不到合并基点或读取失败时，仍生成其余部分，并在「改动文件」处写明不可用原因。
+- 报告末尾附工作区状态：未提交改动数量、待恢复暂存数量，便于评审者判断验收时工作区是否干净。
+
+### 3.3 文件命名
+
+```text
+acceptance-<id8>-<YYYYMMDD>-<HHmm>.md
+```
+
+- `id8` 为任务 UUID 去掉连字符后的前 8 位。
+- 时间取浏览器本地时间，补零；文件名只含 ASCII 字母、数字和连字符，兼容 Windows / macOS。
+- 同一分钟内重复下载会覆盖同名文件，由浏览器自行处理；报告内容以生成时刻为准。
+
+### 3.4 数据来源与边界
+
+- 完全在客户端生成，不新增 HTTP 路由、不写任务记录、不触发 Git 操作。
+- 使用当前已加载的任务快照和 diff；打开任务后 diff 已由现有逻辑预取，点击报告按钮时不需要额外等待。
+- 任务 HEAD 复用 `branchHeadSha()`：验收中固定为 `reviewSha`，其余状态取分支尖端，和 Stage 标题显示一致。
+- 状态文案复用看板状态映射；运行中的任务显示为「执行中」，其余按生命周期状态显示。
 
 ## 4. 为什么现在做
 
-- **闭环成本最低**：数据字段、发布入口、展示位置都已存在，只差“可写 + 进度 + 提醒”，不需要新页面或新概念。
-- **收益直接**：它把“验收标准”从说明文字变成可执行动作，直接作用在每天最高频的验收 / 合并路径上。
-- **风险可控**：只新增可选字段和一条 POST 路由，不改状态机、不改 Git 操作、不改合并门禁；旧任务记录无需迁移。
-- **符合现有加固方向**：勾选写入走 Store 锁，与 1.9.3 的跨进程账本、原子会话绑定保持一致。
+- **承接 1.10.0 的验收闭环**：勾选让标准可执行，报告让执行结果可交付，两步合起来才构成完整的验收记录。
+- **成本最低**：所有数据已在客户端，新增的是一个纯函数和两个按钮，不需要新 API、新存储或迁移。
+- **收益直接**：复制一次即可粘贴到 PR 描述、issue、群聊或交接文档，省掉人工整理标题、分支、提交和文件列表。
+- **风险可控**：不改状态机、不改 Git 操作、不改权限；报告失败不影响任务本身。
 
 ## 5. 预期效果
 
 | 维度 | 预期 |
 | --- | --- |
-| 验收完整性 | 用户在合并前能看到“还有几项没核对”，减少漏验收 |
-| 可追溯性 | 任务记录保留核对结果，事后能回答“当时按什么标准验收的” |
-| 使用率 | 验收标准不再是一次性输入，发布时填写标准的动机更强 |
-| 操作成本 | 每次核对一次点击，无额外弹窗、无额外页面 |
+| 验收记录 | 合并前后都能一键导出结构化验收信息 |
+| 沟通成本 | 评审者不必追问分支、提交和改动范围 |
+| 可追溯性 | 报告包含核对进度与工作区状态，能回答「当时怎么验收的」 |
+| 操作成本 | 两次点击内完成复制或下载，无弹窗、无新页面 |
 
-定性目标：让「验收标准」成为验收动作的一部分，而不是发布表单里的装饰项。
+定性目标：让验收结果从「界面里的状态」变成「可以带走的交付物」。
 
 ## 6. 收益
 
-- **对用户**：验收时不用另开清单；合并前有一次明确的遗漏提示；历史任务可回看核对状态。
-- **对团队 / 评审者**：验收标准与勾选结果随任务记录保存，评审时能区分“标准是什么”和“核对到哪一步”。
-- **对插件**：补上验收闭环的最后一段交互；为后续“合并门禁可配置”“验收报告导出”留下数据基础。
-- **对维护者**：改动集中在模型、Store、一条路由和一个组件，测试面清晰，回滚只需移除字段与路由。
+- **对用户**：验收完成后直接复制报告，粘贴到 PR / issue / 交接文档，不用手抄。
+- **对团队 / 评审者**：报告结构统一，包含标准、进度、提交、改动文件和工作区状态，评审信息一次齐全。
+- **对插件**：补上验收闭环的「导出」一环；为后续服务端报告接口、报告模板和验收报告归档留下纯函数基础。
+- **对维护者**：改动集中在客户端一个新模块、两个按钮和文案，测试以纯函数为主，回滚只需移除入口和模块。
 
 ## 7. 实现方案
 
-### 7.1 数据模型（`src/models.ts`）
+### 7.1 新增 `src/client/report.ts`
+
+导出：
 
 ```ts
-/** 已核对的验收标准文本；与 acceptanceCriteria 取交集后展示。 */
-checkedCriteria?: string[]
+export interface ReportInput {
+  task: WorktreeTask
+  snapshot: TaskSnapshot
+  diff: TaskDiff | null
+  projectName: string
+  statusLabel: string
+  t: Record<string, any>
+  now?: number
+}
+
+export function reportFilename(task: WorktreeTask, now?: number): string
+export function buildAcceptanceReport(input: ReportInput): string
 ```
 
-### 7.2 Store（`src/store.ts`）
+要求：
 
-新增并导出结果类型：
+- `buildAcceptanceReport` 是纯函数，不访问 DOM、不发请求，便于单测。
+- 复用 `src/client/model.ts` 的 `criteria()`、`criteriaProgress()`、`branchHeadSha()`。
+- 复用 `src/client/format.ts` 的 `pad2()`；新增内部 `mdCell()` / `mdInline()` 处理表格转义。
+- 状态文案由调用方传入，避免在报告模块里重复状态映射。
+- diff 不可用原因由 `TaskDiff.reason` 映射到文案 key；未知原因回退到通用失败文案。
+
+### 7.2 `src/client/stage.ts`
+
+- `StageProps` 新增：
 
 ```ts
-export type CriterionResult =
-  | { ok: true; task: WorktreeTask }
-  | { ok: false; reason: 'missing' | 'unknown' }
+onCopyReport?: () => void
+onDownloadReport?: () => void
+reportBusy?: boolean
 ```
 
-`setCriterionChecked(taskId, text, checked)`：
+- 「验收标准」分区标题改为左右布局：左侧保留「验收标准 · 进度」，右侧渲染两个 ghost mini 按钮（复制报告 / 下载 .md）；回调缺失时不渲染按钮（保持 SSR / 测试兼容）。
+- 按钮在 `reportBusy` 时禁用，`title` 使用现有 `t.working`。
+- 新增样式类 `.dshwd-block-head` / `.dshwd-block-actions`，只改 `src/client/styles/workbench.ts`，复用现有间距和按钮类。
 
-1. `withLock` + `refreshTasks()`；
-2. 任务不存在 → `missing`；
-3. `normalizeCriteria(task.acceptanceCriteria)` 不包含 `text` → `unknown`；
-4. 用 `Set` 增删后按原标准顺序写回 `checkedCriteria`（只保留仍存在的标准）；
-5. `saveTasks()`，返回最新任务。
+### 7.3 `src/client/board/use-board-actions.ts`
 
-### 7.3 Runtime（`src/runtime/lifecycle.ts`、`src/runtime.ts`）
+新增 `runCopyReport` / `runDownloadReport`：
 
-- `setCriterionChecked(ctx, id, text, checked)`：
-  - 空文本 → `TaskError('验收标准不能为空')`；
-  - Store 返回 `missing` → `TaskError('任务不存在：<id>', 404)`；
-  - Store 返回 `unknown` → `TaskError('该任务没有这条验收标准', 400, 'unknown-criterion')`。
-- `Runtime` 暴露同名方法，供 HTTP 路由调用。
+1. `busy` 时直接返回；`setBusy('report')`。
+2. 用 `selectedTask`、`diff`、`projectOfTask`、`statusLabel` 调用 `buildAcceptanceReport`。
+3. 复制：`copyText(markdown)`；失败抛错。
+4. 下载：`Blob` + `URL.createObjectURL` + 临时 `<a>`，`download=reportFilename(...)`；结束后 `revokeObjectURL`。
+5. 成功 / 失败用 `say()` 提示；`finally` 清 busy。
 
-### 7.4 HTTP（`src/http.ts`）
+`UseBoardActionsArgs` 新增 `diff: TaskDiff | null` 与 `statusLabel: string`。
 
-在现有 `act(...)` 注册区新增：
+### 7.4 `src/client/board.ts`
+
+- 把 `data.diff` 和已计算的状态文案传入 `useBoardActions`。
+- 给 `Stage` 接线：
 
 ```ts
-act('criteria', async (id, body) =>
-  app.runtime.setCriterionChecked(id, String(body.text || ''), body.checked === true))
+reportBusy: busy === 'report',
+onCopyReport: actions.runCopyReport,
+onDownloadReport: actions.runDownloadReport,
 ```
 
-### 7.5 客户端派生（`src/client/model.ts`）
+- 状态文案使用 `boardStatusLabel(t, status)`，与 Stage 标题 chip 保持一致。
 
-`criteria(task, status)`：
+### 7.5 文案
 
-- `merged` / `cleaned` → 全部 `checked: true`（保持现状）；
-- 其他状态 → `checked: (task.checkedCriteria || []).includes(text)`。
+`locale/zh.json`、`locale/en.json` 同步新增（key 集合必须一致）：
 
-新增纯函数 `criteriaProgress(items)` 返回 `{ checked, total, missing }`，供概览与合并确认共用。
+- 入口与结果：`reportCopy`、`reportDownload`、`reportCopied`、`reportDownloaded`、`reportFailed`
+- 报告字段：`reportTitle`、`reportProject`、`reportTaskBranch`、`reportBaseBranch`、`reportStatus`、`reportHead`、`reportMergedCommit`、`reportSession`、`reportGeneratedAt`、`reportCommits`、`reportNoCommits`、`reportFiles`、`reportFile`、`reportChange`、`reportTotals`、`reportNoFiles`、`reportProgress`、`reportWorkspace`、`reportUncommitted`、`reportStashes`、`reportTruncated`
+- 文件变更类型：`reportStatusAdded`、`reportStatusModified`、`reportStatusDeleted`、`reportStatusRenamed`、`reportStatusUntracked`
+- diff 不可用：`reportNoDiff`、`reportDiffWorktreeMissing`、`reportDiffNoMergeBase`、`reportDiffError`
 
-### 7.6 工作台（`src/client/stage.ts`、`src/client/board.ts`、`src/client/board/use-board-actions.ts`）
+占位符沿用 `{n}`、`{total}` 约定；`reportTotals` 同时包含文件数、增、删三个占位符。
 
-- `StageProps` 新增 `criteriaBusy?: boolean` 与 `onToggleCriterion?: (text, checked) => void`。
-- `Overview`：可交互状态下把每条标准渲染为 `button[role=checkbox]`；只读状态保持现有静态勾选样式；标题带进度。
-- `board.ts` 接线：`criteriaBusy: busy === 'criteria'`，`onToggleCriterion: actions.runCriterion`。
-- `useBoardActions` 新增 `runCriterion(text, checked)`：`setBusy('criteria')` → `post('task/criteria', ...)` → 失败 Toast → `finally` 清 busy 并 `refresh()`；成功不弹 Toast，避免逐项勾选时刷屏。
-- `runMerge`：在确认详情中加入验收清单进度；有未核对项时在 `body` 追加提示（不阻止合并）。
+### 7.6 文档与版本
 
-### 7.7 文案与样式
-
-- `locale/zh.json` / `locale/en.json` 新增：
-  - `boardCriteriaProgress`（`已核对 {n}/{total}`）
-  - `boardCriteriaAllDone`（`全部核对完成`）
-  - `boardCriteriaToggleHint`（`点击核对这一项`）
-  - `boardMergeCriteriaMissing`（`还有 {n} 项验收标准未核对`）
-- `src/client/styles/workbench.ts` 新增复选项按钮的 reset、hover 与 `focus-visible` 样式。
-
-### 7.8 文档
-
-- 本文件 `feature.md`：功能说明、原因、预期效果、收益、方案与验收标准。
-- `README.md`：功能概览与工作台交互各补一条。
-- `docs/frontend-design.md`：任务摘要 / 验收组件规范补充复选交互。
-- `CHANGELOG.md`：新增 `1.10.0` 条目；`package.json` 版本升至 `1.10.0`。
+- `README.md`：功能概览与工作台交互各补一条；版本号与最后更新日期改为 1.11.0 / 2026-11-22。
+- `docs/frontend-design.md`：概览结构、验收标准组件说明和验收清单补报告入口。
+- `docs/i18n-terminology.md`：术语表补「验收报告 / Acceptance report」。
+- `CHANGELOG.md`：新增 `1.11.0` 条目。
+- `package.json` 与 `package-lock.json`：版本升至 `1.11.0`。
 
 ## 8. 验收标准
 
-- [ ] 发布时带验收标准的任务，在「概览」中每条标准可点击勾选 / 取消。
-- [ ] 勾选后刷新页面、重新打开工作台，状态保持。
-- [ ] 分区标题显示 `已核对 n/total`，全部核对后显示完成态。
-- [ ] 已合并 / 已清理任务的清单只读且显示全部完成。
-- [ ] 合并确认弹窗显示验收进度；存在未核对项时给出数量提示，且仍可合并。
-- [ ] 勾选请求走 token 校验；未知任务返回 404，未知标准返回 400。
-- [ ] 两个进程同时勾选不同标准时，两项结果都保留（Store 锁内读改写）。
-- [ ] 明暗主题下复选项、hover 与焦点环显示正常，键盘可操作。
+- [ ] 任务详情「概览」的验收标准分区显示「复制报告」「下载 .md」两个入口，所有任务状态均可用。
+- [ ] 点击「复制报告」后剪贴板内容为完整 Markdown；成功 Toast 提示，失败时给出错误提示。
+- [ ] 点击「下载 .md」生成 `acceptance-<id8>-<YYYYMMDD>-<HHmm>.md`，内容与复制一致，UTF-8 编码。
+- [ ] 报告包含元数据、任务描述、验收标准与核对进度、提交、改动文件表、合计、工作区状态。
+- [ ] 已核对 / 未核对标准正确输出为 `[x]` / `[ ]`；已合并 / 已清理任务与概览一致显示全部完成。
+- [ ] 无验收标准、无提交、无 diff、diff 截断、worktree 已清理时，报告仍可生成并给出对应说明。
+- [ ] 文件路径中的 `|` 和换行被正确转义，表格不会错列。
+- [ ] 报告不包含 diff 正文；文件数遵循现有 diff 上限。
+- [ ] 任一操作进行中时报告按钮禁用；按钮可键盘操作、有可见焦点环。
+- [ ] 中英文文案 key 完全一致，`npm run check:locale` 通过。
 - [ ] `npm run verify`（typecheck + locale 检查 + 测试 + 构建）通过。
-- [ ] `feature.md`、`README.md`、设计文档与 `CHANGELOG.md` 已更新。
+- [ ] `feature.md`、`README.md`、`docs/frontend-design.md`、`docs/i18n-terminology.md`、`CHANGELOG.md` 已更新，版本为 1.11.0。
 
 ## 9. 测试与验证计划
 
-- **纯逻辑**：`criteria()` 在 `merged` / `cleaned` / `review` 下的勾选派生；`checkedCriteria` 与当前标准的交集；`criteriaProgress` 计数。
-- **Store**：勾选、取消、未知标准、未知任务、重复勾选幂等、标准顺序保持。
-- **HTTP**：发布带标准的任务 → `POST task/criteria` 勾选 → `GET tasks` 可见；无 token 403；未知任务 404；未知标准 400。
-- **回归**：`npm run verify` 全量通过（现有 271 项基础上新增用例）。
-- **人工**：在 DSH Web 中发布任务、勾选、刷新、打开合并确认，检查明暗主题与键盘操作。
+- **纯函数单测** `test/client-report.test.ts`：
+  - 标准与勾选状态：部分核对、全部核对、无标准。
+  - 已合并 / 已清理：全部显示完成。
+  - 元数据：项目、分支、基线、状态、HEAD、合并提交、会话、生成时间。
+  - 提交：多条、空列表；标题换行与 Markdown 特殊字符。
+  - 改动文件：新增 / 修改 / 删除 / 重命名 / 未跟踪、路径含 `|`、空列表、截断标记。
+  - diff 不可用：worktree-missing / no-merge-base / error 三种 reason。
+  - 工作区：未提交改动、待恢复暂存。
+  - 文件名：id8 提取、补零、只含安全字符、同一分钟稳定。
+- **回归**：`npm run verify` 全量通过；现有 281 项基础上新增用例。
+- **人工**：在 DSH Web 中打开不同状态任务，复制与下载报告，检查中英文、明暗主题、窄屏和键盘操作。
 
 ## 10. 风险、边界与回滚
 
-- **兼容性**：`checkedCriteria` 为可选字段，旧记录缺省视为全未核对；已合并 / 已清理任务沿用“全部完成”语义。
-- **并发**：写入走 Store 跨进程锁；勾选粒度是单条标准，不做批量覆盖。
-- **不阻断合并**：本版只提示不拦截，避免在未确认用户意图前改变既有合并行为；门禁化留作后续可配置项。
-- **回滚**：移除路由与 UI 接线后，`checkedCriteria` 字段留在记录中也不影响旧版本读取。
+- **剪贴板权限**：浏览器拒绝时回退到 `execCommand('copy')`；仍失败则只提示，不改变任务状态。
+- **下载被拦截**：`Blob` 下载失败时 Toast 报错；不依赖宿主额外能力。
+- **内容体量**：报告不包含 diff 正文，文件列表沿用 diff 的 300 个文件上限，提交列表来自快照；不会生成超大文本。
+- **敏感信息**：报告由用户显式触发，只在本地生成；复制或下载后是否外发由用户决定。
+- **语义一致性**：已合并 / 已清理任务沿用概览的「全部完成」语义；原始勾选数据仍保留在任务记录中。
+- **回滚**：移除两个按钮和 `report.ts` 即可；不涉及存储字段、路由或 Git 状态。
 
 ## 11. 后续计划（不在本次范围）
 
-- 合并门禁可配置：项目级开关「存在未核对项时禁止合并」。
-- 发布时选择“标准模板”，自动带出常用验收项。
-- 任务验收报告导出（Markdown）：标准、勾选结果、提交与 diff 摘要。
-- Agent 在完成任务时给出逐条自检建议，用户仍需手动确认。
-- `worktree_act` 增加 `criteria` 动作，供模型工具链路使用。
+- 服务端报告接口与模型工具 `worktree_report`，供自动化流程直接获取报告。
+- 报告可选包含逐文件 diff 摘要或完整 patch。
+- 项目级报告模板：自定义章节顺序与固定说明。
+- 将报告归档到任务记录，支持历史版本对比。
+- 导出 HTML / PDF 版本。
 
 ## 12. 文件清单
 
 | 文件 | 改动 |
 | --- | --- |
-| `src/models.ts` | 新增 `checkedCriteria` 字段 |
-| `src/store.ts` | 新增 `CriterionResult` 与 `setCriterionChecked` |
-| `src/runtime/lifecycle.ts` | 新增 `setCriterionChecked` 校验与错误映射 |
-| `src/runtime.ts` | 暴露 `setCriterionChecked` |
-| `src/http.ts` | 新增 `task/criteria` 路由 |
-| `src/client/model.ts` | `criteria()` 读取勾选状态；新增 `criteriaProgress` |
-| `src/client/stage.ts` | 概览复选交互与进度 |
-| `src/client/board.ts` | Stage 接线 |
-| `src/client/board/use-board-actions.ts` | `runCriterion` 与合并确认提示 |
-| `src/client/styles/workbench.ts` | 复选项交互样式 |
-| `locale/zh.json`、`locale/en.json` | 新增 4 条文案 |
-| `test/client-model.test.ts`、`test/criteria-checks.test.ts` | 新增 / 更新用例 |
-| `README.md`、`docs/frontend-design.md`、`CHANGELOG.md`、`package.json` | 文档与版本 |
+| `src/client/report.ts` | 新增报告生成、文件名与 Markdown 转义纯函数 |
+| `src/client/stage.ts` | 概览验收分区标题与报告入口 |
+| `src/client/board/use-board-actions.ts` | 复制 / 下载动作与 busy 处理 |
+| `src/client/board.ts` | 传入 diff、状态文案并接线 |
+| `src/client/styles/workbench.ts` | 分区标题左右布局样式 |
+| `locale/zh.json`、`locale/en.json` | 新增报告与文件状态文案 |
+| `test/client-report.test.ts` | 新增纯函数用例 |
+| `README.md`、`docs/frontend-design.md`、`docs/i18n-terminology.md`、`CHANGELOG.md`、`package.json`、`package-lock.json` | 文档与版本 |
