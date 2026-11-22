@@ -1,6 +1,6 @@
 import { h } from './ui'
 import type { TaskView } from '../models'
-import { mergeSummary, mergeSummaryText, shortSha } from './model'
+import { mergeSummaryText, shortSha, taskMergeSummary, type MergeSummary } from './model'
 import { displayPath, pathParts } from './format'
 import { readLive } from './live-session'
 import { SYNC_BUSY, mergePreviewFiles, mergeRiskChip, previewFilesText, previewNoCheck, syncApplicable } from './review-surfaces'
@@ -12,6 +12,8 @@ export interface InspectorProps {
   previewState: any
   /** Raw session projections `values`, when a live session is available. */
   live?: any
+  /** Per-action blockers, already localized; merge reasons drive the summary. */
+  mergeReasons?: string[]
   baseSha: string
   headSha: string
   baseLabel: string
@@ -47,20 +49,18 @@ export function Inspector(props: InspectorProps) {
   const state = props.previewState || { phase: 'idle' }
   const preview = state.phase === 'ready' ? state.preview : state.previous && state.previous.preview
   const error = state.phase === 'error' ? state.message : ''
-  const merged = snap.status === 'merged' || snap.status === 'cleaned'
+  const merged = (snap.merged === true) || snap.status === 'merged' || (snap.status === 'cleaned' && !!task.mergedAt)
   const cleaned = snap.status === 'cleaned'
+  // The blocker list is owned by the stage: showing it here too repeated the
+  // same sentence twice. The summary still reflects the same gate reasons.
+  const gateBlocked = Array.isArray(props.mergeReasons) && props.mergeReasons.length > 0
   // A busy or stashed task must not lose its worktree/record from under it.
   const agentBusy = props.running || !!props.pending
   const reviewing = snap.status === 'reviewing'
   const hasStashes = Array.isArray(props.stashes) && props.stashes.length > 0
-  const summary = cleaned && !preview && state.phase !== 'checking' && state.phase !== 'error'
-    ? { key: 'cleaned' as const, tone: 'neutral' as const }
-    : merged && !preview && state.phase !== 'checking' && state.phase !== 'error'
-      ? { key: 'merged' as const, tone: 'ok' as const }
-      : mergeSummary(preview, state.phase, error)
+  const summary: MergeSummary = gateBlocked ? { key: 'blocked', tone: 'warn' } : taskMergeSummary(snap, task, preview, state.phase, error)
   const dotClass = summary.tone === 'err' ? 'dshwd-text-err' : summary.tone === 'warn' ? 'dshwd-text-warn' : summary.tone === 'ok' ? 'dshwd-text-ok' : 'dshwd-text-muted'
   const dirty = Number(snap.worktree && snap.worktree.dirtyCount) || 0
-  const blockers = preview && Array.isArray(preview.blockers) ? preview.blockers : []
   // Merge-preview extras: one risk chip, the files it is about, and the
   // base-sync escape hatch. All live inside the merge-check section so the
   // panel never stacks two near-identical warnings.
@@ -112,14 +112,9 @@ export function Inspector(props: InspectorProps) {
         h('span', { className: 'dshwd-kv-v dshwd-mono', title: props.baseSha }, `${props.baseLabel} @ ${shortSha(props.baseSha)}`)),
       h('div', { className: 'dshwd-kv' },
         h('span', { className: 'dshwd-kv-k' }, t.boardTaskHead),
-        h('span', { className: 'dshwd-kv-v dshwd-mono', title: props.headSha }, shortSha(props.headSha))),
-      // Blockers stay visible until they clear: a toast disappears before the
-      // user can act on "repo dirty" / "agent running" and left them guessing.
-      blockers.length
-        ? h('div', { className: 'dshwd-blocker-box' },
-          h('div', { className: 'dshwd-blocker-title' }, t.boardBlockersTitle),
-          h('ul', { className: 'dshwd-blocker-list' }, blockers.map((b: any, i: number) => h('li', { key: (b && b.code) || i }, (b && b.message) || String(b)))))
-        : null,
+        h('span', { className: 'dshwd-kv-v dshwd-mono', title: props.headSha ? shortSha(props.headSha) : t.boardNoCommitYet },
+          props.headSha ? shortSha(props.headSha) : t.boardNoCommitYet)),
+      // Blockers stay visible in the stage's blocker list until they clear.
       riskNode,
       riskFiles.length
         ? h('div', { className: 'dshwd-hint', style: { marginTop: '6px', overflowWrap: 'anywhere' } }, t.mergePreviewFiles + '：' + previewFilesText(riskFiles))
@@ -154,12 +149,16 @@ export function Inspector(props: InspectorProps) {
               onClick: () => props.onCopy(String(task.sessionId)),
             }, '⧉')
             : null)),
-      h('div', { className: 'dshwd-kv dshwd-kv-live', style: { alignItems: 'flex-start' } },
-        h('span', { className: 'dshwd-kv-k' }, t.liveCwd),
-        h('span', { className: 'dshwd-kv-live-value' },
-          h('span', { className: 'dshwd-kv-v dshwd-mono dshwd-path-wrap', title: liveCwd || worktree },
-            pathParts(liveCwd || worktree).map((seg, i) => h('span', { key: i }, seg, h('wbr')))),
-          cwdOff ? h('span', { className: 'dshwd-chip dshwd-warn dshwd-chip-sm', title: t.liveCwdOff }, t.liveCwdOff) : null)),
+      // "Working directory" only earns a row when the session runs somewhere
+      // other than the worktree; otherwise it repeats the path below verbatim.
+      liveCwd && liveCwd !== worktree
+        ? h('div', { className: 'dshwd-kv dshwd-kv-live', style: { alignItems: 'flex-start' } },
+          h('span', { className: 'dshwd-kv-k' }, t.liveCwd),
+          h('span', { className: 'dshwd-kv-live-value' },
+            h('span', { className: 'dshwd-kv-v dshwd-mono dshwd-path-wrap', title: liveCwd },
+              pathParts(liveCwd).map((seg, i) => h('span', { key: i }, seg, h('wbr')))),
+            cwdOff ? h('span', { className: 'dshwd-chip dshwd-warn dshwd-chip-sm', title: t.liveCwdOff }, t.liveCwdOff) : null))
+        : null,
       // One worktree path only (the row *is* the copy affordance). Segments wrap
       // at separators, so a long path breaks at directory boundaries.
       h('div', { className: 'dshwd-kv dshwd-kv-path', style: { alignItems: 'flex-start' } },

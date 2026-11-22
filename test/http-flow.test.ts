@@ -4,7 +4,7 @@ import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import { bootHost } from './helpers/host.js'
 import { callRoute, findRoute } from './helpers/http.js'
-import { commitFile, exists, initRepo, mkTempDir, rmrf } from './helpers/git.js'
+import { commitFile, exists, git, initRepo, mkTempDir, rmrf } from './helpers/git.js'
 
 const PREFIX = '/dsh-worktree/api'
 
@@ -130,6 +130,24 @@ test('main flow over HTTP: publish -> bind -> execute -> merge -> cleanup', asyn
   assert.equal(finalList.body.tasks.find((v: any) => v.task.id === task.id).snapshot.status, 'cleaned')
 })
 
+test('projects/add reports whether the repository was already registered', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const fresh = join(root, 'repo-existing')
+  await fs.mkdir(fresh, { recursive: true })
+  await initRepo(fresh)
+  await commitFile(fresh, 'readme.md', 'x')
+
+  const first = await call('projects/add', { body: { repoPath: fresh, name: 'dup-check' }, headers: auth })
+  assert.equal(first.status, 200, JSON.stringify(first.body))
+  assert.equal(first.body.existing, false)
+
+  const again = await call('projects/add', { body: { repoPath: fresh + '/', name: 'renamed' }, headers: auth })
+  assert.equal(again.status, 200, JSON.stringify(again.body))
+  assert.equal(again.body.existing, true)
+  assert.equal(again.body.project.id, first.body.project.id)
+  assert.equal(again.body.project.name, 'dup-check')
+})
+
 test('publish validation errors surface as 400, not 500', async () => {
   const auth = { 'x-dsh-worktree-token': token }
   const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
@@ -207,6 +225,33 @@ test('task/diff returns per-file changes for a task', async () => {
   assert.ok(file.patch.includes('+a'))
 })
 
+test('task/diff for a merged task reads the merge commit, not the emptied base diff', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
+  const projectId = added.body.project.id
+  const published = await call('publish', {
+    body: { projectId, title: '已合并 diff', description: '实现', branchName: 'feat/http-merged-diff' },
+    headers: auth,
+  })
+  assert.equal(published.status, 200, JSON.stringify(published.body))
+  const task = published.body.task
+  await commitFile(task.worktreePath, 'src/merged.txt', 'merged' + String.fromCharCode(10), 'feat: merged diff')
+  const merged = await call('task/merge', { body: { id: task.id }, headers: auth })
+  assert.equal(merged.status, 200, JSON.stringify(merged.body))
+
+  const route = findRoute(routes, `${PREFIX}/task/diff`)
+  const res = await callRoute(route.handler, {
+    method: 'GET',
+    url: `${PREFIX}/task/diff?id=${encodeURIComponent(task.id)}`,
+    headers: auth,
+  })
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  assert.equal(res.body.diff.source, 'merge-commit')
+  const file = res.body.diff.files.find((f: any) => f.path === 'src/merged.txt')
+  assert.ok(file, 'merge commit changes should be listed after a merge')
+  assert.ok(file.patch.includes('+merged'))
+})
+
 test('publish with parentId continues a merged task over HTTP', async () => {
   const auth = { 'x-dsh-worktree-token': token }
   const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
@@ -255,6 +300,8 @@ test('task/archive hides a merged task from the default listing and unarchive re
   await commitFile(task.worktreePath, 'src/http-archive.txt', 'x\n', 'feat: archive')
   const merged = await call('task/merge', { body: { id: task.id }, headers: auth })
   assert.equal(merged.status, 200, JSON.stringify(merged.body))
+  const subject = await git(repo, ['log', '-1', '--pretty=%s'])
+  assert.match(subject.trim(), /^Merge task [0-9a-f]{8}: 归档任务$/)
 
   const archived = await call('task/archive', { body: { id: task.id }, headers: auth })
   assert.equal(archived.status, 200, JSON.stringify(archived.body))

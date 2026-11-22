@@ -32,12 +32,12 @@ import { useBoardData } from './board/use-board-data'
 import { useBoardActions } from './board/use-board-actions'
 import {
   boardCta,
-  boardEmptyKind,
   boardStatus,
   boardStatusLabel,
   diffBaseSha,
   filterProjectViews,
   mergeGateMissing,
+  railEmptyKind,
   themeFor,
   type BoardFilter,
 } from './model'
@@ -124,9 +124,10 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
 
   // An error toast vanishes in 6s; the same text also becomes a sticky inline
   // banner so a refused merge/checkout stays readable after the toast is gone.
-  const say = (message: string, error = false) => {
+  // `sticky:false` opts out when the same text is already pinned elsewhere.
+  const say = (message: string, error = false, sticky = error) => {
     setToast({ message, error })
-    setNotice(error ? { message } : null)
+    setNotice(sticky ? { message } : null)
     if (toastTimer.current) clearTimeout(toastTimer.current)
     // Failures need time to read; successes can stay brief.
     toastTimer.current = setTimeout(() => setToast(null), error ? 6000 : 2400)
@@ -223,7 +224,11 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
   }, [selectedTaskId])
 
   const openPublish = (projectId?: string, parentId = '') => {
-    setPublishProjectId(projectId || selectedProjectId || (views[0] && views[0].project.id) || '')
+    // Prefer what the user is looking at now; `views` is ordered by recent
+    // activity, so its first entry is the "last used" project and must not win
+    // over the current selection.
+    const taskProjectId = selectedTask && selectedTask.task.projectId ? selectedTask.task.projectId : ''
+    setPublishProjectId(projectId || selectedProjectId || taskProjectId || (views[0] && views[0].project.id) || '')
     setPublishParentId(parentId)
     setPublishOpen(true)
   }
@@ -310,6 +315,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     setSelectedTaskId,
     setTab,
     openPublish,
+    previewState,
     say,
     refresh,
   })
@@ -394,10 +400,10 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     attentionOf,
     (task: any) => pendingLabel(t, pendingOf(task)),
   )
-  const taskCount = filtered.reduce((n: number, v: ProjectView) => n + v.tasks.length, 0)
-  // "No matches" only when the filtered list is truly empty: a search that
-  // still has hits must keep showing them.
-  const emptyKind = boardEmptyKind({ loaded, projectCount: views.length, query, filter, taskCount })
+  // Only an actually empty result may own the rail; a search or filter that
+  // still matched rows must keep rendering them. While the first load is in
+  // flight, show nothing rather than claiming there are no projects.
+  const emptyKind = loaded ? railEmptyKind(views, filtered, query, filter) : ''
 
   const runQuick = (action: QuickAction, tv: TaskView, projectId: string) => {
     if (action === 'handle' || action === 'open-session') {
@@ -529,6 +535,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           archived,
           previewState,
           live,
+          mergeReasons: actionGate.reasons.merge || [],
           baseSha,
           headSha,
           baseLabel: selectedTask.task.baseBranch,
@@ -589,13 +596,15 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     addOpen
       ? h(AddProjectModal, {
         t,
+        projects: views.map((v: any) => v.project),
         onClose: () => setAddOpen(false),
-        onAdded: (project: any) => {
+        onAdded: (project: any, existing?: boolean) => {
           setAddOpen(false)
           if (project) {
             setSelectedProjectId(project.id)
             setSelectedTaskId('')
-            say(String(t.projectAdded).replace('{name}', project.name || ''))
+            const copy = existing ? t.projectExistsOpened : t.projectAdded
+            say(String(copy).replace('{name}', project.name || ''))
           }
           void refresh()
         },
@@ -613,14 +622,23 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
       label: confirm.label,
       danger: !!confirm.danger,
       checks: confirm.checks || [],
+      labelFor: confirm.labelFor,
+      error: confirm.error,
       busy: !!busy,
       onCancel: () => setConfirm(null),
       onConfirm: (values: Record<string, boolean>) => {
         if (!confirm.run) return
         setBusy('confirm')
         Promise.resolve(confirm.run(values || {}))
-          .catch((e: any) => say(String((e && e.message) || t.failed), true))
-          .finally(() => { setBusy(''); setConfirm(null) })
+          .then(() => setConfirm(null))
+          .catch((e: any) => {
+            // A 409 (new blocker, dirty tree) must not throw the dialog away:
+            // the checks the user just ticked still describe what they wanted.
+            const message = String((e && e.message) || t.failed)
+            say(message, true)
+            setConfirm((prev: any) => (prev ? Object.assign({}, prev, { error: message }) : prev))
+          })
+          .finally(() => setBusy(''))
       },
     }) : null,
 

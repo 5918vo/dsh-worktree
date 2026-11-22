@@ -23,6 +23,10 @@ export interface ConfirmState {
   checks?: ConfirmCheck[]
   /** Long pre-formatted text (e.g. the exact prompt to be sent). */
   pre?: string
+  /** Label override for the primary button, computed from the ticked checks. */
+  labelFor?: (values: Record<string, boolean>) => string
+  /** Failure from the last attempt; the dialog stays open until it is fixed. */
+  error?: string
   run: (values: Record<string, boolean>) => Promise<void> | void
 }
 
@@ -48,6 +52,8 @@ export interface ConfirmDialogProps {
   danger?: boolean
   checks?: ConfirmCheck[]
   pre?: string
+  labelFor?: (values: Record<string, boolean>) => string
+  error?: string
   busy: boolean
   onCancel: () => void
   onConfirm: (values: Record<string, boolean>) => void
@@ -62,6 +68,7 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
     return init
   })
   const enabled = (c: ConfirmCheck) => !c.dependsOn || !!values[c.dependsOn]
+  const label = props.labelFor ? props.labelFor(values) : props.label
   const toggle = (c: ConfirmCheck) =>
     setValues((prev: Record<string, boolean>) => Object.assign({}, prev, { [c.key]: !prev[c.key] }))
 
@@ -99,7 +106,8 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
               h('span', { className: 'dshwd-check-label' }, c.label),
               c.hint ? h('span', { className: 'dshwd-check-hint' }, c.hint) : null))
         }))
-        : null),
+        : null,
+      props.error ? h('div', { className: 'dshwd-alert', role: 'alert' }, props.error) : null),
     h('div', { className: 'dshwd-modal-foot' },
       h('span', { className: 'dshwd-modal-foot-meta' }),
       h('div', { className: 'dshwd-modal-foot-actions' },
@@ -108,7 +116,7 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
           className: 'dshwd-btn ' + (props.danger ? 'dshwd-btn-danger' : 'dshwd-btn-cta'),
           disabled: props.busy,
           onClick: () => props.onConfirm(values),
-        }, props.busy ? t.working : props.label)))))
+        }, props.busy ? t.working : label)))))
 }
 
 export interface StashDiffModalProps {

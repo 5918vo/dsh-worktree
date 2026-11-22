@@ -286,7 +286,7 @@ async function mergeLocked(ctx: RuntimeContext, task: WorktreeTask, opts: MergeO
     task.pendingOp.updatedAt = Date.now()
     ctx.store.putTask(task)
     try {
-      await gitx.mergeNoFF(ctx.gitPath, repoPath, mergeSha, opts.timeoutMs)
+      await gitx.mergeNoFF(ctx.gitPath, repoPath, mergeSha, opts.timeoutMs, gitx.mergeCommitMessage(task))
     } catch (error) {
       const err = error as any
       const text = error instanceof Error ? error.message : String(error)

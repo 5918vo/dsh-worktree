@@ -675,7 +675,7 @@ export function quickPromptReasonKey(reason: QuickPromptBlock): string
 
 ### 自动化验证
 
-- `npm run verify`：`tsc --noEmit` + 中英文 locale 校验 + **323 个测试全部通过** + `dist/index.js` / `dist/client.js` 构建成功。
+- `npm run verify`：`tsc --noEmit` + 中英文 locale 校验 + **338 个测试全部通过** + `dist/index.js` / `dist/client.js` 构建成功。
 - 新增测试与功能对应：
 
 | 功能 | 测试文件 | 覆盖点 |
@@ -703,6 +703,8 @@ export function quickPromptReasonKey(reason: QuickPromptBlock): string
 - 移除本批次早期的 `reportText` / `reportFileName` / `downloadTextFile` 接线，避免出现两套报告按钮和两种文件名。
 - 其余 4 个功能（合并门禁、发布模板、置顶、快捷指令）保持本批次实现；`use-board-actions.ts` 同时保留 PR #21 的报告动作与本批次的 `runPin` / `runPrompt` / 门禁检查。
 - `feature.md` 保留本批次 5 功能正文，附录 A 收录 PR #21 的完整功能说明。
+
+第二次合并 `origin/master`（`f87f063`，含 PR #7–#17 的看板修复与 PR #20）时，`board.ts`、`use-board-actions.ts`、`publish-state.ts`、`publish.ts`、`stage.ts` 按功能取并集：保留上游的 `railEmptyKind`、`branchChoices`、`commitRangeText`、`switchConfirmText`、`cleanupPrimaryLabel` 等，同时保留本批次的门禁、模板、置顶、快捷指令与报告接线。
 
 ### 说明
 

@@ -164,6 +164,8 @@ export interface DiffFile {
 
 /** Everything the review screen needs to render a task's changes. */
 export interface TaskDiff {
+  /** Where the diff came from: the live branch, or the commit a merge created. */
+  source?: 'merge-commit'
   /** Base branch the diff is computed against. */
   base: string
   /** Merge-base commit used, when it could be resolved. */

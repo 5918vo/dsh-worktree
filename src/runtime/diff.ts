@@ -72,6 +72,34 @@ async function readUntrackedDiff(dir: string, rel: string): Promise<DiffFile | n
  * show up; falls back to the recorded branch (committed changes only) after
  * the worktree is gone.
  */
+/** Shared truncation/sorting tail for every diff source. */
+function finishDiff(result: TaskDiff, input: DiffFile[]): TaskDiff {
+  let files = input.slice().sort((a, b) => a.path.localeCompare(b.path))
+    if (files.length > DIFF_MAX_FILES) {
+      files = files.slice(0, DIFF_MAX_FILES)
+      result.truncated = true
+    }
+    let budget = DIFF_MAX_TOTAL_CHARS
+    for (const file of files) {
+      let patch = file.patch
+      if (patch.length > DIFF_MAX_FILE_CHARS) {
+        patch = patch.slice(0, DIFF_MAX_FILE_CHARS)
+        result.truncated = true
+      }
+      if (patch.length > budget) {
+        patch = patch.slice(0, budget)
+        result.truncated = true
+      }
+      if (patch.length < file.patch.length) patch = patch + '\n… (truncated)'
+      file.patch = patch
+      budget = Math.max(0, budget - patch.length)
+      result.totalAdditions += file.additions
+      result.totalDeletions += file.deletions
+    }
+    result.files = files
+  return result
+}
+
 export async function taskDiff(ctx: RuntimeContext, id: string): Promise<TaskDiff> {
   const task = needTask(ctx, id)
   const result: TaskDiff = { base: task.baseBranch, mergeBase: null, files: [], totalAdditions: 0, totalDeletions: 0, truncated: false }
@@ -80,6 +108,17 @@ export async function taskDiff(ctx: RuntimeContext, id: string): Promise<TaskDif
     let dir: string
     let toRef: string | undefined
     let includeUntracked = false
+    // A merged task's branch is contained in the base, so a branch-vs-base
+    // diff is empty by definition. Show what the merge actually brought in.
+    if (task.mergedAt && task.mergedCommit) {
+      const mergeParent = await gitx.revParse(ctx.gitPath, task.repoPath, `${task.mergedCommit}^1`)
+      if (mergeParent) {
+        result.source = 'merge-commit'
+        const raw = await gitx.diffFiles(ctx.gitPath, task.repoPath, mergeParent, task.mergedCommit)
+        result.mergeBase = mergeParent
+        return finishDiff(result, raw.map((file) => ({ ...file })))
+      }
+    }
     if (wtExists) {
       dir = task.worktreePath
       includeUntracked = true
@@ -106,30 +145,7 @@ export async function taskDiff(ctx: RuntimeContext, id: string): Promise<TaskDif
         if (file) files.push(file)
       }
     }
-    files.sort((a, b) => a.path.localeCompare(b.path))
-
-    if (files.length > DIFF_MAX_FILES) {
-      files = files.slice(0, DIFF_MAX_FILES)
-      result.truncated = true
-    }
-    let budget = DIFF_MAX_TOTAL_CHARS
-    for (const file of files) {
-      let patch = file.patch
-      if (patch.length > DIFF_MAX_FILE_CHARS) {
-        patch = patch.slice(0, DIFF_MAX_FILE_CHARS)
-        result.truncated = true
-      }
-      if (patch.length > budget) {
-        patch = patch.slice(0, budget)
-        result.truncated = true
-      }
-      if (patch.length < file.patch.length) patch = patch + '\n… (truncated)'
-      file.patch = patch
-      budget = Math.max(0, budget - patch.length)
-      result.totalAdditions += file.additions
-      result.totalDeletions += file.deletions
-    }
-    result.files = files
+    return finishDiff(result, files)
   } catch (error) {
     result.reason = 'error'
     result.error = error instanceof Error ? error.message : String(error)

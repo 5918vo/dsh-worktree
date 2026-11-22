@@ -1,28 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {
-  acceptanceHintFor,
-  boardEmptyKind,
-  branchHeadSha,
-  criteria,
-  criteriaProgress,
-  boardBranch,
-  boardCta,
-  boardStat,
-  boardStatus,
-  diffBaseSha,
-  diffCount,
-  diffHeadSha,
-  diffLineKind,
-  filterProjectViews,
-  matchesSearch,
-  mergeSummary,
-  mergeSummaryText,
-  pathPreview,
-  shortSha,
-  themeFor,
-  type BoardStatus,
-} from '../src/client/model.js'
+import { acceptanceHintFor, boardBranch, boardCta, boardStat, boardStatTitle, boardStatus, branchHeadSha, cleanupPrimaryLabel, commitRangeText, criteria, criteriaProgress, diffBaseSha, diffCount, diffHeadSha, diffLineKind, filterProjectViews, matchesSearch, mergeSummary, mergeSummaryText, pathPreview, railEmptyKind, railStatsText, shortSha, switchConfirmText, taskMergeSummary, themeFor, type BoardStatus } from '../src/client/model.js'
 
 const T = {
   boardReady: '待开始',
@@ -208,6 +186,52 @@ test('diffLineKind classifies patch lines', () => {
   assert.equal(diffLineKind('\\ No newline'), 'muted')
 })
 
+test('railEmptyKind only reports an empty state for an actually empty result', () => {
+  const one = [{ project: { id: 'p1', name: 'repo' }, tasks: [{ task: { id: 't1' } }] }] as any
+  const empty = [] as any
+  // Filtered rows still exist: no empty state may replace them.
+  assert.equal(railEmptyKind(one, one, '', 'all'), '')
+  assert.equal(railEmptyKind(one, one, 'repo', 'all'), '')
+  assert.equal(railEmptyKind(one, one, '', 'review'), '')
+  // Query wins over filter when nothing matched.
+  assert.equal(railEmptyKind(one, empty, ' nope ', 'review'), 'search')
+  assert.equal(railEmptyKind(one, empty, '', 'review'), 'filter')
+  // An all-filter with no rows would mean no projects at all.
+  assert.equal(railEmptyKind(one, empty, '', 'all'), '')
+  assert.equal(railEmptyKind(empty, empty, 'x', 'all'), 'no-projects')
+  // The first paint is not evidence that there are no projects.
+  assert.equal(railEmptyKind(empty, empty, 'x', 'all', false), '')
+})
+
+test('switchConfirmText warns about detached HEAD before review checkout', () => {
+  const t = { boardCheckoutDetached: 'detached HEAD', boardSwitchDirty: 'stash {n}' }
+  assert.equal(switchConfirmText(t, 'checkout', 0), 'detached HEAD')
+  assert.equal(switchConfirmText(t, 'checkout', 2), 'detached HEAD stash 2')
+  assert.equal(switchConfirmText(t, 'back', 1), 'stash 1')
+  assert.equal(switchConfirmText(t, 'back', 0), '')
+})
+
+test('taskMergeSummary keeps a cleaned, unmerged branch honest', () => {
+  const t = { ...T, boardPreviewMerged: 'merged', boardPreviewCleaned: 'cleaned', boardPreviewCleanedMerged: 'cleaned+merged' }
+  const unmerged = taskMergeSummary({ status: 'cleaned', merged: false }, { cleanedAt: 1 }, null, 'idle')
+  assert.equal(unmerged.key, 'cleaned')
+  assert.equal(mergeSummaryText(t, unmerged), 'cleaned')
+  // A deleted branch hides the evidence: the stored merge time still counts.
+  const merged = taskMergeSummary({ status: 'cleaned', merged: false }, { mergedAt: 1 }, null, 'idle')
+  assert.equal(merged.key, 'cleanedMerged')
+  assert.equal(mergeSummaryText(t, merged), 'cleaned+merged')
+  // A live merge preview still wins over the stored state.
+  assert.equal(taskMergeSummary({ status: 'review' }, {}, { conflict: true, conflictFiles: ['a'] }, 'ready').key, 'conflict')
+  assert.equal(taskMergeSummary({ status: 'merged', merged: true }, {}, null, 'idle').key, 'merged')
+})
+
+test('mergeSummary treats preflight blockers as blocked, even when applicable', () => {
+  const s = mergeSummary({ applicable: true, checked: true, blockers: [{ code: 'reviewing', message: 'other task' }] }, 'ready')
+  assert.equal(s.key, 'blocked')
+  assert.equal(mergeSummaryText({ boardPreviewBlocked: 'blocked!' }, s), 'blocked!')
+  assert.equal(mergeSummary({ checked: true, blockers: [] }, 'ready').key, 'safe')
+})
+
 test('mergeSummary maps preview signals to a tone and text', () => {
   assert.equal(mergeSummary(null, 'checking').key, 'checking')
   assert.equal(mergeSummary({ conflict: true, conflictFiles: ['a'] }, 'ready').key, 'conflict')
@@ -238,15 +262,39 @@ test('snapshot-less task rows still resolve their CTA', () => {
   assert.equal(matchesSearch('', [bare.task.title]), true)
 })
 
-test('boardEmptyKind only reports no-match when the filtered list is empty', () => {
-  const base = { loaded: true, projectCount: 1, query: '', filter: 'all' as const, taskCount: 0 }
-  assert.equal(boardEmptyKind({ ...base, query: 'login', taskCount: 1 }), '')
-  assert.equal(boardEmptyKind({ ...base, query: 'login' }), 'search')
-  assert.equal(boardEmptyKind({ ...base, query: '  ', taskCount: 0 }), '')
-  assert.equal(boardEmptyKind({ ...base, filter: 'review', taskCount: 1 }), '')
-  assert.equal(boardEmptyKind({ ...base, filter: 'review' }), 'filter')
-  assert.equal(boardEmptyKind({ ...base, loaded: false }), '')
-  assert.equal(boardEmptyKind({ ...base, projectCount: 0 }), 'no-projects')
+test('cleanupPrimaryLabel only changes when commits would be discarded', () => {
+  const t = { cleanup: '清理', forceDeleteBranchConfirm: '强制清理并丢弃 {n} 个提交' }
+  assert.equal(cleanupPrimaryLabel(t, {}, 3), '清理')
+  assert.equal(cleanupPrimaryLabel(t, { deleteBranch: true }, 3), '清理')
+  assert.equal(cleanupPrimaryLabel(t, { deleteBranch: true, forceDeleteBranch: true }, 0), '清理')
+  assert.equal(cleanupPrimaryLabel(t, { deleteBranch: true, forceDeleteBranch: true }, 3), '强制清理并丢弃 3 个提交')
+})
+
+test('commitRangeText avoids dangling and inverted ranges', () => {
+  const t = {
+    rangeMergedInto: '已合并到 {base} @ {sha}',
+    rangeNoCommits: '尚无提交',
+    rangeSameAsBase: '与 {base} 一致',
+  }
+  assert.equal(commitRangeText(t, { baseSha: '0ccd8ea1111', headSha: null }), '尚无提交')
+  assert.equal(commitRangeText(t, { baseSha: '0ccd8ea1111', headSha: 'e79ff942222' }), '0ccd8ea..e79ff94')
+  assert.equal(commitRangeText(t, { baseSha: '0ccd8ea1111', headSha: '0ccd8ea1111' }), '与 0ccd8ea 一致')
+  assert.equal(commitRangeText(t, { baseSha: 'e79ff941111', headSha: '3df14092222', merged: true, baseBranch: 'main' }), '已合并到 main @ e79ff94')
+})
+
+test('boardStatTitle explains the rail stat glyph', () => {
+  const t = { statAhead: '领先基线 {n} 个提交', statDirty: '{n} 处未提交改动' }
+  assert.equal(boardStatTitle(t, { worktree: { ahead: 2, dirtyCount: 0 } }), '领先基线 2 个提交')
+  assert.equal(boardStatTitle(t, { worktree: { ahead: 0, dirtyCount: 3 } }), '3 处未提交改动')
+  assert.equal(boardStatTitle(t, null), '')
+})
+
+test('railStatsText avoids English singular/plural mistakes', () => {
+  const zh = { railRepoOne: '{n} 个仓库', railRepoMany: '{n} 个仓库', railTaskOne: '{n} 个任务', railTaskMany: '{n} 个任务', railStatsJoin: '{repos} · {tasks}' }
+  const en = { railRepoOne: '1 repo', railRepoMany: '{n} repos', railTaskOne: '1 task', railTaskMany: '{n} tasks', railStatsJoin: '{repos} · {tasks}' }
+  assert.equal(railStatsText(zh, 1, 1), '1 个仓库 · 1 个任务')
+  assert.equal(railStatsText(en, 1, 1), '1 repo · 1 task')
+  assert.equal(railStatsText(en, 2, 5), '2 repos · 5 tasks')
 })
 
 test('branchHeadSha pins a detached review and follows the live tip otherwise', () => {
@@ -274,5 +322,7 @@ test('acceptanceHintFor explains the gate for every lifecycle state', () => {
 })
 
 test('mergeSummaryText reports a cleaned worktree', () => {
-  assert.equal(mergeSummaryText(T, { key: 'cleaned', tone: 'neutral' }), T.acceptanceHintClean)
+  const t = { ...T, boardPreviewCleaned: 'cleaned', boardPreviewCleanedMerged: 'cleaned+merged' }
+  assert.equal(mergeSummaryText(t, { key: 'cleaned', tone: 'warn' }), 'cleaned')
+  assert.equal(mergeSummaryText(t, { key: 'cleanedMerged', tone: 'ok' }), 'cleaned+merged')
 })

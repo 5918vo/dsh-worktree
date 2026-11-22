@@ -17,9 +17,9 @@ export function ProjectDetail(props: any) {
     // Opt-in gate: only an explicit 'criteria' blocks merges; absent means off.
     const [mergeGateOn, setMergeGateOn] = React.useState(project.mergeGate === 'criteria')
     const branches = useBranchInfo(project.repoPath)
-    const [deleteOpen, setDeleteOpen] = React.useState(false)
+    const [deleteTarget, setDeleteTarget] = React.useState(null as { id: string; name: string; baseBranch: string; total: number } | null)
     const [withTasks, setWithTasks] = React.useState(false)
-    const [withWorktrees, setWithWorktrees] = React.useState(true)
+    const [withWorktrees, setWithWorktrees] = React.useState(false)
     const [busy, setBusy] = React.useState('')
     const [msg, setMsg] = React.useState('')
     const [err, setErr] = React.useState('')
@@ -99,12 +99,29 @@ export function ProjectDetail(props: any) {
       if (saveTimer.current) window.clearTimeout(saveTimer.current)
     }, [])
 
+    const openDelete = () => {
+      // Snapshot the identity being deleted: the detail view keeps re-rendering
+      // from live props, and a project switch must not retarget the open panel.
+      setDeleteTarget({ id: project.id, name: project.name, baseBranch: project.baseBranch || '', total: counts.total })
+      setWithTasks(false)
+      // Removing folders is destructive and cannot be undone; keep it opt-in.
+      setWithWorktrees(false)
+      setErr('')
+    }
+    const closeDelete = () => {
+      if (busy === 'del') return
+      setDeleteTarget(null)
+      setErr('')
+    }
+
     const remove = () => {
+      const target = deleteTarget
+      if (!target) return
       void act('del', async () => {
-        await post('projects/delete', { id: project.id, withTasks, withWorktrees: withTasks && withWorktrees })
-        setDeleteOpen(false)
+        await post('projects/delete', { id: target.id, withTasks, withWorktrees: withTasks && withWorktrees })
+        setDeleteTarget(null)
         props.onDeleted()
-        props.notify(String(t.projectDeleted).replace('{name}', project.name))
+        props.notify(String(t.projectDeleted).replace('{name}', target.name))
       })
     }
 
@@ -118,35 +135,35 @@ export function ProjectDetail(props: any) {
       ? h(BranchCombobox, { t, value: baseBranch, onChange: setBaseBranch, branchInfo: branches.data, id: 'dshw-project-base' })
       : h(TextInput, { id: 'dshw-project-base', value: baseBranch, onChange: (e: any) => setBaseBranch(e.target.value), placeholder: t.baseBranch })
 
-    const deleteModal = deleteOpen
+    const deleteModal = deleteTarget
       ? h(Modal, {
         t,
         title: t.deleteProjectTitle,
-        subtitle: project.name,
+        subtitle: deleteTarget.name,
         icon: 'trash',
         tone: 'danger',
         size: 'sm',
         busy: busy === 'del',
-        onClose: () => { if (busy !== 'del') setDeleteOpen(false) },
+        onClose: closeDelete,
         footer: [
-          h(Btn, { key: 'c', onClick: () => setDeleteOpen(false), disabled: busy === 'del', 'data-modal-autofocus': true }, t.cancel),
+          h(Btn, { key: 'c', onClick: closeDelete, disabled: busy === 'del', 'data-modal-autofocus': true }, t.cancel),
           h(Btn, {
             key: 'ok',
             variant: 'danger',
-            disabled: busy === 'del' || (counts.total > 0 && !withTasks) || reviewingTasks.length > 0,
+            disabled: busy === 'del' || (deleteTarget.total > 0 && !withTasks) || reviewingTasks.length > 0,
             onClick: remove,
           }, busy === 'del' ? h(Spinner) : null, busy === 'del' ? t.deleting : t.deleteProjectConfirm),
         ],
       },
-        counts.total > 0
-          ? h(Banner, { tone: 'warn', icon: 'alert', title: String(t.deleteProjectWarning).replace('{n}', String(counts.total)) }, t.deleteProjectWarningHint)
-          : h(Banner, { tone: 'info', icon: 'info' }, t.deleteProjectWarningHint),
+        deleteTarget.total > 0
+          ? h(Banner, { tone: 'warn', icon: 'alert', title: String(t.deleteProjectWarning).replace('{n}', String(deleteTarget.total)) }, t.deleteProjectWarningHint)
+          : h(Banner, { tone: 'info', icon: 'info' }, t.deleteProjectEmptyHint),
         reviewingTasks.length
           ? h(Banner, { tone: 'warn', icon: 'alert', title: t.reviewingBlockTitle }, t.reviewingBlockHint)
           : null,
         h('div', { className: 'dshw-info-table' },
-          h(KV, { label: t.deleteProjectBase }, h('span', { className: 'dshw-mono' }, project.baseBranch))),
-        counts.total > 0
+          h(KV, { label: t.deleteProjectBase }, h('span', { className: 'dshw-mono' }, deleteTarget.baseBranch))),
+        deleteTarget.total > 0
           ? h(Checkbox, {
             className: 'dshw-check',
             checked: withTasks,
@@ -154,7 +171,7 @@ export function ProjectDetail(props: any) {
             label: h('span', { className: 'dshw-check-copy' }, t.withTasks),
           })
           : null,
-        counts.total > 0
+        deleteTarget.total > 0
           ? h(Checkbox, {
             className: 'dshw-check',
             checked: withWorktrees,
@@ -175,7 +192,10 @@ export function ProjectDetail(props: any) {
     const topbar = h('div', { className: 'dshw-topbar' },
       h('div', { className: 'dshw-topbar-left' },
         props.onToggleRail
-          ? h('button', { type: 'button', className: 'dshw-btn dshw-btn--ghost dshw-btn--sm', title: props.railHidden ? t.expand : t.collapse, 'aria-label': props.railHidden ? t.expand : t.collapse, onClick: () => props.onToggleRail() }, props.narrow ? [h('span', { key: 'l' }, '‹ '), h('span', { key: 't' }, t.backToList)] : '◧')
+          ? h('button', { type: 'button', className: 'dshw-btn dshw-btn--ghost dshw-btn--sm', title: props.railHidden ? t.expand : t.collapse, 'aria-label': props.railHidden ? t.expand : t.collapse, onClick: () => props.onToggleRail() },
+            props.narrow
+              ? [h('span', { key: 'i', 'aria-hidden': 'true' }, '‹'), h('span', { key: 't', className: 'dshwd-btn-label' }, t.backToList)]
+              : '◧')
           : null,
         h('div', { className: 'dshw-breadcrumb' },
           h(Icon, { name: 'folder' }),
@@ -183,7 +203,7 @@ export function ProjectDetail(props: any) {
           h('span', null, '/'),
           h('span', { className: 'dshw-mono' }, project.repoPath))),
       h('div', { className: 'dshw-topbar-right' },
-        h('span', { className: 'dshw-mono', style: { fontSize: '11px', color: 'var(--dshw-text-3)' } }, counts.total + ' ' + t.taskUnit),
+        h('span', { className: 'dshw-mono dshwd-topbar-count', style: { fontSize: '11px', color: 'var(--dshw-text-3)' } }, counts.total + ' ' + t.taskUnit),
         props.onToggleInspector
           ? h('button', { type: 'button', className: 'dshw-btn dshw-btn--ghost dshw-btn--sm', title: props.inspectorHidden ? t.expand : t.collapse, 'aria-label': t.collapse, onClick: () => props.onToggleInspector() }, '◨')
           : null))
@@ -201,9 +221,7 @@ export function ProjectDetail(props: any) {
             h('summary', { className: 'dshw-icon-btn', 'aria-label': t.operations, title: t.operations }, h(Icon, { name: 'more' })),
             h('div', { className: 'dshw-menu-pop' },
               h(MenuItem, { icon: 'plus', onClick: () => props.onPublish(project) }, t.publish),
-              h(MenuItem, { icon: 'copy', onClick: () => { void copyText(project.repoPath).then((ok) => props.notify(ok ? t.copied : t.copyFailed, ok ? 'ok' : 'error')) } }, t.copyRepoPath),
-              h('div', { className: 'dshw-menu-sep' }),
-              h(MenuItem, { icon: 'trash', danger: true, onClick: () => setDeleteOpen(true) }, t.deleteProject))))),
+              h(MenuItem, { icon: 'copy', onClick: () => { void copyText(project.repoPath).then((ok) => props.notify(ok ? t.copied : t.copyFailed, ok ? 'ok' : 'error')) } }, t.copyRepoPath))))),
       h('nav', { className: 'dshw-tabs' },
         tabBtn('overview', t.overview),
         tabBtn('settings', t.projectSettings)))
@@ -326,7 +344,7 @@ export function ProjectDetail(props: any) {
         reviewingTasks.length
           ? h('div', { className: 'dshw-hint', style: { marginBottom: '8px' } }, h(Icon, { name: 'alert' }), h('span', null, t.reviewingBlockHint))
           : null,
-        h(Btn, { variant: 'danger', icon: 'trash', disabled: busy !== '' || reviewingTasks.length > 0, onClick: () => setDeleteOpen(true) }, t.deleteProject)))
+        h(Btn, { variant: 'danger', icon: 'trash', disabled: busy !== '' || reviewingTasks.length > 0, onClick: openDelete }, t.deleteProject)))
 
     return h('div', { className: 'dshw-detail-inner dshw-stage-grid' },
       h('div', { className: 'dshw-stage' }, topbar, stageHead, tab === 'settings' ? settingsBody : overviewBody),
