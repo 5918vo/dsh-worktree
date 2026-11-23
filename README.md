@@ -1,6 +1,6 @@
 # DeepSeek Worktree 任务插件
 
-`@5318vo/dsh-worktree` · v1.11.0 · 最后更新：2026-11-22
+`@5318vo/dsh-worktree` · v1.12.0 · 最后更新：2026-11-22
 
 每个任务对应一个真实的 DSH 会话。发布任务时创建独立的 Git worktree 和任务分支，会话以 worktree 为工作目录出现在左侧工作区。任务对话、审批、追问、中止和继续均使用 DSH 原生能力，工作台负责发布、查看状态和验收。
 
@@ -12,7 +12,7 @@
 ## 功能概览
 
 - **项目级任务看板**：按项目分组展示任务、运行状态、待审批事项和 Git 状态。
-- **真实 worktree 隔离**：每个任务使用 `<repo>/.dsh-worktrees/<id8>`，不污染主仓库工作区。
+- **真实 worktree 隔离**：默认每个任务使用 `~/.dsh/worktrees/<项目名>/<id8>`，与 T3 Code 一样放在仓库外，不污染主仓库工作区；设为相对目录名时仍支持旧的仓库内布局。
 - **Hash 任务分支**：自动生成 `<branchPrefix><id8>`，例如 `dsh-wt/b92e5f2a`，不把中文标题写进分支名。
 - **会话一体化**：任务详情可直接打开已有会话，没有会话时可创建会话。
 - **完整验收流程**：切到主仓库验收、返回原分支、直接合并、清理 worktree、删除记录。
@@ -37,8 +37,8 @@
 发布任务
   └─ POST publish
        ├─ 创建任务分支 <branchPrefix><id8>
-       ├─ 创建 worktree .dsh-worktrees/<id8>
-       ├─ 写入 .git/info/exclude
+       ├─ 创建 worktree ~/.dsh/worktrees/<项目名>/<id8>
+       ├─ （仅仓库内布局）写入 .git/info/exclude
        └─ 记录任务台账
 
 绑定会话
@@ -292,12 +292,17 @@ Host 配置位于 `cordis.patch.yml`：
     - id: deepseek-worktree
       name: '@5318vo/dsh-worktree'
       config:
-        dirName: .dsh-worktrees
+        dirName: "~/.dsh/worktrees"
         branchPrefix: dsh-wt/
         gitPath: git
 ```
 
-项目级设置可以覆盖 `dirName` 和 `branchPrefix`。
+`dirName` 支持两种模式：
+
+- `~` 或绝对路径（默认 `~/.dsh/worktrees`）：worktree 放在仓库外，路径为 `<根目录>/<项目名>/<id8>`，与 T3 Code 的布局一致；不会写 `.git/info/exclude`。
+- 相对路径（例如旧的 `.dsh-worktrees`）：保持原有仓库内布局 `<repo>/<dirName>/<id8>`，并幂等写入 `.git/info/exclude`。
+
+项目级设置可以覆盖 `dirName` 和 `branchPrefix`。修改默认值只影响此后发布的任务，已有任务的绝对 worktree 路径不变。
 
 项目、任务和最近目录统一保存在：
 
@@ -414,7 +419,7 @@ npm run build       # 生产构建
 - 验收采用 detached HEAD：切到验收时主仓库停在任务分支当时的提交（记录在 `reviewSha`），不在任务分支上，因此不受「任务分支已被 worktree 检出」影响，也不需要 `--ignore-other-worktrees`。验收固定的是这个 SHA，期间任务分支的新提交不会改变正在验收的内容；「返回原分支」按记录的原引用恢复。
 - `checkout`、`merge`、`back` 前拒绝主仓库中已跟踪文件的未提交改动；未跟踪文件不再阻止操作，真实冲突仍由 `git` 拒绝。清理 worktree 时仍统计未跟踪文件。
 - `checkout` 会记录 `originalBranch`，供验收后切回。
-- worktree 父目录为 `<repo>/.dsh-worktrees/<id8>`，并幂等写入 `.git/info/exclude` 的 `/.dsh-worktrees/`。
+- 默认 worktree 位于仓库外：`~/.dsh/worktrees/<项目名>/<id8>`；项目名会被规范成安全的单层目录名。配置为相对目录名时使用 `<repo>/<dirName>/<id8>`，并幂等写入 `.git/info/exclude` 的 `/<dirName>/`。
 - 会话被删除后，host 通过 `session/disposed` 解绑，看板可重新创建会话，不会自动重启旧会话。
 - 插件不接管会话内容，Agent 的审批、追问和中止继续均使用 DSH 原生能力。
 

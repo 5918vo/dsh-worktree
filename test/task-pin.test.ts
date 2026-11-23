@@ -107,7 +107,7 @@ test('POST task/pin toggles the flag through the HTTP API', async () => {
   const repo = join(root, 'http-repo')
   await fs.mkdir(repo, { recursive: true })
   await initRepo(repo)
-  const harness = bootHost({}, { stateDir: join(root, 'http-state') })
+  const harness = bootHost({ dirName: join(root, 'http-worktrees') }, { stateDir: join(root, 'http-state') })
   const auth = { 'content-type': 'application/json' }
   const session = await callRoute(findRoute(harness.routes, `${PREFIX}/session`).handler, {
     method: 'POST',

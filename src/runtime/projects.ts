@@ -10,6 +10,7 @@ import * as gitx from '../gitx.js'
 import { Project, ProjectView, TaskView, WorktreeTask } from '../models.js'
 import { assertTaskBranchName, buildFirstPrompt, id8, normalizeModelSelection } from './prompt.js'
 import { absPath, AddProjectInput, effectiveConfig, ParentPromptInfo, PublishInput, RuntimeContext, TaskError } from './types.js'
+import { isExternalWorktreeDir, worktreeProjectSegment } from '../worktree-layout.js'
 
 export async function addProject(ctx: RuntimeContext, input: AddProjectInput): Promise<Project> {
   const repoPath = absPath(input.repoPath)
@@ -278,10 +279,17 @@ export async function publishTask(ctx: RuntimeContext, input: PublishInput): Pro
   const wanted = (input.branchName?.trim() || `${eff.branchPrefix}${short}`).trim()
   assertTaskBranchName(wanted)
   const branch = await gitx.uniqueBranchName(ctx.gitPath, repoPath, wanted)
-  const worktreePath = join(repoPath, eff.dirName, short)
+  const external = isExternalWorktreeDir(eff.dirName)
+  // External roots mirror T3 Code: <root>/<project>/<id8>, never inside the
+  // repo. A relative dirName keeps the legacy in-repo placement.
+  const worktreePath = external
+    ? join(absPath(eff.dirName), worktreeProjectSegment(project.name), short)
+    : join(repoPath, eff.dirName, short)
 
+  await fs.mkdir(dirname(worktreePath), { recursive: true })
   await gitx.worktreeAdd(ctx.gitPath, repoPath, worktreePath, branch, base)
-  await gitx.ensureExclude(ctx.gitPath, repoPath, eff.dirName)
+  // Only an in-repo worktree can show up as untracked in the main repo.
+  if (!external) await gitx.ensureExclude(ctx.gitPath, repoPath, eff.dirName)
 
   const now = Date.now()
   const task: WorktreeTask = {

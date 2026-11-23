@@ -1,7 +1,10 @@
 /** Domain models for the worktree task plugin. */
 
 export interface WorktreeConfig {
-  /** Worktree parent directory name, relative to the target repo root. */
+  /**
+   * Worktree root. `~`/absolute: external layout `<root>/<project>/<id8>`;
+   * relative: legacy in-repo layout `<repo>/<dirName>/<id8>`.
+   */
   dirName: string
   /** Prefix for auto-generated task branches. */
   branchPrefix: string

@@ -32,7 +32,7 @@ before(async () => {
   // temp dir instead of the real `~/.dsh/worktree-tasks`, so a test run never
   // leaves a "test project + subtasks" behind on the user's board. The temp
   // root (including `state/`) is removed in the after() hook below.
-  const harness = bootHost({}, { stateDir: join(root, 'state') })
+  const harness = bootHost({ dirName: join(root, 'worktrees') }, { stateDir: join(root, 'state') })
   routes = harness.routes
   const res = await call('session', { body: {} })
   token = res.body.token

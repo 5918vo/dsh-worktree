@@ -276,7 +276,7 @@
 | 卡头 | CardHead（grid） | 概览（overview）+ 右侧：按 Git 与会话状态推导（overviewHint） | 只读 | 常驻 |
 | 统计卡 ×4 | Stat | 需要处理（attentionStat，= 待处理 + 异常）/ 进行中（activeTasks）/ 待验收（reviewTasks）/ 已合并（mergedTasks） | 只读 | 常驻 |
 | 待处理提示 | 行 + 链接 | {n} 个任务等待处理（attention）+ 查看（view） | 点击查看跳转首个待处理任务 | 有 pending 任务时 |
-| 键值 | KV 列表 | 仓库路径（+复制）/ 默认基线分支（defaultBase）/ 分支前缀（branchPrefix, code）/ Worktree 目录（worktreeDirName, code） | 复制仓库路径 | 常驻 |
+| 键值 | KV 列表 | 仓库路径（+复制）/ 默认基线分支（defaultBase）/ 分支前缀（branchPrefix, code）/ Worktree 根目录（worktreeDirName, code） | 复制仓库路径 | 常驻 |
 
 ### 项目设置卡（project settings）
 
@@ -286,7 +286,7 @@
 | 项目名称 | 输入框 | 项目名称（projectName）+ 提示：只影响看板显示，不会改写仓库。（projectNameHint） | 编辑 | 必填（空提示 requiredField） |
 | 默认基线分支 | BranchCombobox | 默认基线分支（defaultBase）+ 加载/失败提示 | 可搜索过滤 | — |
 | 分支前缀 | 输入框 mono | 分支前缀（branchPrefix）+ 提示：自动分支为前缀加 8 位任务 ID。（branchPrefixHint） | 编辑 | 占位 dsh-wt/ |
-| Worktree 目录 | 输入框 mono | Worktree 目录（worktreeDirName）+ 提示：相对仓库根目录，并写入 .git/info/exclude。（worktreeDirHint） | 编辑 | 占位 .dsh-worktrees |
+| Worktree 根目录 | 输入框 mono | Worktree 根目录（worktreeDirName）+ 提示：默认为 ~/.dsh/worktrees，放在 <根目录>/<项目名>/ 下；相对路径仍放在仓库内，并写入 .git/info/exclude。（worktreeDirHint） | 编辑 | 占位 ~/.dsh/worktrees |
 | 保存 | 按钮 primary（submit） | 保存（save → saving） | 提交保存；成功右侧显示「已保存」（saved）约 3.2s | 保存中 Spinner + 禁用 |
 | 错误提示 | role=alert | {err} | 只读 | 失败 |
 
@@ -339,7 +339,7 @@
 | 元素 | 类型 | 文案 / 语义 key | 交互 / 行为 | 状态 / 条件 |
 | --- | --- | --- | --- | --- |
 | 卡头 | CardHead（sliders） | 配置（config）+ 说明：由宿主配置提供，只读。（configHint） | 只读 | 常驻 |
-| 键值 | KV 列表 | Worktree 目录（worktreeDirName）/ 分支前缀（branchPrefix）/ Git（gitPath），均为只读 code | 只读 | 常驻 |
+| 键值 | KV 列表 | Worktree 根目录（worktreeDirName）/ 分支前缀（branchPrefix）/ Git（gitPath），均为只读 code | 只读 | 常驻 |
 
 ## 6. 弹窗清单（Modal）
 
@@ -738,7 +738,7 @@
 | projectSettings | 项目设置 | Project settings |
 | projectName | 项目名称 | Name |
 | defaultBase | 默认基线分支 | Default base branch |
-| worktreeDirName | Worktree 目录 | Worktree directory |
+| worktreeDirName | Worktree 根目录 | Worktree root |
 | gitPath | Git | Git |
 | branchPrefix | 分支前缀 | Branch prefix |
 | save | 保存 | Save |
@@ -893,7 +893,7 @@
 | previewDir | 目录 | Directory |
 | projectSettingsHint | 覆盖全局的分支与 worktree 命名规则，只影响此后发布的任务。 | Override branch and worktree naming. Applies to future tasks only. |
 | projectNameHint | 只影响看板显示，不会改写仓库。 | Display name only; the repository is untouched. |
-| worktreeDirHint | 相对仓库根目录，并写入 .git/info/exclude。 | Relative to the repository root; added to .git/info/exclude. |
+| worktreeDirHint | 默认为 ~/.dsh/worktrees，放在 <根目录>/<项目名>/ 下；相对路径仍放在仓库内，并写入 .git/info/exclude。 | Defaults to ~/.dsh/worktrees as <root>/<project>/. A relative path stays inside the repo and is added to .git/info/exclude. |
 | branchPrefixHint | 自动分支为前缀加 8 位任务 ID。 | Auto branches use the prefix plus the 8-character task ID. |
 | statusSyncFailed | 状态同步失败 | Status sync failed |
 | mergeConfirm | 确认合并 | Merge |

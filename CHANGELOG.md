@@ -2,6 +2,25 @@
 
 本文件记录 `@5318vo/dsh-worktree` 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.12.0] - 2026-11-22
+
+### 变更
+
+- 默认把任务 worktree 放到仓库外：`dirName` 默认值由 `.dsh-worktrees` 改为 `~/.dsh/worktrees`，布局为 `<根目录>/<项目名>/<id8>`，与 T3 Code 一致；新任务不再在主仓库里创建 `.dsh-worktrees` 目录。
+- 项目名会规范成文件系统安全的单层目录名：路径分隔符、Windows 非法字符和保留名会被替换或加后缀。
+- 外部 worktree 不再写入 `.git/info/exclude`；相对 `dirName` 保留原有的仓库内布局和 exclude 行为，已有项目与任务的绝对路径无需迁移。
+- 项目设置的「Worktree 目录」改为「Worktree 根目录」，提示说明默认值与相对路径语义；发布预览显示完整的 `<根目录>/<项目名>` 路径。
+- `cordis.patch.yml`、README 与设置页文案同步为仓库外默认值。
+
+### 接口
+
+- 新增纯函数模块 `src/worktree-layout.ts`（`DEFAULT_WORKTREE_DIR` / `isExternalWorktreeDir` / `worktreeProjectSegment` / `worktreePreviewRoot`），宿主运行时与浏览器客户端共用。
+- `WorktreeConfig.dirName` 与项目级覆盖现在接受 `~` 或绝对路径；字段类型与 API 不变，旧配置继续有效。
+
+### 测试
+
+- 新增外部根目录发布（`<root>/<project>/<id8>`、不写 exclude）、相对目录保留仓库内布局、路径预览与目录名规范化用例。
+
 ## [1.11.0] - 2026-11-22
 
 ### 新增
