@@ -418,6 +418,25 @@ test('the report lists tags and priority in the headline facts', () => {
   assert.ok(low.includes('- 优先级: 低'))
 })
 
+test('the report shows the deadline and how late it is', () => {
+  const now = new Date(2026, 0, 5, 9, 7).getTime()
+  const line = (dueAt?: number) =>
+    buildAcceptanceReport(makeInput({ task: makeTask(dueAt === undefined ? {} : { dueAt }), now }))
+      .split('\n')
+      .find((l) => l.startsWith('- 截止日期:'))
+
+  assert.equal(line(new Date(2026, 0, 10).getTime()), '- 截止日期: 2026-01-10', 'a future deadline is a plain date')
+  assert.equal(line(new Date(2026, 0, 5, 23).getTime()), '- 截止日期: 2026-01-05', 'due today is not late yet')
+  assert.equal(line(new Date(2026, 0, 2).getTime()), '- 截止日期: 2026-01-02（逾期 3 天）')
+  assert.equal(line(), '- 截止日期: 未设置')
+})
+
+test('the deadline sits with the other metadata, before the criteria', () => {
+  const report = buildAcceptanceReport(makeInput({ task: makeTask({ dueAt: new Date(2026, 0, 10).getTime() }) }))
+  assert.ok(report.indexOf('- 优先级:') < report.indexOf('- 截止日期:'))
+  assert.ok(report.indexOf('- 截止日期:') < report.indexOf('## 任务描述'))
+})
+
 test('the report has a notes section with the saved text or a fallback', () => {
   const withNotes = buildAcceptanceReport(makeInput({ task: makeTask({ notes: 'rotate the token\nafter deploy' }) }))
   assert.ok(withNotes.includes('## 备注'))

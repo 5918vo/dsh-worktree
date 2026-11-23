@@ -74,6 +74,8 @@ export interface WorktreeTask {
   notes?: string
   /** Optional prerequisite tasks (same project, at most 8) — display only. */
   dependsOn?: string[]
+  /** Optional deadline as local calendar midnight (ms); absent means none. */
+  dueAt?: number
   /** Optional per-task acceptance criteria (one trimmed line per item). */
   acceptanceCriteria?: string[]
   /** Verified criterion texts; intersected with acceptanceCriteria for display. */

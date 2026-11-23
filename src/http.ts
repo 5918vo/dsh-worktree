@@ -197,6 +197,7 @@ export function registerHttp(app: App): () => void {
         acceptanceCriteria: Array.isArray(body.acceptanceCriteria) ? body.acceptanceCriteria.map(String) : undefined,
         tags: body.tags,
         priority: body.priority,
+        dueAt: body.dueAt,
       })
       send(res, 200, { task })
     } catch (error) {
@@ -408,6 +409,7 @@ export function registerHttp(app: App): () => void {
     if (Object.prototype.hasOwnProperty.call(body, 'priority')) patch.priority = body.priority
     if (Object.prototype.hasOwnProperty.call(body, 'notes')) patch.notes = body.notes
     if (Object.prototype.hasOwnProperty.call(body, 'dependsOn')) patch.dependsOn = body.dependsOn
+    if (Object.prototype.hasOwnProperty.call(body, 'dueAt')) patch.dueAt = body.dueAt
     app.runtime.updateTaskMeta(id, patch)
   })
   act('delete', async (id) => app.runtime.delete(id))

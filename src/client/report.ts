@@ -10,6 +10,7 @@ import { pad2 } from './format'
 import { fill, mdBlock, mdCodeCell, mdInline, reportTimestamp } from './markdown'
 import { branchHeadSha, criteria, criteriaProgress } from './model'
 import { buildTaskLifecycle, lifecycleCycleDays, lifecycleLabelKey } from './task-lifecycle'
+import { dueInputValue, dueStateOf } from '../task-meta'
 
 export interface ReportInput {
   task: WorktreeTask
@@ -98,6 +99,16 @@ export function buildAcceptanceReport(input: ReportInput): string {
   lines.push(metaLine(t.taskPriority, mdInline(
     task.priority === 'high' ? t.priorityHigh : task.priority === 'low' ? t.priorityLow : t.priorityNormal,
   )))
+  // The deadline is dated in local calendar days and repeats the overdue count
+  // so a printed report carries the same warning as the board.
+  const dueValue = dueInputValue(task.dueAt)
+  const dueState = dueStateOf(task.dueAt, now)
+  const dueText = dueValue
+    ? dueState && dueState.kind === 'overdue'
+      ? dueValue + '（' + fill(t.reportDueOverdue, { n: String(dueState.days) }) + '）'
+      : dueValue
+    : t.reportDueNone
+  lines.push(metaLine(t.reportDue, dueText))
   const head = branchHeadSha(task, snapshot)
   lines.push(metaLine(t.reportHead, mdCodeCell(head || '—')))
   if (task.mergedCommit) lines.push(metaLine(t.reportMergedCommit, mdCodeCell(task.mergedCommit)))

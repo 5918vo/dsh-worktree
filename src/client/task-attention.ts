@@ -7,7 +7,7 @@
  * session state — no new Git commands or polling.
  */
 
-export type AttentionCategory = 'pending' | 'review' | 'recovery' | 'broken' | 'stalled'
+export type AttentionCategory = 'pending' | 'review' | 'recovery' | 'broken' | 'stalled' | 'overdue'
 export type AlertKind = 'recovery' | 'pending' | 'broken' | 'stalled' | 'post-merge' | 'session'
 export type QuickAction = 'recover' | 'handle' | 'review' | 'open-session'
 
@@ -36,6 +36,8 @@ export interface AttentionInput {
   stale?: boolean
   /** Whole days without activity, as derived by `staleness.ts`. */
   stalledDays?: number | null
+  /** Days past the deadline; > 0 adds the overdue category. */
+  overdueDays?: number | null
 }
 
 /** Live session health for one task: the last turn outcome, when it failed. */
@@ -130,6 +132,11 @@ export function deriveTaskAttention(input: AttentionInput): TaskAttention {
     alerts.push('stalled')
   }
 
+  // overdue: a category only. The row shows its chip from the deadline itself
+  // and the alert ladder stays untouched, so an overdue task never displaces
+  // a recovery/broken/pending alert.
+  if (Math.floor(Number(input.overdueDays) || 0) > 0) categories.add('overdue')
+
   // Deduplicate while preserving priority order.
   const uniq: AlertKind[] = []
   for (const kind of ALERT_PRIORITY) if (alerts.includes(kind)) uniq.push(kind)
@@ -183,6 +190,7 @@ export function categoryKey(category: AttentionCategory | 'all'): string {
     case 'recovery': return 'attentionRecovery'
     case 'broken': return 'attentionBroken'
     case 'stalled': return 'attentionStalled'
+    case 'overdue': return 'attentionOverdue'
   }
 }
 
@@ -196,10 +204,10 @@ export function filterCount(counts: Record<string, number> | null | undefined, f
   return Number((counts && counts[key]) || 0)
 }
 
-const SEVERITY: Record<AttentionCategory, number> = { recovery: 4, broken: 3, pending: 2, review: 1, stalled: 1 }
+const SEVERITY: Record<AttentionCategory, number> = { recovery: 4, broken: 3, pending: 2, overdue: 2, review: 1, stalled: 1 }
 
 /** Category order used by the summary bar: most severe first. */
-export const CATEGORY_ORDER: AttentionCategory[] = ['recovery', 'broken', 'pending', 'review', 'stalled']
+export const CATEGORY_ORDER: AttentionCategory[] = ['recovery', 'broken', 'pending', 'overdue', 'review', 'stalled']
 
 export function severityOf(category: AttentionCategory): number {
   return SEVERITY[category] || 0
@@ -214,7 +222,7 @@ export interface AttentionSummary {
 }
 
 export function summarizeAttention(views: any[], get: (v: any) => TaskAttention): AttentionSummary {
-  const counts: Record<AttentionCategory, number> = { pending: 0, review: 0, recovery: 0, broken: 0, stalled: 0 }
+  const counts: Record<AttentionCategory, number> = { pending: 0, review: 0, recovery: 0, broken: 0, stalled: 0, overdue: 0 }
   const hurting = new Set<string>()
   let maxSeverity = 0
   for (const view of views || []) {
@@ -258,11 +266,12 @@ export function computeFilterCounts(
     review: visible.counts.review,
     broken: visible.counts.broken,
     stalled: visible.counts.stalled,
+    overdue: visible.counts.overdue,
     recovery: recoveryReady ? all.counts.recovery : 0,
     total: 0,
   }
   const ids = new Set<string>()
-  const hurting: AttentionCategory[] = ['pending', 'review', 'broken', 'stalled']
+  const hurting: AttentionCategory[] = ['pending', 'review', 'broken', 'stalled', 'overdue']
   for (const view of visibleViews || []) {
     const attention = get(view)
     if (attention && hurting.some((category) => attention.categories.has(category))) {

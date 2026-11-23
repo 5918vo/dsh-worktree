@@ -31,6 +31,8 @@ export interface PublishInput {
   tags?: unknown
   /** Display priority; omitted/`normal` stores nothing. */
   priority?: unknown
+  /** Deadline: YYYY-MM-DD, epoch ms, or null; normalized to local midnight. */
+  dueAt?: number | string | null
 }
 
 export interface AddProjectInput {

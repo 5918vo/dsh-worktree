@@ -8,7 +8,7 @@ import { basename, dirname, join } from 'node:path'
 import { normalizeCriteria } from '../criteria.js'
 import * as gitx from '../gitx.js'
 import { Project, ProjectView, TaskView, WorktreeTask } from '../models.js'
-import { compareTaskOrder, normalizePriority, normalizeTags, validateTags } from '../task-meta.js'
+import { compareTaskOrder, normalizePriority, normalizeTags, parseDueAt, validateTags } from '../task-meta.js'
 import { assertTaskBranchName, buildFirstPrompt, id8, normalizeModelSelection } from './prompt.js'
 import { absPath, AddProjectInput, effectiveConfig, ParentPromptInfo, PublishInput, RuntimeContext, TaskError } from './types.js'
 import { isExternalWorktreeDir, worktreeProjectSegment } from '../worktree-layout.js'
@@ -255,6 +255,8 @@ export async function publishTask(ctx: RuntimeContext, input: PublishInput): Pro
   if (input.priority !== undefined && priority === undefined) {
     throw new TaskError('优先级只能是 low、normal 或 high')
   }
+  const due = input.dueAt === undefined ? null : parseDueAt(input.dueAt)
+  if (due && !due.ok) throw new TaskError('截止日期无效')
 
   const project = await ensureProject(ctx, input)
   const repoPath = project.repoPath
@@ -315,6 +317,7 @@ export async function publishTask(ctx: RuntimeContext, input: PublishInput): Pro
     worktreePath,
     ...(tags.length ? { tags } : {}),
     ...(priority && priority !== 'normal' ? { priority } : {}),
+    ...(due && due.ok && due.value !== null ? { dueAt: due.value } : {}),
     sessionId: null,
     firstPrompt: '',
     startOnBind: input.start !== false && input.autoBind !== false,

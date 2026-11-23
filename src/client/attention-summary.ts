@@ -27,7 +27,12 @@ export function attentionSummaryTitle(
   if (stale) return String(t.attentionStale).replace('{time}', time)
   if (severity >= 4) return String(t.attentionSummaryRecovery).replace('{n}', String(counts.recovery || 0))
   if (severity >= 3) return String(t.attentionSummaryBroken).replace('{n}', String(counts.broken || 0))
-  if (severity >= 2) return String(t.attentionSummaryPending).replace('{n}', String(counts.pending || 0))
+  if (severity >= 2) {
+    // overdue shares severity 2 with pending; only when there is no pending
+    // task does the bar name the overdue ones.
+    if (Number(counts.pending || 0) > 0) return String(t.attentionSummaryPending).replace('{n}', String(counts.pending || 0))
+    return String(t.attentionSummaryOverdue).replace('{n}', String(counts.overdue || 0))
+  }
   if (Number(counts.review || 0) > 0) return String(t.attentionSummaryReview).replace('{n}', String(counts.review || 0))
   return String(t.attentionSummaryStalled).replace('{n}', String(counts.stalled || 0))
 }

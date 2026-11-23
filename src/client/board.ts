@@ -27,6 +27,7 @@ import {
   type TaskAttention,
 } from './task-attention'
 import { deriveActionGate } from './action-gate'
+import { dueStateOf } from '../task-meta'
 import { ConfirmDialog, StashDiffModal, type ConfirmState, type StashViewState } from './board/dialogs'
 import { useBoardData } from './board/use-board-data'
 import { useBoardActions } from './board/use-board-actions'
@@ -393,6 +394,12 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
         health: sid ? healthMap[sid] || null : null,
         stale: !!err,
         stalledDays: stalledDays(tv.task, tv.snapshot),
+        // Overdue comes from the stored deadline; a task can be overdue and
+        // stalled at the same time (they are separate categories).
+        overdueDays: (() => {
+          const due = dueStateOf(tv.task.dueAt)
+          return due && due.kind === 'overdue' ? due.days : 0
+        })(),
       }))
     }
     return map

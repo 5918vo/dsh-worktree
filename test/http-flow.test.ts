@@ -497,3 +497,58 @@ test('task/meta stores dependencies and rejects invalid ones', async () => {
   assert.equal(cleared.status, 200, JSON.stringify(cleared.body))
   assert.equal('dependsOn' in cleared.body.view.task, false)
 })
+
+test('publish accepts a due date and rejects an invalid one', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
+  const projectId = added.body.project.id
+
+  const dated = await call('publish', {
+    body: { projectId, title: 'dated', description: 'd', dueAt: '2026-07-04' },
+    headers: auth,
+  })
+  assert.equal(dated.status, 200, JSON.stringify(dated.body))
+  assert.equal(dated.body.task.dueAt, new Date(2026, 6, 4).getTime(), 'the date lands on local midnight')
+
+  const undated = await call('publish', {
+    body: { projectId, title: 'undated', description: 'd' },
+    headers: auth,
+  })
+  assert.equal(undated.status, 200, JSON.stringify(undated.body))
+  assert.equal('dueAt' in undated.body.task, false, 'no deadline means no field')
+
+  const bad = await call('publish', {
+    body: { projectId, title: 'bad due', description: 'd', dueAt: '2026-02-30' },
+    headers: auth,
+  })
+  assert.equal(bad.status, 400)
+  assert.equal(bad.body.error, '截止日期无效')
+})
+
+test('task/meta sets and clears the due date', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
+  const published = await call('publish', {
+    body: { projectId: added.body.project.id, title: 'due task', description: 'd' },
+    headers: auth,
+  })
+  const id = published.body.task.id
+
+  const set = await call('task/meta', { body: { id, dueAt: '2026-08-09' }, headers: auth })
+  assert.equal(set.status, 200, JSON.stringify(set.body))
+  assert.equal(set.body.view.task.dueAt, new Date(2026, 7, 9).getTime())
+
+  // A notes-only patch keeps the deadline (the HTTP layer forwards dueAt only when present).
+  const notesOnly = await call('task/meta', { body: { id, notes: 'keep the date' }, headers: auth })
+  assert.equal(notesOnly.status, 200, JSON.stringify(notesOnly.body))
+  assert.equal(notesOnly.body.view.task.dueAt, new Date(2026, 7, 9).getTime())
+
+  const invalid = await call('task/meta', { body: { id, dueAt: 'never' }, headers: auth })
+  assert.equal(invalid.status, 400)
+  assert.equal(invalid.body.error, '截止日期无效')
+
+  const cleared = await call('task/meta', { body: { id, dueAt: null }, headers: auth })
+  assert.equal(cleared.status, 200, JSON.stringify(cleared.body))
+  assert.equal('dueAt' in cleared.body.view.task, false)
+  assert.equal(cleared.body.view.task.notes, 'keep the date', 'clearing the deadline keeps the notes')
+})

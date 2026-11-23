@@ -4,6 +4,7 @@ import { relTime, taskStamp } from './format'
 import { railStatsText } from './model'
 import type { ProjectView, TaskView } from '../models'
 import { boardBranch, boardStat, boardStatTitle, boardStatus, boardStatusLabel, type BoardFilter, type BoardTheme } from './model'
+import { dueStateOf } from '../task-meta'
 import { pendingLabel, postMergeLabel } from './status'
 import { AttentionFilter } from './attention-filter'
 import { AttentionSummaryBar } from './attention-summary'
@@ -268,6 +269,16 @@ function taskRow(
   const deps = props.depsOf ? props.depsOf(task) : null
   if (deps && deps.blocked) {
     chips.push(chip(fill(t.taskDepsBlocked, { n: deps.open.length }), 'warn', deps.open.map((item) => item.title).join(', ')))
+  }
+  // Deadline chip: overdue is an error tone, today/soon a warning. Later dates
+  // stay out of the row so a far-off deadline does not add noise.
+  const due = dueStateOf(task.dueAt)
+  if (due && due.kind === 'overdue') {
+    chips.push(chip(String(t.taskDueOverdue).replace('{n}', String(due.days)), 'err', t.taskDueHint))
+  } else if (due && due.kind === 'today') {
+    chips.push(chip(t.taskDueToday, 'warn', t.taskDueHint))
+  } else if (due && due.kind === 'soon') {
+    chips.push(chip(String(t.taskDueSoon).replace('{n}', String(due.days)), 'warn', t.taskDueHint))
   }
   // Two tags at most: the row stays one line; the full list lives in the title
   // and in "+N" so nothing is lost.

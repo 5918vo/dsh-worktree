@@ -360,6 +360,82 @@ test('updateTaskMeta validates tags, priority and notes', async () => {
   }
 })
 
+test('updateTaskMeta sets, overwrites and clears the due date', async () => {
+  const { store, dir } = await freshStore()
+  try {
+    store.putTask(task('d1', 'p1'))
+    const first = new Date(2026, 3, 9, 18, 30).getTime()
+    const set = store.updateTaskMeta('d1', { dueAt: '2026-04-09' })
+    assert.equal(set.ok, true)
+    if (!set.ok) return
+    assert.equal(set.task.dueAt, new Date(2026, 3, 9).getTime(), 'a date string lands on local midnight')
+
+    const overwritten = store.updateTaskMeta('d1', { dueAt: first })
+    assert.equal(overwritten.ok, true)
+    if (!overwritten.ok) return
+    assert.equal(overwritten.task.dueAt, new Date(2026, 3, 9).getTime(), 'a timestamp is normalized too')
+
+    const cleared = store.updateTaskMeta('d1', { dueAt: null })
+    assert.equal(cleared.ok, true)
+    if (!cleared.ok) return
+    assert.equal('dueAt' in cleared.task, false, 'clearing deletes the field')
+
+    const reloaded = new Store(dir)
+    await reloaded.load()
+    assert.equal('dueAt' in reloaded.getTask('d1')!, false)
+    reloaded.dispose()
+    await reloaded.flush()
+  } finally {
+    await cleanup(store, dir)
+  }
+})
+
+test('an invalid due date is rejected and never half-applies', async () => {
+  const { store, dir } = await freshStore()
+  try {
+    store.putTask(task('d2', 'p1'))
+    const good = store.updateTaskMeta('d2', { dueAt: '2026-05-01', tags: ['ui'] })
+    assert.equal(good.ok, true)
+
+    assert.deepEqual(store.updateTaskMeta('d2', { dueAt: '2026-02-30' }), { ok: false, reason: 'due-invalid' })
+    assert.deepEqual(store.updateTaskMeta('d2', { dueAt: 'tomorrowish' }), { ok: false, reason: 'due-invalid' })
+    assert.deepEqual(store.updateTaskMeta('d2', { dueAt: -5 }), { ok: false, reason: 'due-invalid' })
+    // A patch that also carries tags must be all-or-nothing.
+    assert.deepEqual(store.updateTaskMeta('d2', { dueAt: 'nope', tags: ['x'] }), { ok: false, reason: 'due-invalid' })
+    const row = store.getTask('d2')!
+    assert.equal(row.dueAt, new Date(2026, 4, 1).getTime())
+    assert.deepEqual(row.tags, ['ui'])
+  } finally {
+    await cleanup(store, dir)
+  }
+})
+
+test('a due-date patch leaves the other metadata untouched', async () => {
+  const { store, dir } = await freshStore()
+  try {
+    store.putTask(task('d3', 'p1'))
+    store.updateTaskMeta('d3', { tags: ['ui'], priority: 'high', notes: 'keep me' })
+    const dueOnly = store.updateTaskMeta('d3', { dueAt: '2026-06-02' })
+    assert.equal(dueOnly.ok, true)
+    if (!dueOnly.ok) return
+    assert.deepEqual(dueOnly.task.tags, ['ui'])
+    assert.equal(dueOnly.task.priority, 'high')
+    assert.equal(dueOnly.task.notes, 'keep me')
+
+    const notesOnly = store.updateTaskMeta('d3', { notes: 'changed' })
+    assert.equal(notesOnly.ok, true)
+    if (!notesOnly.ok) return
+    assert.equal(notesOnly.task.dueAt, new Date(2026, 5, 2).getTime(), 'a notes-only patch keeps the deadline')
+
+    const undefinedPatch = store.updateTaskMeta('d3', { dueAt: undefined })
+    assert.equal(undefinedPatch.ok, true)
+    if (!undefinedPatch.ok) return
+    assert.equal(undefinedPatch.task.dueAt, new Date(2026, 5, 2).getTime(), 'undefined is not a clear')
+  } finally {
+    await cleanup(store, dir)
+  }
+})
+
 test('updateTaskMeta writes are visible to another store instance', async () => {
   const dir = await fs.mkdtemp(join(tmpdir(), 'dshw-store-'))
   const a = new Store(dir)

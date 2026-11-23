@@ -1,14 +1,20 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  DUE_SOON_DAYS,
   NOTES_MAX_LENGTH,
   TAG_LIMIT,
   TAG_MAX_LENGTH,
   compareTaskOrder,
+  dueDayOffset,
+  dueInputValue,
+  dueStateOf,
   normalizePriority,
   normalizeTags,
+  parseDueAt,
   parseTagText,
   priorityRank,
+  startOfLocalDay,
   validateTags,
 } from '../src/task-meta.js'
 
@@ -88,4 +94,72 @@ test('compareTaskOrder sorts pinned, then priority, then newest', () => {
 
 test('NOTES_MAX_LENGTH is 2000 characters', () => {
   assert.equal(NOTES_MAX_LENGTH, 2000)
+})
+
+test('parseDueAt clears on empty input and normalizes numbers to local midnight', () => {
+  assert.deepEqual(parseDueAt(null), { ok: true, value: null })
+  assert.deepEqual(parseDueAt(undefined), { ok: true, value: null })
+  assert.deepEqual(parseDueAt(''), { ok: true, value: null })
+  assert.deepEqual(parseDueAt('   '), { ok: true, value: null })
+
+  const noon = new Date(2026, 4, 17, 12, 34, 56).getTime()
+  assert.deepEqual(parseDueAt(noon), { ok: true, value: new Date(2026, 4, 17).getTime() })
+  assert.deepEqual(parseDueAt('2026-05-17'), { ok: true, value: new Date(2026, 4, 17).getTime() })
+  assert.deepEqual(parseDueAt('2026-1-3'), { ok: true, value: new Date(2026, 0, 3).getTime() })
+})
+
+test('parseDueAt rejects impossible calendar dates instead of rolling them over', () => {
+  assert.deepEqual(parseDueAt('2026-02-30'), { ok: false })
+  assert.deepEqual(parseDueAt('2026-13-01'), { ok: false })
+  assert.deepEqual(parseDueAt('2026-00-10'), { ok: false })
+  assert.deepEqual(parseDueAt('not a date'), { ok: false })
+  assert.deepEqual(parseDueAt(0), { ok: false })
+  assert.deepEqual(parseDueAt(-1), { ok: false })
+  assert.deepEqual(parseDueAt(Number.NaN), { ok: false })
+  assert.deepEqual(parseDueAt(Number.POSITIVE_INFINITY), { ok: false })
+})
+
+test('startOfLocalDay floors a timestamp to local midnight', () => {
+  const late = new Date(2026, 11, 31, 23, 59, 59, 999).getTime()
+  assert.equal(startOfLocalDay(late), new Date(2026, 11, 31).getTime())
+  assert.equal(startOfLocalDay(Number.NaN), 0)
+})
+
+test('dueDayOffset counts whole calendar days across months, years and DST', () => {
+  const at = (y: number, m: number, d: number, h = 0) => new Date(y, m, d, h).getTime()
+  assert.equal(dueDayOffset(at(2026, 0, 10), at(2026, 0, 10, 23)), 0)
+  assert.equal(dueDayOffset(at(2026, 1, 2), at(2026, 0, 30)), 3)
+  assert.equal(dueDayOffset(at(2026, 0, 1), at(2025, 11, 31)), 1)
+  assert.equal(dueDayOffset(at(2025, 11, 31), at(2026, 0, 1)), -1)
+  // A 40-day span must equal 40 whatever the offset transitions inside it.
+  assert.equal(dueDayOffset(at(2026, 2, 1), at(2026, 0, 20)), 40)
+  assert.equal(dueDayOffset(null, at(2026, 0, 1)), null)
+  assert.equal(dueDayOffset(undefined, at(2026, 0, 1)), null)
+  assert.equal(dueDayOffset(0, at(2026, 0, 1)), null)
+})
+
+test('dueStateOf buckets overdue, today, soon and later', () => {
+  const now = new Date(2026, 2, 10, 15).getTime()
+  const day = (d: number) => new Date(2026, 2, d).getTime()
+  assert.deepEqual(dueStateOf(day(7), now), { kind: 'overdue', days: 3 })
+  assert.deepEqual(dueStateOf(day(10), now), { kind: 'today', days: 0 })
+  assert.deepEqual(dueStateOf(day(11), now), { kind: 'soon', days: 1 })
+  assert.deepEqual(dueStateOf(day(10 + DUE_SOON_DAYS), now), { kind: 'soon', days: DUE_SOON_DAYS })
+  assert.deepEqual(dueStateOf(day(11 + DUE_SOON_DAYS), now), { kind: 'later', days: 0 })
+  assert.equal(dueStateOf(null, now), null)
+  assert.equal(dueStateOf(0, now), null)
+})
+
+test('dueInputValue formats a zero-padded local date and ignores invalid input', () => {
+  assert.equal(dueInputValue(new Date(2026, 0, 5).getTime()), '2026-01-05')
+  assert.equal(dueInputValue(new Date(2026, 11, 31).getTime()), '2026-12-31')
+  assert.equal(dueInputValue(null), '')
+  assert.equal(dueInputValue(0), '')
+  assert.equal(dueInputValue(Number.NaN), '')
+})
+
+test('a due date never changes the task order', () => {
+  const a = { id: 'a', createdAt: 100, dueAt: new Date(2020, 0, 1).getTime() }
+  const b = { id: 'b', createdAt: 200 }
+  assert.deepEqual([b, a].sort(compareTaskOrder).map((t) => t.id), ['b', 'a'])
 })

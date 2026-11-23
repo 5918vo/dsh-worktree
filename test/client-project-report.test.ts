@@ -78,8 +78,8 @@ test('project report carries metadata, stats, the task table and per-task blocks
   assert.match(text, /- review：1/)
   assert.match(text, /- merged：1/)
   assert.match(text, /## 任务清单/)
-  assert.match(text, /\| 序号 \| 状态 \| 任务 \| 分支 \| 验收 \| 优先级 \| 标签 \| 最近活动 \|/)
-  assert.match(text, /\| 1 \| review \| Alpha \| `dsh\/one` \| 1\/1 \| 普通 \| — \|/)
+  assert.match(text, /\| 序号 \| 状态 \| 任务 \| 分支 \| 验收 \| 优先级 \| 截止 \| 标签 \| 最近活动 \|/)
+  assert.match(text, /\| 1 \| review \| Alpha \| `dsh\/one` \| 1\/1 \| 普通 \| — \| — \|/)
   assert.match(text, /### 任务 1：Alpha/)
   assert.match(text, /- \[x\] one/)
   assert.match(text, /### 任务 2：Beta/)
@@ -179,6 +179,27 @@ test('safeSlug caps the slug at 32 characters', () => {
   assert.equal(safeSlug('  --Hello, World! --  '), 'hello-world')
   assert.equal(safeSlug('中文'), 'project')
   assert.equal(safeSlug('中文', 'abcd1234'), 'abcd1234')
+})
+
+test('a due date shows in the table and the per-task block, with overdue days', () => {
+  const dueAt = new Date(2026, 0, 1).getTime()
+  const text = report([
+    view({ id: 'a', title: 'Late', dueAt }),
+    view({ id: 'b', title: 'Some day', dueAt: new Date(2026, 1, 15).getTime() }),
+  ], project(), new Date(2026, 0, 3, 10).getTime())
+  // 2026-01-01 against now 2026-01-03 is two days late, but the project table
+  // keeps the plain date; only the per-task block repeats the deadline.
+  assert.match(text, /\| 1 \| review \| Late \| `dsh\/one` \| — \| 普通 \| 2026-01-01 \|/)
+  assert.match(text, /\| 2 \| review \| Some day \|.*\| 2026-02-15 \|/)
+  assert.match(text, /- 截止日期: 2026-01-01/)
+  assert.match(text, /- 截止日期: 2026-02-15/)
+  assert.equal(/逾期/.test(text), false, 'the project report does not recompute lateness')
+})
+
+test('a project task without a deadline reads as unset', () => {
+  const text = report([view({ title: 'No due' })])
+  assert.match(text, /\| 1 \| review \| No due \| `dsh\/one` \| — \| 普通 \| — \| — \|/)
+  assert.match(text, /- 截止日期: 未设置/)
 })
 
 test('English locale produces the same structure', () => {

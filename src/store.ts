@@ -16,7 +16,7 @@ import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { normalizeCriteria } from './criteria.js'
 import { normalizeDependencyIds, validateDependencyIds, type DependencyIssue } from './task-deps.js'
-import { NOTES_MAX_LENGTH, normalizePriority, normalizeTags, validateTags } from './task-meta.js'
+import { NOTES_MAX_LENGTH, normalizePriority, normalizeTags, parseDueAt, validateTags } from './task-meta.js'
 import { Project, TaskTemplate, WorktreeTask } from './models.js'
 
 /** Outcome of an atomic session binding; callers translate conflicts into 409s. */
@@ -45,6 +45,7 @@ export type TaskMetaPatch = {
   priority?: unknown
   notes?: unknown
   dependsOn?: unknown
+  dueAt?: unknown
 }
 
 /** Outcome of an atomic metadata update; callers map reasons to 404 / 400. */
@@ -57,6 +58,7 @@ export type TaskMetaResult =
       | 'tags-too-many'
       | 'tags-too-long'
       | 'priority-invalid'
+      | 'due-invalid'
       | 'notes-too-long'
       | 'deps-too-many'
       | 'deps-self'
@@ -627,6 +629,9 @@ export class Store {
       }
       const priority = has('priority') ? normalizePriority(patch.priority) : null
       if (has('priority') && !priority) return { ok: false, reason: 'priority-invalid' }
+      const hasDue = has('dueAt')
+      const due = hasDue ? parseDueAt(patch.dueAt) : null
+      if (due && !due.ok) return { ok: false, reason: 'due-invalid' }
       const notes = has('notes') ? String(patch.notes == null ? '' : patch.notes).trim() : null
       if (notes !== null && notes.length > NOTES_MAX_LENGTH) return { ok: false, reason: 'notes-too-long' }
       const dependsOn = has('dependsOn') ? normalizeDependencyIds(patch.dependsOn) : null
@@ -640,7 +645,7 @@ export class Store {
         })
         if (!check.ok) return { ok: false, reason: dependencyReason(check.error) }
       }
-      if (!tags && !priority && notes === null && dependsOn === null) return { ok: true, task }
+      if (!tags && !priority && !hasDue && notes === null && dependsOn === null) return { ok: true, task }
 
       if (tags) {
         if (tags.length) task.tags = tags
@@ -649,6 +654,12 @@ export class Store {
       if (priority) {
         if (priority === 'normal') delete task.priority
         else task.priority = priority
+      }
+      // `due` may legitimately be null (clear), so track it separately from
+      // the truthiness-based fields above.
+      if (hasDue && due && due.ok) {
+        if (due.value === null) delete task.dueAt
+        else task.dueAt = due.value
       }
       if (notes !== null) {
         if (notes) task.notes = notes
