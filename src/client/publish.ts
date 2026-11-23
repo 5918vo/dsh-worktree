@@ -47,9 +47,12 @@ export function PublishModal(props: PublishModalProps) {
   const [base, setBase] = React.useState(parentTask ? parentTask.baseBranch : project ? project.baseBranch : '')
   const [title, setTitle] = React.useState(form0.title)
   const [description, setDescription] = React.useState(form0.description)
-  // A restored branch means the advanced panel was in use; reopen it so the
-  // draft is visibly applied instead of looking like a silent override.
-  const [advanced, setAdvanced] = React.useState(!!form0.branchName)
+  // A restored branch, tag or non-normal priority means the advanced panel was
+  // in use; reopen it so the draft is visibly applied instead of looking like a
+  // silent override.
+  const [advanced, setAdvanced] = React.useState(
+    !!form0.branchName || !!form0.tags || form0.priority !== 'normal',
+  )
   const [branch, setBranch] = React.useState(form0.branchName)
   const [start, setStart] = React.useState(true)
   const [asPlain, setAsPlain] = React.useState(false)

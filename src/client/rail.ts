@@ -10,7 +10,7 @@ import { AttentionSummaryBar } from './attention-summary'
 import { quickActionKey, type QuickAction, type SessionHealth, type TaskAttention } from './task-attention'
 import { environmentWarnings, type EnvironmentInfo } from './environment'
 
-export type RailEmptyKind = '' | 'search' | 'filter' | 'no-projects' | 'no-tasks'
+export type RailEmptyKind = '' | 'search' | 'tag' | 'filter' | 'no-projects' | 'no-tasks'
 
 export interface RailProps {
   t: any
@@ -151,12 +151,17 @@ export function Rail(props: RailProps) {
             h('div', { className: 'dshwd-empty-title' }, t.boardNoMatches),
             h('div', { className: 'dshwd-hint' }, t.boardClearSearch),
             h('button', { className: 'dshwd-btn dshwd-btn-ghost', onClick: () => props.onQuery('') }, t.boardClearSearch))
-          : props.emptyKind === 'filter'
+          : props.emptyKind === 'tag'
             ? h('div', { className: 'dshwd-empty', style: { minHeight: '160px' } },
-              h('div', { className: 'dshwd-empty-title' }, t.attentionEmptyTitle),
-              h('div', { className: 'dshwd-hint' }, t.attentionEmptyHint),
-              h('button', { className: 'dshwd-btn dshwd-btn-ghost', onClick: () => props.onFilter('all') }, t.attentionAll))
-            : props.views.map((view) => h('div', { key: view.project.id },
+              h('div', { className: 'dshwd-empty-title' }, t.taskTagNoMatch),
+              h('div', { className: 'dshwd-hint' }, t.taskTagNoMatchHint),
+              h('button', { className: 'dshwd-btn dshwd-btn-ghost', onClick: () => props.onTagFilter && props.onTagFilter('') }, t.taskTagAll))
+            : props.emptyKind === 'filter'
+              ? h('div', { className: 'dshwd-empty', style: { minHeight: '160px' } },
+                h('div', { className: 'dshwd-empty-title' }, t.attentionEmptyTitle),
+                h('div', { className: 'dshwd-hint' }, t.attentionEmptyHint),
+                h('button', { className: 'dshwd-btn dshwd-btn-ghost', onClick: () => props.onFilter('all') }, t.attentionAll))
+              : props.views.map((view) => h('div', { key: view.project.id },
               h('button', {
                 className: 'dshwd-group-head',
                 title: t.boardOpenProject,

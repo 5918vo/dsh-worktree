@@ -389,6 +389,8 @@ export const WORKBENCH_CSS = `
   .dshw-board .dshwd-stage-head { padding: 14px 14px 0; }
   .dshw-board .dshwd-stage-body { padding: 16px 14px 28px; }
   .dshw-board .dshwd-topbar { padding: 0 14px; }
+  /* Metadata rows stack label over value once the stage is narrow. */
+  .dshw-board .dshwd-meta-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
 }
 /* Below ~720px the board is one column: rail and inspector become overlay
    sheets, stage/task view keeps the full width, and nothing may overflow. */

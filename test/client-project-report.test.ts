@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import zh from '../locale/zh.json'
 import en from '../locale/en.json'
 import { buildProjectReport, projectReportFilename } from '../src/client/project-report.js'
-import { safeSlug } from '../src/client/markdown.js'
+import { reportTimestamp, safeSlug } from '../src/client/markdown.js'
 import { compareTaskOrder } from '../src/task-meta.js'
 import type { Project, TaskView, WorktreeTask } from '../src/models.js'
 
@@ -85,6 +85,16 @@ test('project report carries metadata, stats, the task table and per-task blocks
   assert.match(text, /### 任务 2：Beta/)
 })
 
+test('recent activity uses the newest task time or worktree commit', () => {
+  const lastCommitAt = Date.UTC(2026, 0, 4, 12)
+  const text = report([
+    view({ updatedAt: 100, createdAt: 100 }, {
+      worktree: { exists: true, branch: 'dsh/one', dirtyCount: 0, ahead: 0, commits: [], lastCommitAt },
+    }),
+  ])
+  assert.ok(text.includes(reportTimestamp(lastCommitAt)), 'the table shows the commit time, not the task age')
+})
+
 test('an empty project says so and skips the table header', () => {
   const text = report([])
   assert.match(text, /## 任务清单\n暂无任务\n/)
@@ -129,7 +139,7 @@ test('pipes, newlines and backticks are escaped so the table cannot break', () =
   const text = report([view({ title: 'a|b\nc', branch: 'x`y', notes: 'one\ntwo' })])
   assert.match(text, /a\\\|b c/, 'pipe escaped and newline collapsed')
   assert.match(text, /``x`y``/, 'branch uses a wider fence')
-  assert.match(text, /\*\*备注\*\*: one two/)
+  assert.match(text, /\*\*备注\*\*:\n\none\ntwo/, 'notes keep their line breaks')
   // The row count matches the header, i.e. the title did not split the table.
   const rows = text.split('\n').filter((line) => line.startsWith('| '))
   assert.equal(rows.length, 3, 'header + divider + one row')

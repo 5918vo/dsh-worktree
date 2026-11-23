@@ -421,7 +421,7 @@ test('the report lists tags and priority in the headline facts', () => {
 test('the report has a notes section with the saved text or a fallback', () => {
   const withNotes = buildAcceptanceReport(makeInput({ task: makeTask({ notes: 'rotate the token\nafter deploy' }) }))
   assert.ok(withNotes.includes('## 备注'))
-  assert.ok(withNotes.includes('rotate the token after deploy'))
+  assert.ok(withNotes.includes('rotate the token\nafter deploy'), 'notes keep their line breaks')
 
   const without = buildAcceptanceReport(makeInput())
   assert.ok(without.includes('## 备注\n无备注'))

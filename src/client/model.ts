@@ -202,11 +202,12 @@ export function collectTags(views: ProjectView[]): string[] {
 }
 
 /**
- * Which empty state the rail should show. A search or filter may report no
- * matches without widening to the generic "no tasks" copy: only an actually
- * empty filtered list earns an empty state, and the query wins over the filter
- * because it is the more specific thing the user just typed. `loaded` guards
- * the first paint, when an empty project list is not yet authoritative.
+ * Which empty state the rail should show. A search, tag or filter may report
+ * no matches without widening to the generic "no tasks" copy: only an actually
+ * empty filtered list earns an empty state. The query wins over the tag, and
+ * the tag over the attention filter, because each is more specific than the
+ * next thing the user just set. `loaded` guards the first paint, when an empty
+ * project list is not yet authoritative.
  */
 export function railEmptyKind(
   projects: ProjectView[],
@@ -214,11 +215,13 @@ export function railEmptyKind(
   query: string,
   filter: BoardFilter,
   loaded = true,
-): '' | 'no-projects' | 'search' | 'filter' {
+  tag = '',
+): '' | 'no-projects' | 'search' | 'tag' | 'filter' {
   if (!loaded) return ''
   if (!projects.length) return 'no-projects'
   if (filtered.length) return ''
   if (String(query || '').trim()) return 'search'
+  if (String(tag || '').trim()) return 'tag'
   return filter === 'all' ? '' : 'filter'
 }
 

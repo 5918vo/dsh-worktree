@@ -414,7 +414,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
   // Only an actually empty result may own the rail; a search or filter that
   // still matched rows must keep rendering them. While the first load is in
   // flight, show nothing rather than claiming there are no projects.
-  const emptyKind = loaded ? railEmptyKind(views, filtered, query, filter) : ''
+  const emptyKind = railEmptyKind(views, filtered, query, filter, loaded, tagFilter)
 
   const runQuick = (action: QuickAction, tv: TaskView, projectId: string) => {
     if (action === 'handle' || action === 'open-session') {

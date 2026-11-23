@@ -7,7 +7,7 @@
 
 import type { TaskDiff, TaskSnapshot, WorktreeTask } from '../models'
 import { pad2 } from './format'
-import { fill, mdCodeCell, mdInline, reportTimestamp } from './markdown'
+import { fill, mdBlock, mdCodeCell, mdInline, reportTimestamp } from './markdown'
 import { branchHeadSha, criteria, criteriaProgress } from './model'
 
 export interface ReportInput {
@@ -123,7 +123,7 @@ export function buildAcceptanceReport(input: ReportInput): string {
   lines.push('')
 
   lines.push(`## ${t.reportNotes}`)
-  lines.push(task.notes ? mdInline(task.notes) : String(t.taskNoNotes))
+  lines.push(mdBlock(task.notes) || String(t.taskNoNotes))
   lines.push('')
 
   const commits: Array<{ hash: string; subject: string }> = (worktree.commits || [])

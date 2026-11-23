@@ -354,6 +354,9 @@ function TaskMetaEditor(props: StageProps) {
   const busy = !!props.metaBusy
   const tags: string[] = Array.isArray(task.tags) ? task.tags : []
   const priority = task.priority === 'high' || task.priority === 'low' ? task.priority : 'normal'
+  // Keep the select responsive while the save is in flight; a failed save
+  // snaps it back to the stored value.
+  const [priorityDraft, setPriorityDraft] = React.useState(priority)
   const [editingTags, setEditingTags] = React.useState(false)
   const [tagText, setTagText] = React.useState('')
   const [tagError, setTagError] = React.useState('')
@@ -372,6 +375,9 @@ function TaskMetaEditor(props: StageProps) {
     setTagError('')
     setNotesError('')
   }, [task.id])
+  React.useEffect(() => {
+    setPriorityDraft(priority)
+  }, [task.id, task.priority])
 
   const startEditTags = () => {
     setTagText(tags.join(', '))
@@ -449,10 +455,15 @@ function TaskMetaEditor(props: StageProps) {
           save
             ? h('select', {
               className: 'dshwd-select dshwd-meta-select',
-              value: priority,
+              value: priorityDraft,
               disabled: busy,
               'aria-label': t.taskPriority,
-              onChange: (e: any) => { void save({ priority: e.target.value }).catch(() => {}) },
+              onChange: (e: any) => {
+                const next = e.target.value
+                const previous = priorityDraft
+                setPriorityDraft(next)
+                void save({ priority: next }).catch(() => setPriorityDraft(previous))
+              },
             },
               h('option', { value: 'low' }, t.priorityLow),
               h('option', { value: 'normal' }, t.priorityNormal),

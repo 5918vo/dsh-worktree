@@ -258,6 +258,7 @@ export function ProjectDetail(props: any) {
     }
     const downloadProjectReport = () => {
       if (actionRef.current || busy) return
+      actionRef.current = true
       setBusy('report')
       try {
         if (!downloadText(projectReportText(), projectReportFilename(project))) throw new Error(t.reportFailed)
@@ -265,6 +266,7 @@ export function ProjectDetail(props: any) {
       } catch (e: any) {
         if (props.notify) props.notify(String((e && e.message) || t.reportFailed), true)
       } finally {
+        actionRef.current = false
         setBusy('')
       }
     }

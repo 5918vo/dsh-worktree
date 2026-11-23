@@ -199,6 +199,11 @@ test('railEmptyKind only reports an empty state for an actually empty result', (
   assert.equal(railEmptyKind(one, empty, '', 'review'), 'filter')
   // An all-filter with no rows would mean no projects at all.
   assert.equal(railEmptyKind(one, empty, '', 'all'), '')
+  // A tag with no matches owns the empty state after the query, before the filter.
+  assert.equal(railEmptyKind(one, one, '', 'all', true, 'bug'), '')
+  assert.equal(railEmptyKind(one, empty, '', 'all', true, 'bug'), 'tag')
+  assert.equal(railEmptyKind(one, empty, '', 'review', true, 'bug'), 'tag')
+  assert.equal(railEmptyKind(one, empty, 'nope', 'all', true, 'bug'), 'search')
   assert.equal(railEmptyKind(empty, empty, 'x', 'all'), 'no-projects')
   // The first paint is not evidence that there are no projects.
   assert.equal(railEmptyKind(empty, empty, 'x', 'all', false), '')

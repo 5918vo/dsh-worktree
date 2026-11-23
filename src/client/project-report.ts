@@ -7,7 +7,7 @@
 import type { Project, TaskView } from '../models'
 import { compareTaskOrder } from '../task-meta'
 import { pad2 } from './format'
-import { fill, mdCell, mdCodeCell, mdInline, reportTimestamp, safeSlug } from './markdown'
+import { fill, mdBlock, mdCell, mdCodeCell, mdInline, reportTimestamp, safeSlug } from './markdown'
 import { branchHeadSha, criteria, criteriaProgress } from './model'
 
 export interface ProjectReportInput {
@@ -48,7 +48,11 @@ function priorityText(t: Record<string, any>, value: string | undefined): string
 }
 
 function activityAt(view: TaskView): number {
-  return Number(view.task.updatedAt) || Number(view.task.createdAt) || 0
+  return Math.max(
+    Number(view.task.updatedAt) || 0,
+    Number(view.task.createdAt) || 0,
+    Number(view.snapshot && view.snapshot.worktree && view.snapshot.worktree.lastCommitAt) || 0,
+  )
 }
 
 /**
@@ -127,7 +131,16 @@ export function buildProjectReport(input: ProjectReportInput): string {
       lines.push(`- ${t.projectReportNoCriteria}`)
     }
     lines.push('')
-    lines.push(`**${t.reportNotes}**: ${recorded ? mdInline(recorded) : mdInline(t.projectReportNoNotes)}`)
+    if (!recorded) {
+      lines.push(`**${t.reportNotes}**: ${mdInline(t.projectReportNoNotes)}`)
+    } else if (recorded.includes('\n')) {
+      // Notes are free text: keep line breaks instead of collapsing them.
+      lines.push(`**${t.reportNotes}**:`)
+      lines.push('')
+      lines.push(mdBlock(recorded))
+    } else {
+      lines.push(`**${t.reportNotes}**: ${mdInline(recorded)}`)
+    }
     lines.push('')
   })
 

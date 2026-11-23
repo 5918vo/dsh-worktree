@@ -15,6 +15,14 @@ export function mdInline(value: any): string {
   return oneLine(value).replace(/`/g, '\\`')
 }
 
+/** Multi-line prose: line breaks preserved, CRLF normalized, backticks escaped. */
+export function mdBlock(value: any): string {
+  return String(value == null ? '' : value)
+    .replace(/\r\n?/g, '\n')
+    .trim()
+    .replace(/`/g, '\\`')
+}
+
 /** Table cell: pipes escaped and line breaks collapsed, so a row cannot break. */
 export function mdCell(value: any): string {
   return mdInline(value).replace(/\|/g, '\\|')
