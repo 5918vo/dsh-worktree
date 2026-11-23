@@ -12,6 +12,39 @@ export interface WorktreeConfig {
   gitPath: string
 }
 
+/**
+ * Exclusive, time-boxed right to create and bind a session for one task.
+ *
+ * The board is a browser app: two windows can try to start the same task at
+ * once. Creating the session and sending the first prompt are remote calls
+ * that cannot be undone, so the right to do them is claimed in the shared
+ * ledger first. The lease is released by `bind` (success) or `bind/release`
+ * (failure), and expires so a crashed window cannot block the task forever.
+ */
+export interface BindLease {
+  token: string
+  /** Client (window) that holds the lease; reused so retries are idempotent. */
+  owner: string
+  /** Store instance that wrote the lease. */
+  instanceId: string
+  pid: number
+  at: number
+  expiresAt: number
+}
+
+/**
+ * Which DSH instance bound a task's session.
+ *
+ * Agent registries are per process, so another instance cannot see whether this
+ * session is running. A live foreign owner therefore means "not visible", which
+ * is different from "confirmed idle"; a dead owner means its agents are gone.
+ */
+export interface SessionOwner {
+  instanceId: string
+  pid: number
+  at: number
+}
+
 /** A provider/model route chosen for a task's session. */
 export interface ModelSelection {
   provider: string
@@ -62,6 +95,10 @@ export interface WorktreeTask {
   worktreePath: string
   /** Bound DSH session id (client-created conversation bound to the worktree). */
   sessionId: string | null
+  /** Set while a client is creating the session for this task, then cleared by bind. */
+  bindLease?: BindLease
+  /** Instance that bound `sessionId`; drives cross-instance idle decisions. */
+  sessionOwner?: SessionOwner
   /** First message sent into the session when it is created. */
   firstPrompt: string
   /** Optional per-task acceptance criteria (one trimmed line per item). */

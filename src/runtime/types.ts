@@ -9,6 +9,9 @@ import { MergePreview, ModelSelection, PendingStash, Project, TaskSnapshot, Work
 import { acquireRepoLock, RepoLockBusyError, type RepoLockHandle } from '../repo-lock.js'
 import { Store } from '../store.js'
 
+import { TaskError } from '../errors.js'
+export { TaskError } from '../errors.js'
+
 export interface PublishInput {
   projectId?: string
   repoPath?: string
@@ -51,18 +54,6 @@ export interface MergeOptions {
   timeoutMs?: number
 }
 
-export class TaskError extends Error {
-  readonly status: number
-  /** Machine-readable reason (e.g. stale/conflict/repoBusy/timeout) for 409 handling. */
-  readonly code?: string
-  constructor(message: string, status = 400, code?: string) {
-    super(message)
-    this.name = 'TaskError'
-    this.status = status
-    if (code) this.code = code
-  }
-}
-
 /** Facts about the preceding merged task, folded into a follow-up task's first prompt. */
 export interface ParentPromptInfo {
   id: string
@@ -101,6 +92,9 @@ export interface PreviewCacheEntry {
   result: MergePreview
 }
 
+/** Run state of one agent session, as far as this process can tell. */
+export type AgentRunState = 'running' | 'idle' | 'unknown'
+
 /** Shared state and invariants accessed by runtime submodules. */
 export interface RuntimeContext {
   readonly store: Store
@@ -116,8 +110,15 @@ export interface RuntimeContext {
   readonly partials: Map<string, { restoreFailed: boolean; reason: string }>
   /** Reuse a merge preview while both tips are unchanged. */
   readonly previewCache: Map<string, PreviewCacheEntry>
-  /** Probe a task session's run state ('idle' when no session concept exists). */
-  readonly sessionState: (sessionId: string) => 'running' | 'idle' | 'unknown'
+  /**
+   * Probe a task session's run state ('idle' when no session concept exists).
+   *
+   * `task` lets the probe use the recorded session owner: a session whose agent
+   * is not visible in this process is only idle when no *other* live DSH
+   * instance can be running it. Without the task the probe stays conservative
+   * for foreign sessions (see probeSessionState).
+   */
+  readonly sessionState: (sessionId: string, task?: WorktreeTask) => AgentRunState
   snapshot(task: WorktreeTask): Promise<TaskSnapshot>
 }
 
@@ -170,14 +171,22 @@ export function otherReviewingTask(ctx: RuntimeContext, task: WorktreeTask, cur:
 
 export async function assertNoInProgress(ctx: RuntimeContext, repoPath: string): Promise<void> {
   const state = await gitx.inProgress(ctx.gitPath, repoPath)
-  if (state) throw new TaskError(`主仓库有未完成的 ${state} 操作，请先处理后再继续`)
+  if (state) throw new TaskError(`主仓库有未完成的 ${state} 操作，请先处理后再继续`, 409, 'repo-in-progress')
 }
 
 export function assertAgentIdle(ctx: RuntimeContext, task: WorktreeTask): void {
   if (!task.sessionId) return
-  const state = ctx.sessionState(task.sessionId)
+  // The task carries the session owner, so a probe that cannot see the agent can
+  // tell "another DSH instance may be running it" from "nothing is running it".
+  const state = ctx.sessionState(task.sessionId, task)
   if (state === 'running') throw new TaskError('Agent 正在运行，请等待其完成后再操作', 409, 'agent-running')
-  if (state === 'unknown') throw new TaskError('无法确认 Agent 运行状态，已阻止该操作；请稍后重试', 409, 'agent-unknown')
+  if (state === 'unknown') {
+    throw new TaskError(
+      '无法确认 Agent 运行状态（该会话可能由另一个 DSH 窗口运行），已阻止该操作；请结束该会话、在运行它的窗口确认空闲，或使用「解除会话绑定」后再试',
+      409,
+      'agent-unknown',
+    )
+  }
 }
 
 export async function repoIdentity(ctx: RuntimeContext, repoPath: string): Promise<string> {

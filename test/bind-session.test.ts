@@ -24,6 +24,7 @@ function installFetch(routes: Record<string, (init: any) => any>): { calls: Fetc
     const u = String(url)
     calls.push({ url: u, init })
     for (const key of Object.keys(routes)) {
+      // Longest prefix first so '/bind/claim' is not swallowed by '/bind'.
       if (u.endsWith(key)) return routes[key](init)
     }
     return jsonRes({})
@@ -45,7 +46,16 @@ function makeTask(over: any = {}) {
 }
 
 function makeRemotes(over: any = {}) {
-  const calls: any = { workspaceCreate: [], workspaceRename: [], sessionCreate: [], sessionRename: [], prompt: [] }
+  const calls: any = {
+    workspaceCreate: [],
+    workspaceRename: [],
+    sessionCreate: [],
+    sessionRename: [],
+    sessionDeleted: [],
+    selectModel: [],
+    prompt: [],
+  }
+  let created = 0
   const remotes = {
     workspace: {
       async create(arg: any) {
@@ -62,10 +72,15 @@ function makeRemotes(over: any = {}) {
       async create(arg: any) {
         calls.sessionCreate.push(arg)
         if (over.sessionCreate) return over.sessionCreate(arg)
-        return { ok: true, value: { sessionId: 'sess-1' } }
+        created += 1
+        return { ok: true, value: { sessionId: `sess-${created}`, cwd: arg.cwd } }
       },
       async rename(arg: any) {
         calls.sessionRename.push(arg)
+        return { ok: true }
+      },
+      async selectModel(arg: any) {
+        calls.selectModel.push(arg)
         return { ok: true }
       },
       async prompt(arg: any) {
@@ -73,50 +88,152 @@ function makeRemotes(over: any = {}) {
         if (over.prompt) return over.prompt(arg)
         return { ok: true }
       },
+      async delete(arg: any) {
+        calls.sessionDeleted.push(arg)
+        return { ok: true }
+      },
     },
   }
   return { remotes, calls }
 }
 
-test('bindSession creates workspace session, sends first prompt and binds the task', async () => {
-  const { calls } = installFetch({ session: () => jsonRes({ token: 'tok' }), bind: () => jsonRes({ ok: true }) })
-  const { remotes, calls: svc } = makeRemotes()
-  const task = makeTask()
+/**
+ * Stateful stand-in for the board's binding endpoints, so the client is tested
+ * against the same lease protocol the store implements (claim → bind → release).
+ */
+function boardServer(over: any = {}) {
+  const state: any = {
+    lease: null as null | { token: string; owner: string },
+    claimCalls: [] as any[],
+    bindCalls: [] as any[],
+    releaseCalls: [] as any[],
+    issued: 0,
+  }
+  installFetch({
+    '/session': () => jsonRes({ token: 'tok' }),
+    '/bind/claim': (init: any) => {
+      const body = JSON.parse(init.body)
+      state.claimCalls.push(body)
+      if (state.lease && state.lease.owner !== body.owner) {
+        return jsonRes({ error: '另一个窗口正在启动该任务', code: 'lease-held' }, 409)
+      }
+      if (!state.lease) {
+        state.issued += 1
+        state.lease = { token: `lease-${state.issued}`, owner: body.owner }
+      }
+      return jsonRes({ ok: true, lease: { token: state.lease.token } })
+    },
+    '/bind/release': (init: any) => {
+      const body = JSON.parse(init.body)
+      state.releaseCalls.push(body)
+      if (state.lease && state.lease.token === body.lease) state.lease = null
+      return jsonRes({ ok: true })
+    },
+    '/bind': (init: any) => {
+      const body = JSON.parse(init.body)
+      state.bindCalls.push(body)
+      if (over.bind) return over.bind(body, state)
+      if (!state.lease || state.lease.token !== body.lease) {
+        return jsonRes({ error: '租约已失效', code: 'lease-lost' }, 409)
+      }
+      state.lease = null
+      return jsonRes({ ok: true })
+    },
+  })
+  return state
+}
 
-  const sessionId = await bindSession(remotes, task, '项目A')
+test('bindSession claims, creates the session in the worktree, prompts and binds', async () => {
+  const srv = boardServer()
+  const { remotes, calls: svc } = makeRemotes()
+
+  const sessionId = await bindSession(remotes, makeTask(), '项目A')
 
   assert.equal(sessionId, 'sess-1')
   assert.deepEqual(svc.workspaceCreate[0], { path: 'C:/repo' })
-  assert.deepEqual(svc.sessionCreate[0], { workspaceId: 'ws-1' })
+  // Grouping is preserved, but the cwd override is what decides where the agent runs.
+  assert.deepEqual(svc.sessionCreate[0], { workspaceId: 'ws-1', cwd: 'C:/repo/.dsh-worktrees/abc123' })
+  assert.equal(svc.sessionRename[0].title, '实现登录')
   assert.equal(svc.prompt.length, 1)
   assert.equal(svc.prompt[0].content[0].text, 'DO THE WORK')
-  assert.equal(svc.sessionRename[0].title, '实现登录')
+  assert.deepEqual(srv.bindCalls[0], { id: 'task-1', sessionId: 'sess-1', lease: 'lease-1' })
+  assert.equal(srv.releaseCalls.length, 0, 'a successful bind keeps the lease consumed, not released')
+  assert.equal(svc.sessionDeleted.length, 0)
+})
 
-  const bindCall = calls.find((c) => c.url.endsWith('/bind'))!
-  assert.deepEqual(JSON.parse(bindCall.init.body), { id: 'task-1', sessionId: 'sess-1' })
+test('bindSession refuses to start when another window holds the claim', async () => {
+  const srv = boardServer()
+  srv.lease = { token: 'lease-other', owner: 'window-a' }
+  const { remotes, calls: svc } = makeRemotes()
+
+  await assert.rejects(
+    () => bindSession(remotes, makeTask(), '项目A'),
+    (error: any) => error.status === 409 && error.code === 'lease-held',
+  )
+  assert.equal(svc.sessionCreate.length, 0, 'the loser must not create a session')
+  assert.equal(svc.prompt.length, 0)
+  assert.equal(srv.bindCalls.length, 0)
+})
+
+test('bindSession discards a grouped session the host ran outside the worktree', async () => {
+  const srv = boardServer()
+  const { remotes, calls: svc } = makeRemotes({
+    sessionCreate: (arg: any) =>
+      arg.workspaceId
+        ? { ok: true, value: { sessionId: 'sess-grouped', cwd: 'C:/repo' } }
+        : { ok: true, value: { sessionId: 'sess-plain', cwd: arg.cwd } },
+  })
+
+  const sessionId = await bindSession(remotes, makeTask(), '项目A')
+
+  assert.equal(sessionId, 'sess-plain', 'must fall back to the worktree-bound session')
+  assert.deepEqual(svc.sessionDeleted, [{ sessionId: 'sess-grouped' }])
+  assert.deepEqual(svc.sessionCreate[1], { cwd: 'C:/repo/.dsh-worktrees/abc123' })
+  assert.deepEqual(srv.bindCalls[0], { id: 'task-1', sessionId: 'sess-plain', lease: 'lease-1' })
+})
+
+test('bindSession fails loudly when no session can be created in the worktree', async () => {
+  const srv = boardServer()
+  let n = 0
+  const { remotes, calls: svc } = makeRemotes({
+    // The host ignores the cwd override on every attempt: one grouped session,
+    // then one plain session, both in the main repo.
+    sessionCreate: () => {
+      n += 1
+      return { ok: true, value: { sessionId: `sess-main-${n}`, cwd: 'C:/repo' } }
+    },
+  })
+
+  await assert.rejects(() => bindSession(remotes, makeTask(), '项目A'), /工作目录.*C:\/repo/)
+  assert.equal(srv.bindCalls.length, 0, 'never bind a session that runs in the main repo')
+  assert.equal(svc.prompt.length, 0)
+  assert.deepEqual(svc.sessionDeleted, [{ sessionId: 'sess-main-1' }, { sessionId: 'sess-main-2' }], 'both orphan sessions are cleaned up')
+  assert.equal(srv.releaseCalls.length, 1, 'the claim is handed back')
+  assert.equal(srv.lease, null)
 })
 
 test('bindSession does NOT bind when the first prompt fails (task stays startable)', async () => {
-  const { calls } = installFetch({
-    session: () => jsonRes({ token: 'tok' }),
-    bind: () => jsonRes({ ok: true }),
-  })
-  const { remotes } = makeRemotes({ prompt: () => ({ ok: false, error: { message: 'model unavailable' } }) })
+  const srv = boardServer()
+  const { remotes, calls: svc } = makeRemotes({ prompt: () => ({ ok: false, error: { message: 'model unavailable' } }) })
 
   await assert.rejects(() => bindSession(remotes, makeTask(), '项目A'), /model unavailable/)
-  assert.equal(calls.some((c) => c.url.endsWith('/bind')), false, 'must not persist a binding for a session whose prompt never ran')
+  assert.equal(srv.bindCalls.length, 0, 'must not persist a binding for a session whose prompt never ran')
+  assert.deepEqual(svc.sessionDeleted, [{ sessionId: 'sess-1' }])
+  assert.equal(srv.releaseCalls.length, 1)
+  assert.equal(srv.lease, null, 'another window can start the task right away')
 })
 
 test('bindSession does NOT bind when session creation fails', async () => {
-  const { calls } = installFetch({ session: () => jsonRes({ token: 'tok' }), bind: () => jsonRes({ ok: true }) })
+  const srv = boardServer()
   const { remotes } = makeRemotes({ sessionCreate: () => ({ ok: false, error: { message: 'cwd missing' } }) })
 
   await assert.rejects(() => bindSession(remotes, makeTask(), '项目A'), /cwd missing/)
-  assert.equal(calls.some((c) => c.url.endsWith('/bind')), false)
+  assert.equal(srv.bindCalls.length, 0)
+  assert.equal(srv.releaseCalls.length, 1)
 })
 
 test('bindSession falls back to a cwd-bound session when the workspace call throws', async () => {
-  installFetch({ session: () => jsonRes({ token: 'tok' }), bind: () => jsonRes({ ok: true }) })
+  boardServer()
   const { remotes, calls: svc } = makeRemotes({
     workspaceCreate: () => {
       throw new Error('workspace service down')
@@ -132,12 +249,51 @@ test('bindSession falls back to a cwd-bound session when the workspace call thro
 })
 
 test('bindSession with start=false binds without sending a prompt', async () => {
-  const { calls } = installFetch({ session: () => jsonRes({ token: 'tok' }), bind: () => jsonRes({ ok: true }) })
+  const srv = boardServer()
   const { remotes, calls: svc } = makeRemotes()
 
   const sessionId = await bindSession(remotes, makeTask(), '项目A', false)
 
   assert.equal(sessionId, 'sess-1')
   assert.equal(svc.prompt.length, 0)
-  assert.equal(calls.some((c) => c.url.endsWith('/bind')), true)
+  assert.equal(srv.bindCalls.length, 1)
+})
+
+test('bindSession reports a lost lease and cleans up when another window takes over', async () => {
+  const srv = boardServer()
+  const { remotes, calls: svc } = makeRemotes({
+    prompt: (_arg: any) => {
+      // Simulate a takeover between claim and bind (e.g. this window stalled).
+      srv.lease = { token: 'lease-other', owner: 'window-b' }
+      return { ok: true }
+    },
+  })
+
+  await assert.rejects(
+    () => bindSession(remotes, makeTask(), '项目A'),
+    (error: any) => error.status === 409 && error.code === 'lease-lost',
+  )
+  assert.deepEqual(svc.sessionDeleted, [{ sessionId: 'sess-1' }])
+})
+
+test('bindSession retries a lost bind response instead of orphaning the session', async () => {
+  let first = true
+  const srv = boardServer({
+    bind: (body: any, state: any) => {
+      if (first) {
+        // The write landed, but the client never saw the response.
+        first = false
+        state.lease = null
+        throw new TypeError('fetch failed')
+      }
+      return jsonRes({ ok: true })
+    },
+  })
+  const { remotes, calls: svc } = makeRemotes()
+
+  const sessionId = await bindSession(remotes, makeTask(), '项目A')
+
+  assert.equal(sessionId, 'sess-1')
+  assert.equal(srv.bindCalls.length, 2, 'the retry makes the bind a no-op instead of failing')
+  assert.equal(svc.sessionDeleted.length, 0)
 })

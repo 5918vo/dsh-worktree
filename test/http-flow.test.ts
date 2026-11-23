@@ -70,6 +70,26 @@ test('requests without a token are rejected', async () => {
   assert.equal(res.status, 403)
 })
 
+test('recents are not readable or clearable without the board token', async () => {
+  // Recents carry absolute repo paths, so they are as sensitive as the task list.
+  const read = await call('recents', { method: 'GET' })
+  assert.equal(read.status, 403)
+  const clear = await call('recents/clear', { body: {} })
+  assert.equal(clear.status, 403)
+  const wrong = await call('recents', { method: 'GET', headers: { 'x-dsh-worktree-token': 'nope' } })
+  assert.equal(wrong.status, 403)
+
+  const auth = { 'x-dsh-worktree-token': token }
+  const listed = await call('recents', { method: 'GET', headers: auth })
+  assert.equal(listed.status, 200)
+  assert.ok(Array.isArray(listed.body.dirs))
+  const cleared = await call('recents/clear', { body: {}, headers: auth })
+  assert.equal(cleared.status, 200)
+  assert.equal(cleared.body.ok, true)
+  const empty = await call('recents', { method: 'GET', headers: auth })
+  assert.deepEqual(empty.body.dirs, [])
+})
+
 test('cross-site requests are rejected even with a token', async () => {
   const res = await call('tasks', { method: 'GET', headers: { 'x-dsh-worktree-token': token, 'sec-fetch-site': 'cross-site' } })
   assert.equal(res.status, 403)

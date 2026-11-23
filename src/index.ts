@@ -2,6 +2,8 @@ import { Ctx, SessionsLike } from './types.js'
 import { normalizeConfig } from './config.js'
 import { Store } from './store.js'
 import { Runtime } from './runtime.js'
+import { AgentRunState } from './runtime/types.js'
+import { WorktreeTask } from './models.js'
 import { App } from './app.js'
 import { registerTools } from './tools.js'
 import { registerHttp } from './http.js'
@@ -19,7 +21,7 @@ export interface ApplyOptions {
    * Override the session run-state probe. Production reads the host UI session
    * service; tests pass a deterministic probe (e.g. always 'idle').
    */
-  sessionState?: (sessionId: string) => 'running' | 'idle' | 'unknown'
+  sessionState?: (sessionId: string, task?: WorktreeTask) => AgentRunState
 }
 
 /**
@@ -50,15 +52,11 @@ export function uiSessionRunState(service: any, sessionId: string): 'running' | 
 }
 
 /**
- * Probe one task session's run state.
- *
- * The authoritative source is the host agent registry (`agents.get(sessionId)`):
- * `uiSession` is a *client* service, so the host's `ctx.get('uiSession')` is
- * always empty and the old probe answered 'unknown' forever, which in turn made
- * every checkout/merge/cleanup refuse with 409 agent-unknown. A session without
- * a live agent cannot be running, so a miss is 'idle' — not 'unknown'.
+ * Agent object state for one session, plus whether this process can see the
+ * session at all. `found: false` means "not in this process's registry", which
+ * is *not* the same as "not running": another DSH window may own it.
  */
-export function probeSessionState(host: any, sessionId: string): 'running' | 'idle' | 'unknown' {
+export function localAgentState(host: any, sessionId: string): { found: boolean; state: AgentRunState } {
   const get = (name: string) => {
     try {
       return typeof host.get === 'function' ? host.get(name) : undefined
@@ -70,16 +68,75 @@ export function probeSessionState(host: any, sessionId: string): 'running' | 'id
   if (agents && typeof agents.get === 'function') {
     try {
       const agent = agents.get(sessionId)
-      return agent ? agentRunState(agent) : 'idle'
+      return agent ? { found: true, state: agentRunState(agent) } : { found: false, state: 'unknown' }
+    } catch {
+      // A registry that throws leaves us without an answer, not with "idle".
+      return { found: true, state: 'unknown' }
+    }
+  }
+  return { found: false, state: 'unknown' }
+}
+
+/** Whether the host exposes an agent registry at all (older hosts may not). */
+export function hasAgentRegistry(host: any): boolean {
+  try {
+    const agents: any = typeof host.get === 'function' ? host.get('agents') : undefined
+    return !!agents && typeof agents.get === 'function'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Probe one task session's run state.
+ *
+ * The authoritative source is the host agent registry (`agents.get(sessionId)`),
+ * which is *process-local*: a miss means this window cannot see the agent, not
+ * that it is idle. Multiple DSH windows share the task ledger, so a miss is
+ * resolved against the instance heartbeats (each live process publishes the
+ * sessions it runs). Only when no live peer can be running the session do we
+ * answer 'idle' — otherwise 'unknown', which refuses mutations instead of
+ * merging a worktree out from under a running agent.
+ *
+ * Recovery paths for a binding no peer will ever confirm:
+ * - the owning process ends the conversation → `sessions.on('session/disposed')`
+ *   clears the binding in the shared ledger;
+ * - the owning process crashes or exits → its heartbeat goes stale, peers stop
+ *   claiming the session and it reads as idle again;
+ * - the owning process is alive but frozen → explicit `session/reset`
+ *   (`POST session/reset`) clears the binding by hand.
+ */
+export function probeSessionState(host: any, sessionId: string, deps?: { store?: Store }): AgentRunState {
+  const local = localAgentState(host, sessionId)
+  if (local.found) return local.state
+  const registry = hasAgentRegistry(host)
+  if (!registry) {
+    // No agent registry at all: the UI-session snapshot is the only local hint.
+    try {
+      const legacy = uiSessionRunState(
+        (() => {
+          try {
+            return typeof host.get === 'function' ? host.get('uiSession') : undefined
+          } catch {
+            return undefined
+          }
+        })(),
+        sessionId,
+      )
+      if (legacy !== 'unknown') return legacy
     } catch {
       return 'unknown'
     }
   }
-  try {
-    return uiSessionRunState(get('uiSession'), sessionId)
-  } catch {
+  const store = deps?.store
+  // No ledger (unit tests, older hosts): a registry miss still means "no live
+  // agent here", which is the historical single-process answer.
+  if (!store) return registry ? 'idle' : 'unknown'
+  if (!registry && store.hasOtherLiveInstance()) {
+    // Blind here and someone else may be driving the session: do not guess.
     return 'unknown'
   }
+  return store.lookupSessionRun(sessionId)
 }
 
 /**
@@ -92,9 +149,31 @@ export function apply(ctx: Ctx, rawConfig: unknown, options?: ApplyOptions): App
   const config = normalizeConfig(rawConfig)
   const store = options?.store ?? new Store()
   // Unknown (registry present but throwing) still refuses mutations rather
-  // than guessing; a session with no live agent is idle.
-  const sessionState = (sessionId: string): 'running' | 'idle' | 'unknown' => probeSessionState(ctx, sessionId)
-  const runtime = new Runtime({ store, config, sessionState: options?.sessionState ?? sessionState })
+  // than guessing; a session with no live agent *and* no live peer owning it is
+  // idle (see probeSessionState for the cross-instance rules).
+  const sessionState = options?.sessionState
+    ? options.sessionState
+    : (sessionId: string, task?: WorktreeTask): AgentRunState => {
+        void task
+        const state = probeSessionState(ctx, sessionId, { store })
+        // Our own running sessions must reach peers quickly: they gate merges
+        // and checkouts made from another window.
+        if (state === 'running') store.publishRunning(sessionId)
+        return state
+      }
+  store.setRunningSessionsProvider(() => {
+    const running: string[] = []
+    for (const task of store.listTasks()) {
+      const sessionId = task.sessionId
+      if (!sessionId) continue
+      const owner = task.sessionOwner
+      if (owner && owner.instanceId && owner.instanceId !== store.instance().instanceId) continue
+      const local = localAgentState(ctx, sessionId)
+      if (local.found && local.state === 'running') running.push(sessionId)
+    }
+    return running
+  })
+  const runtime = new Runtime({ store, config, sessionState })
   const logger = {
     info: (m: string) => {
       try {
@@ -124,6 +203,9 @@ export function apply(ctx: Ctx, rawConfig: unknown, options?: ApplyOptions): App
   ctx.effect(() => {
     void store
       .load()
+      .then(() => {
+        for (const warning of store.warnings()) logger.warn(warning)
+      })
       .then(() => runtime.migrateLegacyStashes())
       .then(() => runtime.reconcilePendingOps())
       .then((results) => {
@@ -131,7 +213,9 @@ export function apply(ctx: Ctx, rawConfig: unknown, options?: ApplyOptions): App
           if (result.status === 'needs-manual') logger.warn(`worktree pending operation needs manual handling: ${result.taskId} — ${result.message}`)
         }
       })
-      .catch(() => {})
+      .catch((error) =>
+        logger.error(`worktree store load failed: ${error instanceof Error ? error.message : String(error)}`),
+      )
     return () => store.dispose()
   }, 'deepseek-worktree: store')
 

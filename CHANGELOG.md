@@ -2,6 +2,30 @@
 
 本文件记录 `@5318vo/dsh-worktree` 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.13.0] - 2026-11-23
+
+### 修复
+
+- 台账写入不再静默成功：`writeJsonSync` 失败会抛 `StoreError`（HTTP 500），不再退回「就地写一半」；写入改为「唯一临时文件 + rename」并对 Windows 短暂占用重试。读到损坏的台账文件时把原始字节另存为 `<file>.corrupt-<ts>`，并通过 `store.warnings()` 与日志报出，而不是悄悄当成空台账。
+- 台账锁不再在等待超时后无锁写入：拿不到锁返回 503，释放时校验 owner token（只删除自己的锁），崩溃留下的锁按 `pid` 死亡或 30s 过期接管，接管后二次校验。等待用 `Atomics.wait` 停放线程，取代原来的 `sleepSync` 忙等。
+- 跨实例 Agent 状态不再「看不见就当空闲」：探测结果分 `running` / `idle` / `unknown`，看不到会话 Agent 且存在其他活跃 DSH 实例时返回 `unknown`，合并/切分支/清理/删除一律以 409 `agent-unknown` 拒绝，并提示结束会话、到运行它的窗口确认或解除绑定。多窗口共用台账时，不会再因为 B 看不到 A 的 Agent 而合并或清理 A 的 worktree。
+- 多窗口绑定改为「先占位再建会话」：新增 `bind/claim` 租约（默认 60s）与 `bind/release`，`bind` 校验租约；第二个窗口拿不到占位就不创建会话，租约被接手时旧窗口收到 409 `lease-lost` 并清理自己刚建的会话。首个 prompt 只会在占位成功之后发送。
+- 会话真正建在任务 worktree 上：`session.create` 同时传 `workspaceId` 与 `cwd`，并校验宿主回报的 `cwd`；不一致时丢弃会话再退回 `{ cwd }` 创建，仍不一致则明确失败，不再悄悄在主仓库里开发。
+- 删除项目复用任务删除的门禁：仓库锁、主仓库无未完成 git 操作（409 `repo-in-progress`）、Agent 空闲、不在验收/切换、无未处理 stash；worktree 逐个删除并记账，部分失败返回 409 `partial-delete`，保留失败任务的记录，不留指向已删除目录的台账。
+- 发布时目标 worktree 目录被占用会改用带随机后缀的兄弟目录；`git worktree add` 失败只清理刚建的空壳目录后如实报错。
+- `recents` 与 `recents/clear` 需要工作台 token（返回内容含本机绝对路径）。
+
+### 接口
+
+- 新增 HTTP 路由 `bind/claim`、`bind/release`、`session/reset`；`bind` 接受可选 `lease`。
+- `Store` 新增 `claimTask` / `releaseBindLease` / `clearSessionBinding` / `lookupSessionRun` / `listLiveInstances` / `instance` / `warnings` / `beat`，`bindSession` 接受 `{ lease }`；`StoreError` 单独成模块并从 `store.ts` 重新导出，仍是 `TaskError` 子类，因此现有 HTTP/工具错误映射自动生效。
+- `TaskError` 移到 `src/errors.ts`（与 `StoreError` 同处），避免 `store.ts` 与 `runtime/types.ts` 的循环依赖。
+- 模型工具文档补 `worktree_projects`；README 新增「多窗口与并发安全」一节，说明锁、写失败、三态 Agent 状态、恢复路径与已知边界（同步 Store 最长阻塞事件循环 `lockWaitMs`）。
+
+### 测试
+
+- 新增 `store-write-failure`（真实文件系统故障注入、损坏隔离、HTTP 500 映射、半写保护）、`store-lock`（真实子进程持锁、超时 503、崩溃接管、token 释放、CPU 不再忙等）、`cross-instance-agent`（双 Store 心跳、registry miss、崩溃/恢复、租约接管、`session/reset`）、`delete-project`（运行中 Agent、未知状态、进行中 git 操作、并发仓库锁、部分失败）、`publish-failure`（发布失败不留记录/分支/空壳）与 `recents` token 用例；绑定用例重写为 claim/lease/cwd 校验/孤儿清理/双窗口冲突。
+
 ## [1.12.0] - 2026-11-22
 
 ### 变更
