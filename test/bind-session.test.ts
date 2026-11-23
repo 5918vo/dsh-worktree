@@ -101,6 +101,10 @@ function makeRemotes(over: any = {}) {
 /**
  * Stateful stand-in for the board's binding endpoints, so the client is tested
  * against the same lease protocol the store implements (claim → bind → release).
+ *
+ * Bindings that land are recorded in `bound` and served by GET tasks, which is
+ * what the client reads back after a lost bind response; a `bind` override that
+ * wants the write to land must call `land(body)` before losing the response.
  */
 function boardServer(over: any = {}) {
   const state: any = {
@@ -108,7 +112,13 @@ function boardServer(over: any = {}) {
     claimCalls: [] as any[],
     bindCalls: [] as any[],
     releaseCalls: [] as any[],
+    tasksCalls: [] as any[],
+    bound: {} as Record<string, string>,
     issued: 0,
+  }
+  const land = (body: any) => {
+    state.bound[body.id] = body.sessionId
+    state.lease = null
   }
   installFetch({
     '/session': () => jsonRes({ token: 'tok' }),
@@ -130,14 +140,21 @@ function boardServer(over: any = {}) {
       if (state.lease && state.lease.token === body.lease) state.lease = null
       return jsonRes({ ok: true })
     },
+    // GET tasks: the same read model the real board serves ({ tasks: views }).
+    '/tasks': (init: any) => {
+      state.tasksCalls.push(init)
+      if (over.tasks) return over.tasks(state)
+      const tasks = Object.entries(state.bound).map(([id, sessionId]) => ({ task: { id, sessionId }, snapshot: null }))
+      return jsonRes({ tasks })
+    },
     '/bind': (init: any) => {
       const body = JSON.parse(init.body)
       state.bindCalls.push(body)
-      if (over.bind) return over.bind(body, state)
+      if (over.bind) return over.bind(body, state, land)
       if (!state.lease || state.lease.token !== body.lease) {
         return jsonRes({ error: '租约已失效', code: 'lease-lost' }, 409)
       }
-      state.lease = null
+      land(body)
       return jsonRes({ ok: true })
     },
   })
@@ -275,16 +292,17 @@ test('bindSession reports a lost lease and cleans up when another window takes o
     (error: any) => error.status === 409 && error.code === 'lease-lost',
   )
   assert.deepEqual(svc.sessionDeleted, [{ sessionId: 'sess-1' }])
+  assert.equal(srv.tasksCalls.length, 0, 'a 4xx is a refusal, not an unknown outcome: no readback')
 })
 
 test('bindSession retries a lost bind response instead of orphaning the session', async () => {
   let first = true
   const srv = boardServer({
-    bind: (body: any, state: any) => {
+    bind: (body: any, _state: any, land: (b: any) => void) => {
       if (first) {
         // The write landed, but the client never saw the response.
         first = false
-        state.lease = null
+        land(body)
         throw new TypeError('fetch failed')
       }
       return jsonRes({ ok: true })
@@ -299,7 +317,28 @@ test('bindSession retries a lost bind response instead of orphaning the session'
   assert.equal(svc.sessionDeleted.length, 0)
 })
 
-test('bindSession cleans up after both bind attempts lose their responses', async () => {
+test('bindSession reads the ledger back when both bind responses are lost but the write landed', async () => {
+  const srv = boardServer({
+    bind: (body: any, _state: any, land: (b: any) => void) => {
+      // Both attempts write the binding (the store's bind is idempotent) and both
+      // responses are lost on the way back.
+      land(body)
+      throw new TypeError('fetch failed')
+    },
+  })
+  const { remotes, calls: svc } = makeRemotes()
+
+  const sessionId = await bindSession(remotes, makeTask(), '项目A')
+
+  assert.equal(sessionId, 'sess-1')
+  assert.equal(srv.bindCalls.length, 2)
+  assert.equal(srv.tasksCalls.length, 1, 'the uncertain outcome is resolved by one readback')
+  assert.deepEqual(srv.bound, { 'task-1': 'sess-1' })
+  assert.equal(svc.sessionDeleted.length, 0, 'a bound session must not be deleted')
+  assert.equal(srv.releaseCalls.length, 0, 'a consumed lease must not be released')
+})
+
+test('bindSession cleans up once when both bind attempts fail and nothing landed', async () => {
   const srv = boardServer({
     bind: () => { throw new TypeError('fetch failed') },
   })
@@ -307,7 +346,54 @@ test('bindSession cleans up after both bind attempts lose their responses', asyn
 
   await assert.rejects(() => bindSession(remotes, makeTask(), '项目A'), /fetch failed/)
   assert.equal(srv.bindCalls.length, 2)
-  assert.deepEqual(svc.sessionDeleted, [{ sessionId: 'sess-1' }])
+  assert.equal(srv.tasksCalls.length, 1)
+  assert.deepEqual(srv.bound, {}, 'the fixture never wrote the binding')
+  assert.deepEqual(svc.sessionDeleted, [{ sessionId: 'sess-1' }], 'the orphan session is removed exactly once')
+  assert.equal(srv.releaseCalls.length, 1)
+  assert.equal(srv.lease, null)
+})
+
+test('bindSession keeps the session when the readback itself fails', async () => {
+  const srv = boardServer({
+    bind: () => { throw new TypeError('fetch failed') },
+    tasks: () => { throw new TypeError('readback failed') },
+  })
+  const { remotes, calls: svc } = makeRemotes()
+
+  await assert.rejects(
+    () => bindSession(remotes, makeTask(), '项目A'),
+    (error: any) => /fetch failed/.test(String(error.message)) && /刷新看板/.test(String(error.message)) && /readback failed/.test(String(error.readbackError)),
+  )
+  assert.equal(srv.tasksCalls.length, 1)
+  assert.equal(svc.sessionDeleted.length, 0, 'an unreadable ledger must not turn into a deleted session')
+  assert.equal(srv.releaseCalls.length, 0, 'the possibly consumed lease is left to its TTL')
+})
+
+test('bindSession cleans up when the readback shows the task bound to another session', async () => {
+  const srv = boardServer({
+    bind: () => { throw new TypeError('fetch failed') },
+    // Another window (or an older attempt) owns a different session on this task.
+    tasks: () => jsonRes({ tasks: [{ task: { id: 'task-1', sessionId: 'sess-other' }, snapshot: null }] }),
+  })
+  const { remotes, calls: svc } = makeRemotes()
+
+  await assert.rejects(() => bindSession(remotes, makeTask(), '项目A'), /fetch failed/)
+  assert.equal(srv.tasksCalls.length, 1)
+  assert.deepEqual(svc.sessionDeleted, [{ sessionId: 'sess-1' }], 'the unmatched session is still an orphan')
+  assert.equal(srv.releaseCalls.length, 1)
+})
+
+test('bindSession cleans up when the readback does not contain this task', async () => {
+  const srv = boardServer({
+    bind: () => { throw new TypeError('fetch failed') },
+    tasks: () => jsonRes({ tasks: [{ task: { id: 'task-2', sessionId: 'sess-1' }, snapshot: null }] }),
+  })
+  const { remotes, calls: svc } = makeRemotes()
+
+  await assert.rejects(() => bindSession(remotes, makeTask(), '项目A'), /fetch failed/)
+  assert.equal(srv.tasksCalls.length, 1)
+  assert.deepEqual(svc.sessionDeleted, [{ sessionId: 'sess-1' }], 'id and session must both match to keep it')
+  assert.equal(srv.releaseCalls.length, 1)
 })
 
 test('bindSession reports the bind failure even when cleanup also fails', async () => {

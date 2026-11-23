@@ -243,16 +243,68 @@ async function releaseClaim(taskId: string, lease: string): Promise<void> {
   }
 }
 
+/**
+ * True when a bind failure leaves the outcome unknown.
+ *
+ * A 4xx (409 lease-lost, 400 missing id, ...) is the ledger refusing the write,
+ * so the task certainly is not bound. Everything else — network error, abort,
+ * timeout, 5xx — may have happened after the write landed.
+ */
+function isUncertainBindError(error: any): boolean {
+  const status = typeof error?.status === 'number' ? error.status : 0
+  return !(status >= 400 && status < 500 && status !== 408)
+}
+
 /** Bind, tolerating a lost response: a successful write makes the retry a no-op. */
 async function bindClaimedSession(taskId: string, sessionId: string, lease: string): Promise<void> {
   try {
     await post('bind', { id: taskId, sessionId, lease })
   } catch (error: any) {
-    const status = typeof error?.status === 'number' ? error.status : 0
-    if (status >= 400 && status < 500 && status !== 408) throw error
+    if (!isUncertainBindError(error)) throw error
     // Unknown outcome (network/timeout/5xx): the binding may already be written.
     await post('bind', { id: taskId, sessionId, lease })
   }
+}
+
+/**
+ * Read the ledger back after an uncertain bind.
+ *
+ * The write may have landed while both responses were lost, so the only safe
+ * way to decide whether the session is bound is to ask the store. GET tasks is
+ * a read-only, token-authenticated view of the same ledger; a view whose task id
+ * is this task and whose sessionId is this session is proof the binding exists.
+ * Readback failures propagate: the caller must not turn "cannot tell" into
+ * "not bound".
+ */
+async function bindingConfirmed(taskId: string, sessionId: string): Promise<boolean> {
+  const data: any = await getJson('tasks')
+  const views = data && Array.isArray(data.tasks) ? data.tasks : []
+  return views.some((view: any) => {
+    const task = view && view.task ? view.task : view
+    return task && String(task.id) === taskId && String(task.sessionId || '') === sessionId
+  })
+}
+
+/**
+ * Keep the original bind error, and say what the reader (and the user) can do.
+ *
+ * The session was kept because its binding could not be ruled out; replacing the
+ * error would hide the actual failure, so the note is appended in place.
+ */
+function annotateUncertainBind(error: any, readback: any): any {
+  const note = '绑定状态未知，已保留会话；请刷新看板确认任务状态'
+  const detail = readback instanceof Error ? readback.message : String(readback || '')
+  if (error && typeof error === 'object') {
+    try {
+      const message = String(error.message || error)
+      if (!message.includes('刷新看板')) error.message = `${message}（${note}）`
+      if (detail) error.readbackError = detail
+      return error
+    } catch {
+      /* frozen error: fall through to a wrapper */
+    }
+  }
+  return Object.assign(new Error(`${String(error)}（${note}）`), { readbackError: detail || undefined })
 }
 
 /**
@@ -267,7 +319,10 @@ async function bindClaimedSession(taskId: string, sessionId: string, lease: stri
 export async function bindSession(remotes: any, task: any, projectTitle?: string, start = task.startOnBind !== false): Promise<string> {
   const lease = await claimTask(task.id)
   let discard: (() => Promise<void>) | null = null
-  let bound = false
+  // Set once the binding exists or cannot be ruled out. Cleanup must never run
+  // in that case: deleting a session the ledger points at would strand the task
+  // on a conversation that no longer exists.
+  let keep = false
   try {
     const workspaceId = await ensureWorkspace(remotes, task, projectTitle)
     const created = await createTaskSession(remotes, task, workspaceId)
@@ -317,16 +372,41 @@ export async function bindSession(remotes: any, task: any, projectTitle?: string
         throw new Error(String(msg))
       }
     }
-    await bindClaimedSession(task.id, sessionId, lease)
-    bound = true
+    try {
+      await bindClaimedSession(task.id, sessionId, lease)
+    } catch (error: any) {
+      // A 4xx is a refusal: the task certainly is not bound, so the normal
+      // cleanup below is correct and no readback is needed.
+      if (!isUncertainBindError(error)) throw error
+      // Both responses were lost. The first write may have landed, so ask the
+      // ledger before deciding the session is an orphan.
+      let confirmed: boolean
+      try {
+        confirmed = await bindingConfirmed(task.id, sessionId)
+      } catch (readback: any) {
+        // The ledger itself is unreadable: the binding may exist, and a kept
+        // session is recoverable while a deleted one is not. Keep both the
+        // session and the (possibly consumed) lease, and report the original
+        // failure with the recovery hint.
+        keep = true
+        throw annotateUncertainBind(error, readback)
+      }
+      if (confirmed) {
+        // Binding already recorded: the lost responses did not undo the write.
+        keep = true
+        return sessionId
+      }
+      throw error
+    }
+    keep = true
     return sessionId
   } finally {
-    if (!bound) {
-      // Even if the bind response was lost twice, do not leave an unrecorded
-      // session working in the worktree, and hand the claim back so a retry can
-      // start immediately. Both steps are secondary: neither may replace the
-      // original failure the caller needs to see (a lost bind is reported as a
-      // bind error, not as "session delete failed").
+    if (!keep) {
+      // The bind was refused or read back as absent, so the session is a real
+      // orphan: remove it, and hand the claim back so a retry can start
+      // immediately. Both steps are secondary: neither may replace the original
+      // failure the caller needs to see (a lost bind is reported as a bind
+      // error, not as "session delete failed").
       if (discard) {
         try {
           await discard()
