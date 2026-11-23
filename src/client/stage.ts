@@ -1,6 +1,6 @@
 import { React, h } from './ui'
 import { fmtK, pad2, relTime, taskStamp } from './format'
-import type { TaskDiff, TaskView } from '../models'
+import type { TaskDiff, TaskView, WorktreeTask } from '../models'
 import { QUICK_PROMPTS, quickPromptDisabledReason, quickPromptReasonKey, quickPromptText } from './quick-prompts'
 import { acceptanceHintFor, criteria, criteriaProgress, boardStatus, boardStatusLabel, commitRangeText, diffCount, diffHeadSha, diffLineKind, shortSha, type BoardAction, type BoardCta } from './model'
 import { pendingLabel } from './status'
@@ -10,6 +10,7 @@ import { fallbackEntries, type TimelineEntry } from './timeline'
 import { entryTag, entryTitle, liveStatsText, modelLabel, modelLabelFull, nearBottom, pressurePercent, readLive, shouldFollowLive, stepStatusLabel, tokenSummary } from './live-session'
 import { postMergeCount, reviewStaleCount } from './review-surfaces'
 import { NOTES_MAX_LENGTH, dueInputValue, dueStateOf, parseDueAt, parseEstimate, parseTagText, TASK_ESTIMATES, validateTags } from '../task-meta'
+import { elapsedWorkMs, formatWorkDuration, hasWorkRecord, isWorkTiming } from '../task-timer'
 import { DEPENDENCY_LIMIT } from '../task-deps'
 import { fill } from './markdown'
 
@@ -45,6 +46,11 @@ export interface StageProps {
   onSaveMeta?: (patch: { tags?: string[]; priority?: string; notes?: string; dependsOn?: string[]; dueAt?: number | null; estimate?: number | null }) => Promise<void>
   /** A metadata write is in flight; the editors stay disabled. */
   metaBusy?: boolean
+  /**
+   * Start or stop the manual work timer; omitted keeps the clock read-only.
+   * The board owns the request and the toast, so failures never surface here.
+   */
+  onTimer?: (action: 'start' | 'stop') => Promise<void>
   /** Current prerequisites with their state, in `dependsOn` order (computed by the board). */
   dependencyItems?: Array<{ id: string; title: string; done: boolean; missing?: boolean }>
   /** Same-project tasks offered as prerequisites (self and archived rows excluded). */
@@ -369,6 +375,52 @@ function depFailureText(t: any, error: any): string {
   return message || t.taskDepsHint
 }
 
+/** How often a running clock re-renders its total; the value is local, no request. */
+const WORK_TICK_MS = 30 * 1000
+
+/**
+ * The manual work clock: accumulated total, a 「计时中」 marker and — in the
+ * editable variant — one start/stop button.
+ *
+ * While the timer runs the row re-renders every 30 s so the total stays live;
+ * the start stamp is enough to recompute it locally, so this never asks the
+ * server. The interval is cleared on unmount and when the clock stops.
+ */
+function TaskWorkRow(props: {
+  t: any
+  task: WorktreeTask
+  busy?: boolean
+  onTimer?: (action: 'start' | 'stop') => Promise<void>
+}) {
+  const { t, task } = props
+  const timing = isWorkTiming(task)
+  const [, bump] = React.useState(0)
+  React.useEffect(() => {
+    if (!timing) return undefined
+    const id = setInterval(() => bump((n: number) => n + 1), WORK_TICK_MS)
+    return () => clearInterval(id)
+  }, [timing, task.id])
+  const onTimer = props.onTimer
+  const total = hasWorkRecord(task) ? formatWorkDuration(elapsedWorkMs(task)) : t.taskWorkEmpty
+  return h('div', { className: 'dshwd-meta-row' },
+    h('div', { className: 'dshwd-meta-label' }, t.taskWork),
+    h('div', { className: 'dshwd-meta-value' },
+      h('div', { className: 'dshwd-meta-chips' },
+        h('span', { className: 'dshwd-mono', title: t.taskWorkHint }, total),
+        timing ? h('span', { className: 'dshwd-chip dshwd-accent', role: 'status' }, t.taskWorkTiming) : null,
+        onTimer
+          ? h('button', {
+            type: 'button',
+            className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini',
+            disabled: !!props.busy,
+            // The task title keeps several open buttons distinguishable.
+            'aria-label': (timing ? t.taskWorkStop : t.taskWorkStart) + ' · ' + task.title,
+            title: t.taskWorkHint,
+            onClick: () => { void onTimer(timing ? 'stop' : 'start').catch(() => {}) },
+          }, timing ? t.taskWorkStop : t.taskWorkStart)
+          : null)))
+}
+
 /**
  * Read-only task info. Deliberately hook-free so the shallow-render tests can
  * walk it; the editable variant is only created when a save callback exists.
@@ -418,6 +470,7 @@ function TaskMetaSection(props: StageProps) {
                 : dueState.kind === 'today' ? t.taskDueToday : String(t.taskDueSoon).replace('{n}', String(dueState.days)))
               : null)
           : h('span', { className: 'dshwd-hint' }, t.taskDueEmpty))),
+      h(TaskWorkRow, { t, task, busy: !!props.metaBusy, onTimer: props.onTimer }),
       h('div', { className: 'dshwd-meta-row' },
         h('div', { className: 'dshwd-meta-label' }, t.taskNotes),
         h('div', { className: 'dshwd-prose dshwd-notes' }, task.notes || t.taskNotesEmpty)),
@@ -689,6 +742,7 @@ function TaskMetaEditor(props: StageProps) {
               }, t.taskDueClear)),
             h('div', { className: 'dshwd-hint' }, t.taskDueHint),
             dueError ? h('div', { className: 'dshwd-alert', role: 'alert' }, dueError) : null))),
+      h(TaskWorkRow, { t, task, busy, onTimer: props.onTimer }),
       h('div', { className: 'dshwd-meta-row' },
         h('div', { className: 'dshwd-meta-label' }, t.taskNotes),
         h('div', { className: 'dshwd-meta-value' },

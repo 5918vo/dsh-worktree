@@ -11,6 +11,7 @@ const PREFIX = '/dsh-worktree/api'
 let root = ''
 let repo = ''
 let routes: any[] = []
+let app: any = null
 let token = ''
 
 async function call(name: string, opts: { method?: string; body?: unknown; headers?: Record<string, string> }) {
@@ -34,6 +35,7 @@ before(async () => {
   // root (including `state/`) is removed in the after() hook below.
   const harness = bootHost({ dirName: join(root, 'worktrees') }, { stateDir: join(root, 'state') })
   routes = harness.routes
+  app = harness.app
   const res = await call('session', { body: {} })
   token = res.body.token
   assert.ok(token, 'expected a board token from POST /session')
@@ -637,4 +639,61 @@ test('task/meta sets, keeps and clears the estimate', async () => {
   assert.equal(cleared.status, 200, JSON.stringify(cleared.body))
   assert.equal('estimate' in cleared.body.view.task, false)
   assert.equal(cleared.body.view.task.notes, 'keep the size', 'clearing the estimate keeps the notes')
+})
+
+test('task/timer starts and stops the manual work clock', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
+  const published = await call('publish', {
+    body: { projectId: added.body.project.id, title: 'timed task', description: 'd' },
+    headers: auth,
+  })
+  assert.equal(published.status, 200, JSON.stringify(published.body))
+  const id = published.body.task.id
+
+  const started = await call('task/timer', { body: { id, action: 'start' }, headers: auth })
+  assert.equal(started.status, 200, JSON.stringify(started.body))
+  assert.equal(started.body.ok, true)
+  assert.equal(typeof started.body.view.task.workStartedAt, 'number')
+
+  // Starting again keeps the same stamp: the running interval is not restarted.
+  const again = await call('task/timer', { body: { id, action: 'start' }, headers: auth })
+  assert.equal(again.status, 200, JSON.stringify(again.body))
+  assert.equal(again.body.view.task.workStartedAt, started.body.view.task.workStartedAt)
+
+  const stopped = await call('task/timer', { body: { id, action: 'stop' }, headers: auth })
+  assert.equal(stopped.status, 200, JSON.stringify(stopped.body))
+  assert.equal(stopped.body.ok, true)
+  assert.equal('workStartedAt' in stopped.body.view.task, false)
+  assert.equal(typeof stopped.body.view.task.workMs, 'number')
+})
+
+test('task/timer rejects unauthenticated, unknown, invalid and closed requests', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const anonymous = await call('task/timer', { body: { id: 'x', action: 'start' } })
+  assert.equal(anonymous.status, 403)
+
+  const unknown = await call('task/timer', { body: { id: 'missing', action: 'start' }, headers: auth })
+  assert.equal(unknown.status, 404)
+  assert.match(unknown.body.error, /任务不存在：missing/)
+
+  const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
+  const published = await call('publish', {
+    body: { projectId: added.body.project.id, title: 'closed timer', description: 'd' },
+    headers: auth,
+  })
+  const id = published.body.task.id
+
+  for (const action of ['pause', '', undefined]) {
+    const bad = await call('task/timer', { body: { id, action }, headers: auth })
+    assert.equal(bad.status, 400, `action=${String(action)}`)
+    assert.equal(bad.body.error, 'action 只能是 start 或 stop')
+  }
+
+  // A merged task is closed: no new clock, and nothing is written.
+  app.store.putTask({ ...app.store.getTask(id), mergedAt: 1 })
+  const closed = await call('task/timer', { body: { id, action: 'start' }, headers: auth })
+  assert.equal(closed.status, 400, JSON.stringify(closed.body))
+  assert.equal(closed.body.error, '已合并 / 已清理 / 已归档的任务不能开始计时')
+  assert.equal(app.store.getTask(id).workStartedAt, undefined)
 })

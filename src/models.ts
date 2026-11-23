@@ -115,6 +115,10 @@ export interface WorktreeTask {
   dueAt?: number
   /** Optional relative size (1/2/3/5/8 points); absent means unestimated. */
   estimate?: TaskEstimate
+  /** Accumulated hand-timed work (ms); absent until a timer was stopped once. */
+  workMs?: number
+  /** Start of the currently running timer (ms); absent means the timer is idle. */
+  workStartedAt?: number
   /** Optional per-task acceptance criteria (one trimmed line per item). */
   acceptanceCriteria?: string[]
   /** Verified criterion texts; intersected with acceptanceCriteria for display. */

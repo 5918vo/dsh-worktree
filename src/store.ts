@@ -18,6 +18,7 @@ import { randomUUID } from 'node:crypto'
 import { normalizeCriteria } from './criteria.js'
 import { normalizeDependencyIds, validateDependencyIds, type DependencyIssue } from './task-deps.js'
 import { NOTES_MAX_LENGTH, normalizePriority, normalizeTags, parseDueAt, parseEstimate, validateTags } from './task-meta.js'
+import { isWorkTiming, startWorkTimer, stopWorkTimer } from './task-timer.js'
 import { StoreError } from './errors.js'
 
 // Re-exported for callers that catch store failures without importing errors.js.
@@ -66,6 +67,11 @@ export type CriterionResult =
 export type PinResult =
   | { ok: true; task: WorktreeTask }
   | { ok: false; reason: 'missing' }
+
+/** Outcome of starting / stopping the work timer; callers map reasons to 404 / 400. */
+export type TimerResult =
+  | { ok: true; task: WorktreeTask }
+  | { ok: false; reason: 'missing' | 'closed' }
 
 /** Outcome of saving a template; `missing` maps to 404. */
 export type TemplateResult =
@@ -1144,6 +1150,51 @@ export class Store {
         delete task.pinnedAt
       }
       task.updatedAt = Date.now()
+      this.saveTasks()
+      return { ok: true, task }
+    })
+  }
+
+  /**
+   * Start the hand-timed work clock under the store lock.
+   *
+   * Only `workStartedAt` is stamped; the accumulated total is left alone until
+   * the timer stops. Starting an already running timer keeps the original
+   * stamp and does not write the ledger. Merged / cleaned / archived tasks
+   * refuse to start — new work would be booked against a closed task — while
+   * stopping a running timer stays allowed so the last stretch can land.
+   */
+  startTaskTimer(taskId: string, now: number = Date.now()): TimerResult {
+    return this.withLock(() => {
+      this.refreshTasks()
+      const task = this.tasks.get(taskId)
+      if (!task) return { ok: false, reason: 'missing' }
+      if (task.mergedAt || task.cleanedAt || task.archivedAt) return { ok: false, reason: 'closed' }
+      if (isWorkTiming(task)) return { ok: true, task }
+      const next = startWorkTimer(task, now)
+      task.workMs = next.workMs
+      task.workStartedAt = next.workStartedAt
+      task.updatedAt = now
+      this.saveTasks()
+      return { ok: true, task }
+    })
+  }
+
+  /**
+   * Fold the running interval into the accumulated total and clear the start
+   * stamp, all under the store lock. Stopping an idle timer is a no-op that
+   * does not write the ledger; closed tasks may still stop.
+   */
+  stopTaskTimer(taskId: string, now: number = Date.now()): TimerResult {
+    return this.withLock(() => {
+      this.refreshTasks()
+      const task = this.tasks.get(taskId)
+      if (!task) return { ok: false, reason: 'missing' }
+      if (!isWorkTiming(task)) return { ok: true, task }
+      const next = stopWorkTimer(task, now)
+      task.workMs = next.workMs
+      delete task.workStartedAt
+      task.updatedAt = now
       this.saveTasks()
       return { ok: true, task }
     })

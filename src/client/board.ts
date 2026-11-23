@@ -683,6 +683,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           criteriaBusy: !!busy,
           onToggleCriterion: actions.runCriterion,
           onSaveMeta: actions.runSaveMeta,
+          onTimer: actions.runTimer,
           metaBusy: !!busy,
           dependencyItems,
           dependencyOptions,

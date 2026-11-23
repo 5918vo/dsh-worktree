@@ -1,10 +1,11 @@
 import { React, h } from './ui'
 import { Icon } from './primitives'
-import { relTime, taskStamp } from './format'
+import { pad2, relTime, taskStamp } from './format'
 import { railStatsText } from './model'
 import type { ProjectView, TaskView } from '../models'
 import { boardBranch, boardStat, boardStatTitle, boardStatus, boardStatusLabel, type BoardFilter, type BoardTheme } from './model'
 import { dueStateOf, parseEstimate } from '../task-meta'
+import { isWorkTiming } from '../task-timer'
 import { useDialogFocus } from './dialog-focus'
 import type { SavedView } from './saved-views'
 import { pendingLabel, postMergeLabel } from './status'
@@ -441,6 +442,13 @@ function taskRow(
     chips.push(chip(t.taskDueToday, 'warn', t.taskDueHint))
   } else if (due && due.kind === 'soon') {
     chips.push(chip(String(t.taskDueSoon).replace('{n}', String(due.days)), 'warn', t.taskDueHint))
+  }
+  // Manual work timer: a quiet marker, so "计时中" survives switching tasks and
+  // reloading the board. The start clock explains *since when* on hover.
+  if (isWorkTiming(task)) {
+    const startedAt = new Date(Number(task.workStartedAt))
+    const clock = pad2(startedAt.getHours()) + ':' + pad2(startedAt.getMinutes())
+    chips.push(chip(t.taskWorkTiming, 'accent', fill(t.taskWorkTimingHint, { time: clock })))
   }
   // Two tags at most: the row stays one line; the full list lives in the title
   // and in "+N" so nothing is lost.

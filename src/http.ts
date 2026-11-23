@@ -468,6 +468,14 @@ export function registerHttp(app: App): () => void {
   act('unarchive', async (id) => app.runtime.unarchive(id))
   act('criteria', async (id, body) => app.runtime.setCriterionChecked(id, String(body.text || ''), body.checked === true))
   act('pin', async (id, body) => app.runtime.setTaskPinned(id, body.pinned === true))
+  // Manual work timer: `start` refuses closed tasks, `stop` stays available so
+  // the last stretch of a merged task can still be booked.
+  act('timer', async (id, body) => {
+    const action = String(body.action || '')
+    if (action === 'start') return app.runtime.startTaskTimer(id)
+    if (action === 'stop') return app.runtime.stopTaskTimer(id)
+    throw new TaskError('action 只能是 start 或 stop', 400)
+  })
   // Build the patch from keys the body really carries: a blanket `{tags,
   // priority, notes}` with undefined values would otherwise clear fields.
   act('meta', async (id, body) => {
