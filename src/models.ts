@@ -115,7 +115,7 @@ export interface WorktreeTask {
   dueAt?: number
   /** Optional relative size (1/2/3/5/8 points); absent means unestimated. */
   estimate?: TaskEstimate
-  /** Accumulated hand-timed work (ms); absent until a timer was stopped once. */
+  /** Accumulated hand-timed work (ms); 0 or absent means no completed stretch yet. */
   workMs?: number
   /** Start of the currently running timer (ms); absent means the timer is idle. */
   workStartedAt?: number
