@@ -690,18 +690,18 @@ export function saveSavedViews(views: SavedView[], storage?: Storage | null): { 
 
 ## 7. 批次验收标准
 
-- [ ] 5 个功能均可从 UI 或模型工具触发；未计时 / 未估算 / 无依赖 / 无风险 / 未保存视图时，行为与 1.14.0 一致。
-- [ ] `workMs` / `workStartedAt` 在开始、停止、刷新、重启、双实例场景下不丢失、不重复计数、不出现负数。
-- [ ] `estimate` 在发布、详情编辑、`task/meta`、模型工具四条入口下都能设置 / 清除；非法值被拒绝。
-- [ ] 依赖关系图在空项目、旧记录、缺失依赖、循环异常数据下不报错、不死循环、不出现 NaN。
-- [ ] 风险雷达在空项目、旧记录、异常时间戳、缺失依赖、空验收标准下不报错、不出现 NaN / 负分。
-- [ ] 保存视图在损坏 localStorage、超限、空名称、非法筛选值下不阻塞看板；四项筛选一次恢复。
-- [ ] 截止日期、依赖、估算、工时、注意力筛选、标签筛选、归档开关互相兼容；组合结果正确。
-- [ ] 旧任务记录（无新字段）加载不报错，排序与状态不变。
-- [ ] `npm run check:locale` 通过；中英文 key 完全一致。
-- [ ] `npm run verify`（typecheck + locale + 测试 + 构建）通过，测试数量不少于当前基线的 **560** 项并有所增加（目标 600–640 项；实际 645 项）。
-- [ ] README、CHANGELOG、docs/frontend-design.md、docs/i18n-terminology.md、package.json、package-lock.json 由主线程更新到 1.15.0。
-- [ ] 不引入新依赖；只新增 `task/timer` 路由；现有接口语义只做可选字段扩展。
+- [x] 5 个功能均可从 UI 或模型工具触发；未计时 / 未估算 / 无依赖 / 无风险 / 未保存视图时，行为与 1.14.0 一致。
+- [x] `workMs` / `workStartedAt` 在开始、停止、刷新、重启、双实例场景下不丢失、不重复计数、不出现负数。
+- [x] `estimate` 在发布、详情编辑、`task/meta`、模型工具四条入口下都能设置 / 清除；非法值被拒绝。
+- [x] 依赖关系图在空项目、旧记录、缺失依赖、循环异常数据下不报错、不死循环、不出现 NaN。
+- [x] 风险雷达在空项目、旧记录、异常时间戳、缺失依赖、空验收标准下不报错、不出现 NaN / 负分。
+- [x] 保存视图在损坏 localStorage、超限、空名称、非法筛选值下不阻塞看板；四项筛选一次恢复。
+- [x] 截止日期、依赖、估算、工时、注意力筛选、标签筛选、归档开关互相兼容；组合结果正确。
+- [x] 旧任务记录（无新字段）加载不报错，排序与状态不变。
+- [x] `npm run check:locale` 通过；中英文 key 完全一致。
+- [x] `npm run verify`（typecheck + locale + 测试 + 构建）通过，测试数量不少于当前基线的 **560** 项并有所增加（目标 600–640 项；实际 645 项）。
+- [x] README、CHANGELOG、docs/frontend-design.md、docs/i18n-terminology.md、package.json、package-lock.json 由主线程更新到 1.15.0。
+- [x] 不引入新依赖；只新增 `task/timer` 路由；现有接口语义只做可选字段扩展。
 
 ---
 
@@ -827,4 +827,4 @@ export function saveSavedViews(views: SavedView[], storage?: Storage | null): { 
 ### 10.5 PR
 
 - 分支：`t3/daily-five-feature-pipeline`
-- PR：待创建（创建后回填编号与链接）。
+- PR：https://github.com/5918vo/dsh-worktree/pull/30
