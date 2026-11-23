@@ -9,7 +9,7 @@ import type { SessionHealth } from './task-attention'
 import { fallbackEntries, type TimelineEntry } from './timeline'
 import { entryTag, entryTitle, liveStatsText, modelLabel, modelLabelFull, nearBottom, pressurePercent, readLive, shouldFollowLive, stepStatusLabel, tokenSummary } from './live-session'
 import { postMergeCount, reviewStaleCount } from './review-surfaces'
-import { NOTES_MAX_LENGTH, dueInputValue, dueStateOf, parseDueAt, parseTagText, validateTags } from '../task-meta'
+import { NOTES_MAX_LENGTH, dueInputValue, dueStateOf, parseDueAt, parseEstimate, parseTagText, TASK_ESTIMATES, validateTags } from '../task-meta'
 import { DEPENDENCY_LIMIT } from '../task-deps'
 import { fill } from './markdown'
 
@@ -42,7 +42,7 @@ export interface StageProps {
   /** A report action is in flight; both report buttons stay disabled. */
   reportBusy?: boolean
   /** Persist tags / priority / notes / dependencies / deadline; omitted keeps the info block read-only. */
-  onSaveMeta?: (patch: { tags?: string[]; priority?: string; notes?: string; dependsOn?: string[]; dueAt?: number | null }) => Promise<void>
+  onSaveMeta?: (patch: { tags?: string[]; priority?: string; notes?: string; dependsOn?: string[]; dueAt?: number | null; estimate?: number | null }) => Promise<void>
   /** A metadata write is in flight; the editors stay disabled. */
   metaBusy?: boolean
   /** Current prerequisites with their state, in `dependsOn` order (computed by the board). */
@@ -386,6 +386,8 @@ function TaskMetaSection(props: StageProps) {
   // Deadline: date plus a near-term chip; far-off dates keep it quiet.
   const dueValue = dueInputValue(task.dueAt)
   const dueState = dueStateOf(task.dueAt)
+  const estimate = parseEstimate(task.estimate)
+  const estimatePoints = estimate.ok ? estimate.value : null
   return h('section', { className: 'dshwd-block dshwd-task-meta' },
     h('div', { className: 'dshwd-block-label' }, t.taskInfo),
     h('div', { className: 'dshwd-meta-grid' },
@@ -397,6 +399,11 @@ function TaskMetaSection(props: StageProps) {
       h('div', { className: 'dshwd-meta-row' },
         h('div', { className: 'dshwd-meta-label' }, t.taskPriority),
         h('div', { className: 'dshwd-meta-value' }, h('span', { className: 'dshwd-chip dshwd-chip-sm' }, priority === 'high' ? t.priorityHigh : priority === 'low' ? t.priorityLow : t.priorityNormal))),
+      h('div', { className: 'dshwd-meta-row' },
+        h('div', { className: 'dshwd-meta-label' }, t.taskEstimate),
+        h('div', { className: 'dshwd-meta-value' }, estimatePoints != null
+          ? h('span', { className: 'dshwd-chip' }, fill(t.taskEstimatePoints, { n: estimatePoints }))
+          : h('span', { className: 'dshwd-hint' }, t.taskEstimateEmpty))),
       h('div', { className: 'dshwd-meta-row' },
         h('div', { className: 'dshwd-meta-label' }, t.taskDue),
         h('div', { className: 'dshwd-meta-value' }, dueValue
@@ -478,6 +485,9 @@ function TaskMetaEditor(props: StageProps) {
   // Keep the select responsive while the save is in flight; a failed save
   // snaps it back to the stored value.
   const [priorityDraft, setPriorityDraft] = React.useState(priority)
+  const estimate = parseEstimate(task.estimate)
+  const estimatePoints = estimate.ok ? estimate.value : null
+  const [estimateDraft, setEstimateDraft] = React.useState(estimatePoints == null ? '' : String(estimatePoints))
   const [dueDraft, setDueDraft] = React.useState(dueInputValue(task.dueAt))
   const [dueError, setDueError] = React.useState('')
   const [editingTags, setEditingTags] = React.useState(false)
@@ -510,6 +520,9 @@ function TaskMetaEditor(props: StageProps) {
   React.useEffect(() => {
     setPriorityDraft(priority)
   }, [task.id, task.priority])
+  React.useEffect(() => {
+    setEstimateDraft(estimatePoints == null ? '' : String(estimatePoints))
+  }, [task.id, task.estimate])
   // A refresh can replace the task while the editor is open; reset the date
   // buffer only when the stored deadline actually changed.
   React.useEffect(() => {
@@ -635,6 +648,25 @@ function TaskMetaEditor(props: StageProps) {
               h('option', { value: 'normal' }, t.priorityNormal),
               h('option', { value: 'high' }, t.priorityHigh))
             : h('span', { className: 'dshwd-chip dshwd-chip-sm' }, priority === 'high' ? t.priorityHigh : priority === 'low' ? t.priorityLow : t.priorityNormal))),
+      h('div', { className: 'dshwd-meta-row' },
+        h('div', { className: 'dshwd-meta-label' }, t.taskEstimate),
+        h('div', { className: 'dshwd-meta-value' },
+          save
+            ? h('select', {
+              className: 'dshwd-select dshwd-meta-select',
+              value: estimateDraft,
+              disabled: busy,
+              'aria-label': t.taskEstimate,
+              onChange: (e: any) => {
+                const next = e.target.value
+                const previous = estimateDraft
+                setEstimateDraft(next)
+                void save({ estimate: next === '' ? null : Number(next) }).catch(() => setEstimateDraft(previous))
+              },
+            },
+              h('option', { value: '' }, t.taskEstimateEmpty),
+              TASK_ESTIMATES.map((points) => h('option', { key: String(points), value: String(points) }, fill(t.taskEstimatePoints, { n: points }))))
+            : h('span', { className: 'dshwd-chip dshwd-chip-sm' }, estimatePoints != null ? fill(t.taskEstimatePoints, { n: estimatePoints }) : t.taskEstimateEmpty))),
       h('div', { className: 'dshwd-meta-row' },
         h('div', { className: 'dshwd-meta-label' }, t.taskDue),
         h('div', { className: 'dshwd-meta-value' },

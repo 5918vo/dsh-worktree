@@ -4,7 +4,7 @@ import { relTime, taskStamp } from './format'
 import { railStatsText } from './model'
 import type { ProjectView, TaskView } from '../models'
 import { boardBranch, boardStat, boardStatTitle, boardStatus, boardStatusLabel, type BoardFilter, type BoardTheme } from './model'
-import { dueStateOf } from '../task-meta'
+import { dueStateOf, parseEstimate } from '../task-meta'
 import { pendingLabel, postMergeLabel } from './status'
 import { AttentionFilter } from './attention-filter'
 import { AttentionSummaryBar } from './attention-summary'
@@ -283,6 +283,9 @@ function taskRow(
   const primary = attention.primaryAlert
   if (task.priority === 'high') chips.push(chip(t.priorityHigh, 'warn'))
   else if (task.priority === 'low') chips.push(chip(t.priorityLow, 'weak'))
+  // Size estimate: a quiet points chip; unestimated tasks show nothing.
+  const estimate = parseEstimate(task.estimate)
+  if (estimate.ok && estimate.value != null) chips.push(chip(fill(t.taskEstimatePoints, { n: estimate.value }), '', t.taskEstimate))
   // Advisory only: a blocked task keeps its status and sort order.
   const deps = props.depsOf ? props.depsOf(task) : null
   if (deps && deps.blocked) {

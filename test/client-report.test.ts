@@ -418,6 +418,23 @@ test('the report lists tags and priority in the headline facts', () => {
   assert.ok(low.includes('- 优先级: 低'))
 })
 
+test('the report shows the size estimate with the other metadata', () => {
+  const line = (estimate?: number) => {
+    const task = estimate === undefined ? makeTask() : makeTask({ estimate: estimate as any })
+    return buildAcceptanceReport(makeInput({ task })).split('\n').find((l) => l.startsWith('- 规模估算:'))
+  }
+  assert.equal(line(5), '- 规模估算: 5 点')
+  assert.equal(line(1), '- 规模估算: 1 点')
+  assert.equal(line(), '- 规模估算: 未估算')
+  assert.equal(line(4), '- 规模估算: 未估算', 'an invalid estimate is not shown as points')
+
+  const ordered = buildAcceptanceReport(makeInput({
+    task: makeTask({ priority: 'low', dueAt: new Date(2026, 0, 10).getTime() }),
+  }))
+  assert.ok(ordered.indexOf('- 优先级:') < ordered.indexOf('- 规模估算:'))
+  assert.ok(ordered.indexOf('- 规模估算:') < ordered.indexOf('- 截止日期:'))
+})
+
 test('the report shows the deadline and how late it is', () => {
   const now = new Date(2026, 0, 5, 9, 7).getTime()
   const line = (dueAt?: number) =>

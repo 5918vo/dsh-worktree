@@ -279,6 +279,9 @@ export function ProjectDetail(props: any) {
       insights.cycleMedianDays == null
         ? null
         : h('div', { className: 'dshw-hint' }, fill(t.insightsCycleMedian, { n: insights.cycleMedianDays.toFixed(1) })),
+      h('div', { className: 'dshw-hint' }, insights.open === 0
+        ? t.insightsWorkloadEmpty
+        : fill(t.insightsWorkload, { open: insights.open, estimated: insights.estimatedOpen, points: insights.openEstimatePoints })),
       insights.total === 0
         ? h('div', { className: 'dshw-hint' }, t.insightsEmpty)
         : h('div', { className: 'dshwd-insights' },

@@ -204,6 +204,7 @@ export function registerHttp(app: App): () => void {
         tags: body.tags,
         priority: body.priority,
         dueAt: body.dueAt,
+        estimate: body.estimate,
       })
       send(res, 200, { task })
     } catch (error) {
@@ -476,6 +477,7 @@ export function registerHttp(app: App): () => void {
     if (Object.prototype.hasOwnProperty.call(body, 'notes')) patch.notes = body.notes
     if (Object.prototype.hasOwnProperty.call(body, 'dependsOn')) patch.dependsOn = body.dependsOn
     if (Object.prototype.hasOwnProperty.call(body, 'dueAt')) patch.dueAt = body.dueAt
+    if (Object.prototype.hasOwnProperty.call(body, 'estimate')) patch.estimate = body.estimate
     app.runtime.updateTaskMeta(id, patch)
   })
   act('delete', async (id) => app.runtime.delete(id))

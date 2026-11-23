@@ -5,6 +5,7 @@ import {
   NOTES_MAX_LENGTH,
   TAG_LIMIT,
   TAG_MAX_LENGTH,
+  TASK_ESTIMATES,
   compareTaskOrder,
   dueDayOffset,
   dueInputValue,
@@ -12,6 +13,7 @@ import {
   normalizePriority,
   normalizeTags,
   parseDueAt,
+  parseEstimate,
   parseTagText,
   priorityRank,
   startOfLocalDay,
@@ -162,4 +164,29 @@ test('a due date never changes the task order', () => {
   const a = { id: 'a', createdAt: 100, dueAt: new Date(2020, 0, 1).getTime() }
   const b = { id: 'b', createdAt: 200 }
   assert.deepEqual([b, a].sort(compareTaskOrder).map((t) => t.id), ['b', 'a'])
+})
+
+test('TASK_ESTIMATES lists the allowed point sizes in ascending order', () => {
+  assert.deepEqual([...TASK_ESTIMATES], [1, 2, 3, 5, 8])
+})
+
+test('parseEstimate accepts every allowed size as a number or a numeric string', () => {
+  for (const points of TASK_ESTIMATES) {
+    assert.deepEqual(parseEstimate(points), { ok: true, value: points })
+    assert.deepEqual(parseEstimate(String(points)), { ok: true, value: points })
+  }
+  assert.deepEqual(parseEstimate(' 3 '), { ok: true, value: 3 }, 'surrounding whitespace is harmless')
+  assert.deepEqual(parseEstimate('3.0'), { ok: true, value: 3 }, 'a whole number written with a decimal still counts')
+})
+
+test('parseEstimate reads null, undefined and a blank string as unestimated', () => {
+  assert.deepEqual(parseEstimate(null), { ok: true, value: null })
+  assert.deepEqual(parseEstimate(undefined), { ok: true, value: null })
+  assert.deepEqual(parseEstimate(''), { ok: true, value: null })
+  assert.deepEqual(parseEstimate('   '), { ok: true, value: null })
+})
+
+test('parseEstimate rejects everything outside 1/2/3/5/8 instead of coercing it', () => {
+  const bad: unknown[] = [0, -1, 4, 6, 3.5, '0', '4', '3.5', '-2', 'abc', true, false, {}, [], Number.NaN, Number.POSITIVE_INFINITY]
+  for (const value of bad) assert.deepEqual(parseEstimate(value), { ok: false }, JSON.stringify(value))
 })

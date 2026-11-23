@@ -1,6 +1,6 @@
 /** Domain models for the worktree task plugin. */
 
-import type { TaskPriority } from './task-meta.js'
+import type { TaskEstimate, TaskPriority } from './task-meta.js'
 
 export interface WorktreeConfig {
   /**
@@ -113,6 +113,8 @@ export interface WorktreeTask {
   dependsOn?: string[]
   /** Optional deadline as local calendar midnight (ms); absent means none. */
   dueAt?: number
+  /** Optional relative size (1/2/3/5/8 points); absent means unestimated. */
+  estimate?: TaskEstimate
   /** Optional per-task acceptance criteria (one trimmed line per item). */
   acceptanceCriteria?: string[]
   /** Verified criterion texts; intersected with acceptanceCriteria for display. */

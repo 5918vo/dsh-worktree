@@ -9,6 +9,7 @@ const draft = (extra = {}) => ({
   pickedCriteria: [],
   branchName: '',
   dueAt: '',
+  estimate: '',
   ...extra,
 })
 
@@ -48,6 +49,15 @@ test('initialPublishForm ignores malformed pickedCriteria', () => {
   assert.deepEqual(form.pickedCriteria, [])
 })
 
+test('initialPublishForm restores only an allowed estimate', () => {
+  assert.equal(initialPublishForm({ estimate: 5 }).estimate, '5')
+  assert.equal(initialPublishForm(draft({ estimate: '8' })).estimate, '8')
+  assert.equal(initialPublishForm({ estimate: '4' }).estimate, '', '4 is not a valid size')
+  assert.equal(initialPublishForm({ estimate: '3.5' }).estimate, '')
+  assert.equal(initialPublishForm({ estimate: null }).estimate, '')
+  assert.equal(initialPublishForm(undefined).estimate, '', 'no draft means no estimate')
+})
+
 test('publishDraftDirty is false for an unchanged form', () => {
   const form = draft({ title: 't', description: 'd', pickedCriteria: ['a', 'b'], branchName: 'feat/x' })
   assert.equal(publishDraftDirty(form, draft({ title: 't', description: 'd', pickedCriteria: ['b', 'a'], branchName: 'feat/x' })), false)
@@ -65,6 +75,8 @@ test('publishDraftDirty detects every tracked field', () => {
   assert.equal(publishDraftDirty(base, { ...base, pickedCriteria: ['a', 'b'] }), true)
   assert.equal(publishDraftDirty(base, { ...base, branchName: 'b2' }), true)
   assert.equal(publishDraftDirty(base, { ...base, pickedCriteria: [] }), true)
+  assert.equal(publishDraftDirty(base, { ...base, estimate: '3' }), true, 'choosing a size is a change')
+  assert.equal(publishDraftDirty({ ...base, estimate: '3' }, base), true, 'clearing the size is a change too')
 })
 
 const task = (id, extra = {}) => ({ id, branch: 'dsh-wt/' + id, title: 'task ' + id, ...extra })

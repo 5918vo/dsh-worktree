@@ -17,7 +17,7 @@ import { homedir, hostname } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { normalizeCriteria } from './criteria.js'
 import { normalizeDependencyIds, validateDependencyIds, type DependencyIssue } from './task-deps.js'
-import { NOTES_MAX_LENGTH, normalizePriority, normalizeTags, parseDueAt, validateTags } from './task-meta.js'
+import { NOTES_MAX_LENGTH, normalizePriority, normalizeTags, parseDueAt, parseEstimate, validateTags } from './task-meta.js'
 import { StoreError } from './errors.js'
 
 // Re-exported for callers that catch store failures without importing errors.js.
@@ -79,6 +79,7 @@ export type TaskMetaPatch = {
   notes?: unknown
   dependsOn?: unknown
   dueAt?: unknown
+  estimate?: unknown
 }
 
 /** Outcome of an atomic metadata update; callers map reasons to 404 / 400. */
@@ -92,6 +93,7 @@ export type TaskMetaResult =
       | 'tags-too-long'
       | 'priority-invalid'
       | 'due-invalid'
+      | 'estimate-invalid'
       | 'notes-too-long'
       | 'deps-too-many'
       | 'deps-self'
@@ -1177,6 +1179,9 @@ export class Store {
       if (due && !due.ok) return { ok: false, reason: 'due-invalid' }
       const notes = has('notes') ? String(patch.notes == null ? '' : patch.notes).trim() : null
       if (notes !== null && notes.length > NOTES_MAX_LENGTH) return { ok: false, reason: 'notes-too-long' }
+      const hasEstimate = has('estimate')
+      const estimate = hasEstimate ? parseEstimate(patch.estimate) : null
+      if (estimate && !estimate.ok) return { ok: false, reason: 'estimate-invalid' }
       const dependsOn = has('dependsOn') ? normalizeDependencyIds(patch.dependsOn) : null
       if (dependsOn && dependsOn.length) {
         const check = validateDependencyIds({
@@ -1188,7 +1193,7 @@ export class Store {
         })
         if (!check.ok) return { ok: false, reason: dependencyReason(check.error) }
       }
-      if (!tags && !priority && !hasDue && notes === null && dependsOn === null) return { ok: true, task }
+      if (!tags && !priority && !hasDue && notes === null && dependsOn === null && !hasEstimate) return { ok: true, task }
 
       if (tags) {
         if (tags.length) task.tags = tags
@@ -1203,6 +1208,10 @@ export class Store {
       if (hasDue && due && due.ok) {
         if (due.value === null) delete task.dueAt
         else task.dueAt = due.value
+      }
+      if (hasEstimate && estimate && estimate.ok) {
+        if (estimate.value === null) delete task.estimate
+        else task.estimate = estimate.value
       }
       if (notes !== null) {
         if (notes) task.notes = notes

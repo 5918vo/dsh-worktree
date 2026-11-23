@@ -572,3 +572,69 @@ test('task/meta sets and clears the due date', async () => {
   assert.equal('dueAt' in cleared.body.view.task, false)
   assert.equal(cleared.body.view.task.notes, 'keep the date', 'clearing the deadline keeps the notes')
 })
+
+test('publish accepts an estimate and rejects an invalid one before creating a task', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
+  const projectId = added.body.project.id
+
+  const invalidTitle = 'bad estimate'
+  const invalid = await call('publish', {
+    body: { projectId, title: invalidTitle, description: 'd', estimate: 4 },
+    headers: auth,
+  })
+  assert.equal(invalid.status, 400, JSON.stringify(invalid.body))
+  assert.equal(invalid.body.error, '规模估算只能是 1、2、3、5 或 8 点')
+  const afterInvalid = await call('tasks', { method: 'GET', headers: auth })
+  assert.equal(afterInvalid.body.tasks.some((v: any) => v.task.title === invalidTitle), false, 'no task is created for a rejected estimate')
+
+  const estimated = await call('publish', {
+    body: { projectId, title: 'sized', description: 'd', estimate: 5 },
+    headers: auth,
+  })
+  assert.equal(estimated.status, 200, JSON.stringify(estimated.body))
+  assert.equal(estimated.body.task.estimate, 5)
+
+  const text = await call('publish', {
+    body: { projectId, title: 'sized text', description: 'd', estimate: '3' },
+    headers: auth,
+  })
+  assert.equal(text.status, 200, JSON.stringify(text.body))
+  assert.equal(text.body.task.estimate, 3, 'a numeric string is normalized to points')
+
+  const unsized = await call('publish', {
+    body: { projectId, title: 'unsized', description: 'd' },
+    headers: auth,
+  })
+  assert.equal(unsized.status, 200, JSON.stringify(unsized.body))
+  assert.equal('estimate' in unsized.body.task, false, 'no estimate means no field')
+})
+
+test('task/meta sets, keeps and clears the estimate', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
+  const published = await call('publish', {
+    body: { projectId: added.body.project.id, title: 'estimate task', description: 'd' },
+    headers: auth,
+  })
+  const id = published.body.task.id
+
+  const set = await call('task/meta', { body: { id, estimate: 8 }, headers: auth })
+  assert.equal(set.status, 200, JSON.stringify(set.body))
+  assert.equal(set.body.view.task.estimate, 8)
+
+  const notesOnly = await call('task/meta', { body: { id, notes: 'keep the size' }, headers: auth })
+  assert.equal(notesOnly.status, 200, JSON.stringify(notesOnly.body))
+  assert.equal(notesOnly.body.view.task.estimate, 8)
+
+  const invalid = await call('task/meta', { body: { id, estimate: 4 }, headers: auth })
+  assert.equal(invalid.status, 400)
+  assert.equal(invalid.body.error, '规模估算只能是 1、2、3、5 或 8 点')
+  const unchanged = await call('tasks', { method: 'GET', headers: auth })
+  assert.equal(unchanged.body.tasks.find((v: any) => v.task.id === id).task.estimate, 8)
+
+  const cleared = await call('task/meta', { body: { id, estimate: null }, headers: auth })
+  assert.equal(cleared.status, 200, JSON.stringify(cleared.body))
+  assert.equal('estimate' in cleared.body.view.task, false)
+  assert.equal(cleared.body.view.task.notes, 'keep the size', 'clearing the estimate keeps the notes')
+})

@@ -5,7 +5,7 @@
  */
 
 import type { Project, TaskView } from '../models'
-import { compareTaskOrder } from '../task-meta'
+import { compareTaskOrder, parseEstimate } from '../task-meta'
 import { dueInputValue } from '../task-meta'
 import { pad2 } from './format'
 import { fill, mdBlock, mdCell, mdCodeCell, mdInline, reportTimestamp, safeSlug } from './markdown'
@@ -46,6 +46,11 @@ export function projectReportFilename(project: Project, now: number = Date.now()
 
 function priorityText(t: Record<string, any>, value: string | undefined): string {
   return value === 'high' ? String(t.priorityHigh) : value === 'low' ? String(t.priorityLow) : String(t.priorityNormal)
+}
+
+function estimateText(t: Record<string, any>, value: unknown): string {
+  const estimate = parseEstimate(value)
+  return estimate.ok && estimate.value != null ? fill(t.taskEstimatePoints, { n: estimate.value }) : String(t.taskEstimateEmpty)
 }
 
 function activityAt(view: TaskView): number {
@@ -93,8 +98,8 @@ export function buildProjectReport(input: ProjectReportInput): string {
     lines.push(String(t.projectReportEmpty))
     return lines.join('\n') + '\n'
   }
-  lines.push(`| ${t.projectReportColNo} | ${t.projectReportColStatus} | ${t.projectReportColTask} | ${t.projectReportColBranch} | ${t.projectReportColProgress} | ${t.projectReportColPriority} | ${t.projectReportColDue} | ${t.projectReportColTags} | ${t.projectReportColActivity} |`)
-  lines.push('| --- | --- | --- | --- | --- | --- | --- | --- | --- |')
+  lines.push(`| ${t.projectReportColNo} | ${t.projectReportColStatus} | ${t.projectReportColTask} | ${t.projectReportColBranch} | ${t.projectReportColProgress} | ${t.projectReportColPriority} | ${t.projectReportColEstimate} | ${t.projectReportColDue} | ${t.projectReportColTags} | ${t.projectReportColActivity} |`)
+  lines.push('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |')
   views.forEach((view, index) => {
     const { task, snapshot } = view
     const items = criteria(task, snapshot.status)
@@ -107,6 +112,7 @@ export function buildProjectReport(input: ProjectReportInput): string {
       mdCodeCell(task.branch || '—'),
       progress.total ? `${progress.checked}/${progress.total}` : '—',
       mdCell(priorityText(t, task.priority)),
+      mdCell(estimateText(t, task.estimate)),
       mdCell(dueInputValue(task.dueAt) || '—'),
       mdCell(tags),
       activityAt(view) ? mdCell(reportTimestamp(activityAt(view))) : '—',
@@ -125,6 +131,7 @@ export function buildProjectReport(input: ProjectReportInput): string {
     lines.push(`- ${t.reportTaskBranch}: ${mdCodeCell(task.branch || '—')}`)
     lines.push(`- ${t.reportBaseBranch}: ${mdCodeCell(task.baseBranch || '—')}`)
     lines.push(`- ${t.reportDue}: ${mdCell(dueInputValue(task.dueAt) || t.reportDueNone)}`)
+    lines.push(`- ${t.taskEstimate}: ${mdCell(estimateText(t, task.estimate))}`)
     if (task.mergedCommit) lines.push(`- ${t.projectReportMergedCommit}: ${mdCodeCell(task.mergedCommit)}`)
     lines.push(`- ${t.projectReportHead}: ${mdCodeCell(branchHeadSha(task, snapshot) || '—')}`)
     lines.push('')

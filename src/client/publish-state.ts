@@ -1,4 +1,5 @@
 import type { TaskTemplate } from '../models'
+import { TASK_ESTIMATES } from '../task-meta'
 
 /**
  * Pure helpers for the publish modal's in-session draft and for reconciling a
@@ -20,6 +21,17 @@ export interface PublishDraft {
   priority: string
   /** `YYYY-MM-DD` from the date input; '' means no deadline. */
   dueAt: string
+  /** One of '', '1', '2', '3', '5', '8'; '' means unestimated. */
+  estimate: string
+}
+
+/** Estimate choices rendered by the publish select; '' (unestimated) is separate. */
+export const ESTIMATE_OPTIONS: string[] = TASK_ESTIMATES.map(String)
+
+/** Keep only a valid estimate; anything else reads as unestimated. */
+function estimateText(value: any): string {
+  const text = String(value == null ? '' : value).trim()
+  return ESTIMATE_OPTIONS.includes(text) ? text : ''
 }
 
 export interface PublishCheckInfo {
@@ -42,6 +54,7 @@ export function initialPublishForm(draft?: any, fallbackTitle = ''): PublishDraf
     tags: String(d.tags || ''),
     priority: d.priority === 'low' || d.priority === 'high' ? String(d.priority) : 'normal',
     dueAt: String(d.dueAt || ''),
+    estimate: estimateText(d.estimate),
   }
 }
 
@@ -62,6 +75,7 @@ export function publishDraftDirty(initial: PublishDraft, current: PublishDraft):
     || initial.tags !== current.tags
     || initial.priority !== current.priority
     || initial.dueAt !== current.dueAt
+    || initial.estimate !== current.estimate
 }
 
 /**

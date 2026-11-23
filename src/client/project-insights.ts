@@ -9,6 +9,7 @@
  */
 
 import type { TaskView } from '../models'
+import { parseEstimate } from '../task-meta'
 import { criteria, criteriaProgress } from './model'
 
 export const INSIGHTS_DAYS = 7
@@ -40,6 +41,14 @@ export interface ProjectInsights {
   /** Integer 0..100; null when no task has acceptance criteria. */
   acceptancePercent: number | null
   oldestOpenDays: number | null
+  /** Sum of valid estimates across open tasks, in points. */
+  openEstimatePoints: number
+  /** Open tasks carrying a valid estimate. */
+  estimatedOpen: number
+  /** Open tasks with no (or an invalid) estimate. */
+  unestimatedOpen: number
+  /** Integer 0..100; null when there are no open tasks. */
+  estimateCoveragePercent: number | null
   statusCounts: Record<string, number>
   /** The last 7 local calendar days, in ascending order. */
   daily: InsightDay[]
@@ -96,6 +105,9 @@ export function buildProjectInsights(views: TaskView[], now: number = Date.now()
   let acceptanceChecked = 0
   let acceptanceTotal = 0
   let oldestOpenDays: number | null = null
+  let openEstimatePoints = 0
+  let estimatedOpen = 0
+  let unestimatedOpen = 0
   const cycles: number[] = []
   const statusCounts: Record<string, number> = {}
 
@@ -112,7 +124,17 @@ export function buildProjectInsights(views: TaskView[], now: number = Date.now()
 
     if (isArchived) archived += 1
     if (isMerged) merged += 1
-    if (!isArchived && status !== 'merged' && status !== 'cleaned') open += 1
+    const isOpen = !isArchived && status !== 'merged' && status !== 'cleaned'
+    if (isOpen) {
+      open += 1
+      const estimate = parseEstimate(task.estimate)
+      if (estimate.ok && estimate.value != null) {
+        openEstimatePoints += estimate.value
+        estimatedOpen += 1
+      } else {
+        unestimatedOpen += 1
+      }
+    }
 
     // Cycle: only merged tasks with an ordered, valid pair. A merge recorded
     // before the creation time is corrupt, not a negative duration; a future
@@ -177,6 +199,10 @@ export function buildProjectInsights(views: TaskView[], now: number = Date.now()
     acceptanceTotal,
     acceptancePercent: acceptanceTotal ? Math.round((acceptanceChecked / acceptanceTotal) * 100) : null,
     oldestOpenDays,
+    openEstimatePoints,
+    estimatedOpen,
+    unestimatedOpen,
+    estimateCoveragePercent: open ? Math.round((estimatedOpen / open) * 100) : null,
     statusCounts,
     daily,
   }

@@ -2,9 +2,10 @@ import { React, h } from './ui'
 import { appCtx, getJson, postLong, bindSession } from './context'
 import { useBranchInfo } from './hooks'
 import { normalizeCriteria, parseCriteriaText } from '../criteria'
-import { parseDueAt, parseTagText, validateTags } from '../task-meta'
-import { applyPublishTemplate, branchChoices, initialPublishForm, publishDraftDirty, type PublishCheckInfo, type PublishDraft } from './publish-state'
+import { parseDueAt, parseEstimate, parseTagText, validateTags } from '../task-meta'
+import { applyPublishTemplate, branchChoices, ESTIMATE_OPTIONS, initialPublishForm, publishDraftDirty, type PublishCheckInfo, type PublishDraft } from './publish-state'
 import { worktreePreviewRoot } from '../worktree-layout'
+import { fill } from './markdown'
 import { useDialogFocus } from './dialog-focus'
 import type { ProjectView, TaskView, TaskTemplate } from '../models'
 
@@ -15,6 +16,7 @@ const FIELD_ERROR_ID: Record<string, string> = {
   branch: 'dshwd-publish-err-branch',
   tags: 'dshwd-publish-err-tags',
   dueAt: 'dshwd-publish-err-due-at',
+  estimate: 'dshwd-publish-err-estimate',
 }
 
 export interface PublishModalProps {
@@ -57,11 +59,11 @@ export function PublishModal(props: PublishModalProps) {
   const [base, setBase] = React.useState(parentTask ? parentTask.baseBranch : project ? project.baseBranch : '')
   const [title, setTitle] = React.useState(form0.title)
   const [description, setDescription] = React.useState(form0.description)
-  // A restored branch, tag or non-normal priority means the advanced panel was
-  // in use; reopen it so the draft is visibly applied instead of looking like a
-  // silent override.
+  // A restored branch, tag, estimate or non-normal priority means the advanced
+  // panel was in use; reopen it so the draft is visibly applied instead of
+  // looking like a silent override.
   const [advanced, setAdvanced] = React.useState(
-    !!form0.branchName || !!form0.tags || form0.priority !== 'normal' || !!form0.dueAt,
+    !!form0.branchName || !!form0.tags || form0.priority !== 'normal' || !!form0.dueAt || !!form0.estimate,
   )
   const [branch, setBranch] = React.useState(form0.branchName)
   const [start, setStart] = React.useState(true)
@@ -87,6 +89,7 @@ export function PublishModal(props: PublishModalProps) {
   const [tags, setTags] = React.useState(form0.tags)
   const [priority, setPriority] = React.useState(form0.priority)
   const [dueAt, setDueAt] = React.useState(form0.dueAt)
+  const [estimate, setEstimate] = React.useState(form0.estimate)
   const [showAllBranches, setShowAllBranches] = React.useState(false)
 
   const titleRef = React.useRef(null)
@@ -182,7 +185,7 @@ export function PublishModal(props: PublishModalProps) {
     setShowAllBranches(false)
   }, [projectId])
 
-  const currentForm = (): PublishDraft => ({ title, description, manualCriteria: manual, pickedCriteria: picked, branchName: branch, tags, priority, dueAt })
+  const currentForm = (): PublishDraft => ({ title, description, manualCriteria: manual, pickedCriteria: picked, branchName: branch, tags, priority, dueAt, estimate })
   const dirty = publishDraftDirty(form0, currentForm())
   const handleClose = () => {
     if (busy) return
@@ -214,7 +217,7 @@ export function PublishModal(props: PublishModalProps) {
   React.useEffect(() => {
     if (!changedOnce.current) { changedOnce.current = true; return }
     if (onDraftRef.current) onDraftRef.current(currentForm())
-  }, [title, description, manual, picked, branch, tags, priority, dueAt])
+  }, [title, description, manual, picked, branch, tags, priority, dueAt, estimate])
 
   // Shared dialog behaviour: initial focus on the title field, a real Tab
   // loop, Escape only when idle, and focus returned to the opener on unmount.
@@ -250,6 +253,9 @@ export function PublishModal(props: PublishModalProps) {
     // An unparsable date never reaches the server; empty means "no deadline".
     const due = dueAt.trim() ? parseDueAt(dueAt) : { ok: true as const, value: null }
     if (!due.ok) next.dueAt = t.taskDueInvalid
+    // Empty means "not estimated"; anything outside 1/2/3/5/8 never reaches the server.
+    const estimateCheck = parseEstimate(estimate)
+    if (!estimateCheck.ok) next.estimate = t.taskEstimateInvalid
     setFieldErrors(next)
     if (next.title && titleRef.current) (titleRef.current as any).focus()
     if (Object.keys(next).length) return
@@ -271,6 +277,7 @@ export function PublishModal(props: PublishModalProps) {
         ...(tagList.length ? { tags: tagList } : {}),
         ...(priority && priority !== 'normal' ? { priority } : {}),
         ...(due.ok && due.value !== null ? { dueAt: due.value } : {}),
+        ...(estimateCheck.ok && estimateCheck.value !== null ? { estimate: estimateCheck.value } : {}),
         ...(chosenModel ? { model: chosenModel } : {}),
         ...(parentTask && !asPlain ? { parentId: parentTask.id, carryLeftover } : {}),
         start,
@@ -535,7 +542,19 @@ export function PublishModal(props: PublishModalProps) {
           'aria-describedby': fieldErrors.dueAt ? FIELD_ERROR_ID.dueAt : undefined,
           onChange: (e: any) => { setDueAt(e.target.value); clearField('dueAt') },
         })),
-        fieldErrors.dueAt ? h('div', { className: 'dshwd-alert', role: 'alert', id: FIELD_ERROR_ID.dueAt }, fieldErrors.dueAt) : null)
+        fieldErrors.dueAt ? h('div', { className: 'dshwd-alert', role: 'alert', id: FIELD_ERROR_ID.dueAt }, fieldErrors.dueAt) : null,
+        field(t, t.taskEstimate, h('select', {
+          className: 'dshwd-select' + (fieldErrors.estimate ? ' dshwd-invalid' : ''),
+          value: estimate,
+          disabled: busy,
+          'aria-invalid': fieldErrors.estimate ? 'true' : 'false',
+          'aria-describedby': fieldErrors.estimate ? FIELD_ERROR_ID.estimate : undefined,
+          onChange: (e: any) => { setEstimate(e.target.value); clearField('estimate') },
+        },
+          h('option', { value: '' }, t.taskEstimateEmpty),
+          ESTIMATE_OPTIONS.map((points: string) => h('option', { key: points, value: points }, fill(t.taskEstimatePoints, { n: points }))))),
+        h('div', { className: 'dshwd-hint' }, t.taskEstimateHint),
+        fieldErrors.estimate ? h('div', { className: 'dshwd-alert', role: 'alert', id: FIELD_ERROR_ID.estimate }, fieldErrors.estimate) : null)
       : null,
 
     parentTask

@@ -26,7 +26,7 @@ function clean(value: unknown): Json {
   }
 }
 
-function brief(v: { task: { id: string; title: string; repoPath: string; baseBranch: string; branch: string; worktreePath: string; sessionId: string | null; parentId?: string; tags?: string[]; priority?: string; notes?: string; dependsOn?: string[]; dueAt?: number; acceptanceCriteria?: string[] }; snapshot: { status: string; worktree: { ahead: number; dirtyCount: number }; repo: { currentBranch: string | null }; postMergeAhead?: number } }) {
+function brief(v: { task: { id: string; title: string; repoPath: string; baseBranch: string; branch: string; worktreePath: string; sessionId: string | null; parentId?: string; tags?: string[]; priority?: string; notes?: string; dependsOn?: string[]; dueAt?: number; estimate?: number; acceptanceCriteria?: string[] }; snapshot: { status: string; worktree: { ahead: number; dirtyCount: number }; repo: { currentBranch: string | null }; postMergeAhead?: number } }) {
   return {
     id: v.task.id,
     title: v.task.title,
@@ -41,6 +41,7 @@ function brief(v: { task: { id: string; title: string; repoPath: string; baseBra
     notes: v.task.notes || '',
     dependsOn: Array.isArray(v.task.dependsOn) ? v.task.dependsOn : [],
     dueAt: Number(v.task.dueAt) || 0,
+    estimate: Number(v.task.estimate) || 0,
     acceptanceCriteria: Array.isArray(v.task.acceptanceCriteria) ? v.task.acceptanceCriteria : [],
     status: v.snapshot.status,
     ahead: v.snapshot.worktree.ahead,
@@ -77,6 +78,7 @@ export function registerTools(app: App): () => void {
           tags: { type: 'array', items: { type: 'string' }, description: 'Optional free-form tags (max 8, 24 chars each).' },
           priority: { type: 'string', enum: ['low', 'normal', 'high'], description: 'Optional display priority (default normal).' },
           due_at: { type: ['string', 'number'], description: 'Optional deadline as YYYY-MM-DD or epoch milliseconds (normalized to a local calendar day; overdue tasks are flagged on the board).' },
+          estimate: { type: ['string', 'number'], enum: [1, 2, 3, 5, 8], description: 'Optional relative size in points: 1, 2, 3, 5 or 8.' },
         },
         required: ['title', 'task'],
       },
@@ -97,6 +99,7 @@ export function registerTools(app: App): () => void {
             tags: Array.isArray(args.tags) ? args.tags.map(String) : undefined,
             priority: args.priority !== undefined ? String(args.priority) : undefined,
             dueAt: args.due_at !== undefined ? args.due_at : undefined,
+            estimate: args.estimate !== undefined ? args.estimate : undefined,
           })
           return clean({
             ok: true,
@@ -169,6 +172,7 @@ export function registerTools(app: App): () => void {
           notes: { type: 'string', description: 'For meta: set acceptance/handover notes (max 2000 chars; empty clears).' },
           depends_on: { type: 'array', items: { type: 'string' }, description: 'For meta: replace the prerequisite task ids (same project, max 8; [] clears).' },
           due_at: { type: ['string', 'number', 'null'], description: 'For meta: set the deadline as YYYY-MM-DD or epoch milliseconds; empty or null clears it.' },
+          estimate: { type: ['string', 'number', 'null'], enum: [1, 2, 3, 5, 8, null], description: 'For meta: set the size estimate in points (1, 2, 3, 5 or 8); null or an empty string clears it.' },
         },
         required: ['id', 'action'],
       },
@@ -192,6 +196,7 @@ export function registerTools(app: App): () => void {
               patch.dependsOn = args.depends_on
             }
             if (Object.prototype.hasOwnProperty.call(args, 'due_at') && args.due_at !== undefined) patch.dueAt = args.due_at
+            if (Object.prototype.hasOwnProperty.call(args, 'estimate') && args.estimate !== undefined) patch.estimate = args.estimate
             return clean({ ok: true, task: brief(await app.runtime.view(app.runtime.updateTaskMeta(id, patch))) })
           }
           if (action === 'merge-preflight') {

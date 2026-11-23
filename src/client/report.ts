@@ -10,7 +10,7 @@ import { pad2 } from './format'
 import { fill, mdBlock, mdCodeCell, mdInline, reportTimestamp } from './markdown'
 import { branchHeadSha, criteria, criteriaProgress } from './model'
 import { buildTaskLifecycle, lifecycleCycleDays, lifecycleLabelKey } from './task-lifecycle'
-import { dueInputValue, dueStateOf } from '../task-meta'
+import { dueInputValue, dueStateOf, parseEstimate } from '../task-meta'
 
 export interface ReportInput {
   task: WorktreeTask
@@ -98,6 +98,10 @@ export function buildAcceptanceReport(input: ReportInput): string {
   lines.push(metaLine(t.taskTags, mdInline(tags)))
   lines.push(metaLine(t.taskPriority, mdInline(
     task.priority === 'high' ? t.priorityHigh : task.priority === 'low' ? t.priorityLow : t.priorityNormal,
+  )))
+  const estimate = parseEstimate(task.estimate)
+  lines.push(metaLine(t.taskEstimate, mdInline(
+    estimate.ok && estimate.value != null ? fill(t.taskEstimatePoints, { n: estimate.value }) : t.taskEstimateEmpty,
   )))
   // The deadline is dated in local calendar days and repeats the overdue count
   // so a printed report carries the same warning as the board.

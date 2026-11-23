@@ -94,6 +94,37 @@ test('worktree_act meta patches only the fields it receives', async () => {
   }
 })
 
+test('worktree_act meta writes, keeps and clears the estimate', async () => {
+  const root = await mkTempDir('dshw-act-estimate-')
+  const host = bootHost({}, { stateDir: join(root, 'state') })
+  const tool = host.tools.find((def: any) => def.name === 'worktree_act')
+  assert.ok(tool, 'worktree_act is registered')
+  try {
+    host.app.store.putTask(task('est'))
+    assert.equal(tool.parameters.properties.estimate.type.includes('number'), true, 'estimate is a meta parameter')
+
+    const set: any = await tool.execute({ id: 'est', action: 'meta', estimate: 5 })
+    assert.equal(set.ok, true, JSON.stringify(set))
+    assert.equal(set.task.estimate, 5, 'the brief carries the estimate')
+
+    const notesOnly: any = await tool.execute({ id: 'est', action: 'meta', notes: 'kept' })
+    assert.equal(notesOnly.ok, true, JSON.stringify(notesOnly))
+    assert.equal(notesOnly.task.estimate, 5, 'omitting estimate must not clear it')
+
+    const rejected: any = await tool.execute({ id: 'est', action: 'meta', estimate: 4 })
+    assert.equal(rejected.ok, false)
+    assert.match(String(rejected.error), /规模估算/)
+    assert.equal(host.app.store.getTask('est')!.estimate, 5, 'a rejected patch keeps the stored size')
+
+    const cleared: any = await tool.execute({ id: 'est', action: 'meta', estimate: null })
+    assert.equal(cleared.ok, true, JSON.stringify(cleared))
+    assert.equal(cleared.task.estimate, 0, 'the brief reports zero when unestimated')
+    assert.equal('estimate' in host.app.store.getTask('est')!, false)
+  } finally {
+    await rmrf(root)
+  }
+})
+
 test('worktree_act meta writes depends_on and the brief reports it', async () => {
   const root = await mkTempDir('dshw-act-deps-')
   const host = bootHost({}, { stateDir: join(root, 'state') })
