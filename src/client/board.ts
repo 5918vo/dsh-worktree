@@ -45,6 +45,17 @@ import {
   themeFor,
   type BoardFilter,
 } from './model'
+import { loadSavedViews, saveSavedViews } from './view-storage'
+import {
+  SAVED_VIEW_LIMIT,
+  SAVED_VIEW_NAME_MAX,
+  createSavedView,
+  removeSavedView,
+  sameViewState,
+  upsertSavedView,
+  type SavedView,
+  type ViewState,
+} from './saved-views'
 import { stalledDays } from './staleness'
 import { compareTaskOrder } from '../task-meta'
 import { dependencyStatus, isDependencyDone, isSameProject } from '../task-deps'
@@ -92,6 +103,8 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
   const [filter, setFilter] = React.useState('all' as BoardFilter)
   const [tagFilter, setTagFilter] = React.useState('')
   const [showArchived, setShowArchived] = React.useState(false)
+  // Views are read lazily once per mount; storage failures read as "no views".
+  const [savedViews, setSavedViews] = React.useState(() => loadSavedViews())
   const [selectedTaskId, setSelectedTaskId] = React.useState('')
   const [selectedProjectId, setSelectedProjectId] = React.useState('')
   const [tab, setTab] = React.useState('overview' as BoardTab)
@@ -369,6 +382,62 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     setShowArchived((v: boolean) => !v)
   }
 
+  // The active view is derived, never stored: any manual filter change falls
+  // back to "custom" without extra state to keep in sync.
+  const currentView: ViewState = React.useMemo(
+    () => ({ query, filter, tag: tagFilter, showArchived }),
+    [query, filter, tagFilter, showArchived],
+  )
+  const activeViewId = React.useMemo(() => {
+    const match = savedViews.find((view: SavedView) => sameViewState(view, currentView))
+    return match ? match.id : ''
+  }, [savedViews, currentView])
+
+  const applyView = (view: SavedView) => {
+    setQuery(view.query)
+    setFilter(view.filter)
+    setTagFilter(view.tag)
+    setShowArchived(view.showArchived)
+  }
+
+  // A full or disabled localStorage must not lose the view: it still applies
+  // for this session, and the toast says the list will not survive a reload.
+  const persistViews = (next: SavedView[], message: string) => {
+    const stored = saveSavedViews(next)
+    say(stored.ok ? message : String(t.savedViewSessionOnly), false)
+  }
+
+  const saveView = (name: string): { ok: true } | { ok: false; error: string } => {
+    const created = createSavedView(currentView, name)
+    if (!created.ok) {
+      const error = created.reason === 'name-empty'
+        ? String(t.savedViewNameEmpty)
+        : created.reason === 'name-too-long'
+          ? String(t.savedViewNameTooLong).replace('{n}', String(SAVED_VIEW_NAME_MAX))
+          : String(t.savedViewStateInvalid)
+      return { ok: false, error }
+    }
+    // Updating an existing name is always allowed; only a brand-new view needs
+    // room in the list.
+    const key = created.view.name.trim().toLowerCase()
+    const updating = savedViews.some((view: SavedView) => view.id === created.view.id || view.name.trim().toLowerCase() === key)
+    if (!updating && savedViews.length >= SAVED_VIEW_LIMIT) {
+      return { ok: false, error: String(t.savedViewLimit).replace('{n}', String(SAVED_VIEW_LIMIT)) }
+    }
+    const next = upsertSavedView(savedViews, created.view)
+    setSavedViews(next)
+    persistViews(next, String(t.savedViewSaved).replace('{name}', created.view.name))
+    return { ok: true }
+  }
+
+  const deleteView = (id: string) => {
+    const target = savedViews.find((view: SavedView) => view.id === id)
+    if (!target) return
+    const next = removeSavedView(savedViews, id)
+    setSavedViews(next)
+    persistViews(next, String(t.savedViewDeleted).replace('{name}', target.name))
+  }
+
   // Status drives both the Stage chip and the acceptance report label, so it is
   // resolved once before the action hook reads it.
   const archived = !!(selectedTask && selectedTask.task.archivedAt)
@@ -567,6 +636,11 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
         lastOkAt,
         emptyKind,
         loaded,
+        savedViews,
+        activeViewId,
+        onApplyView: applyView,
+        onSaveView: saveView,
+        onDeleteView: deleteView,
         onQuery: setQuery,
         onFilter: setFilter,
         onToggleArchived: toggleArchived,
@@ -609,6 +683,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           criteriaBusy: !!busy,
           onToggleCriterion: actions.runCriterion,
           onSaveMeta: actions.runSaveMeta,
+          onTimer: actions.runTimer,
           metaBusy: !!busy,
           dependencyItems,
           dependencyOptions,

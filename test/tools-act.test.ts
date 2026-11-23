@@ -94,6 +94,37 @@ test('worktree_act meta patches only the fields it receives', async () => {
   }
 })
 
+test('worktree_act meta writes, keeps and clears the estimate', async () => {
+  const root = await mkTempDir('dshw-act-estimate-')
+  const host = bootHost({}, { stateDir: join(root, 'state') })
+  const tool = host.tools.find((def: any) => def.name === 'worktree_act')
+  assert.ok(tool, 'worktree_act is registered')
+  try {
+    host.app.store.putTask(task('est'))
+    assert.equal(tool.parameters.properties.estimate.type.includes('number'), true, 'estimate is a meta parameter')
+
+    const set: any = await tool.execute({ id: 'est', action: 'meta', estimate: 5 })
+    assert.equal(set.ok, true, JSON.stringify(set))
+    assert.equal(set.task.estimate, 5, 'the brief carries the estimate')
+
+    const notesOnly: any = await tool.execute({ id: 'est', action: 'meta', notes: 'kept' })
+    assert.equal(notesOnly.ok, true, JSON.stringify(notesOnly))
+    assert.equal(notesOnly.task.estimate, 5, 'omitting estimate must not clear it')
+
+    const rejected: any = await tool.execute({ id: 'est', action: 'meta', estimate: 4 })
+    assert.equal(rejected.ok, false)
+    assert.match(String(rejected.error), /规模估算/)
+    assert.equal(host.app.store.getTask('est')!.estimate, 5, 'a rejected patch keeps the stored size')
+
+    const cleared: any = await tool.execute({ id: 'est', action: 'meta', estimate: null })
+    assert.equal(cleared.ok, true, JSON.stringify(cleared))
+    assert.equal(cleared.task.estimate, 0, 'the brief reports zero when unestimated')
+    assert.equal('estimate' in host.app.store.getTask('est')!, false)
+  } finally {
+    await rmrf(root)
+  }
+})
+
 test('worktree_act meta writes depends_on and the brief reports it', async () => {
   const root = await mkTempDir('dshw-act-deps-')
   const host = bootHost({}, { stateDir: join(root, 'state') })
@@ -124,6 +155,45 @@ test('worktree_act meta writes depends_on and the brief reports it', async () =>
     const cleared: any = await tool.execute({ id: 'dep-a', action: 'meta', depends_on: [] })
     assert.equal(cleared.ok, true, JSON.stringify(cleared))
     assert.deepEqual(cleared.task.dependsOn, [])
+  } finally {
+    await rmrf(root)
+  }
+})
+
+test('worktree_act timer starts, repeats and stops the manual clock', async () => {
+  const root = await mkTempDir('dshw-act-timer-')
+  const host = bootHost({}, { stateDir: join(root, 'state') })
+  const tool = host.tools.find((def: any) => def.name === 'worktree_act')
+  assert.ok(tool, 'worktree_act is registered')
+  try {
+    host.app.store.putTask(task('timer'))
+
+    const started: any = await tool.execute({ id: 'timer', action: 'timer', timer_action: 'start' })
+    assert.equal(started.ok, true, JSON.stringify(started))
+    assert.equal(typeof started.task.workStartedAt, 'number')
+    assert.equal(started.task.workMs, 0)
+
+    // A repeated start keeps the running interval instead of restarting it.
+    const again: any = await tool.execute({ id: 'timer', action: 'timer', timer_action: 'start' })
+    assert.equal(again.ok, true, JSON.stringify(again))
+    assert.equal(again.task.workStartedAt, started.task.workStartedAt)
+
+    const stopped: any = await tool.execute({ id: 'timer', action: 'timer', timer_action: 'stop' })
+    assert.equal(stopped.ok, true, JSON.stringify(stopped))
+    assert.equal(stopped.task.workStartedAt, 0, 'an idle clock reports 0, not undefined')
+    assert.ok(stopped.task.workMs >= 0)
+
+    const missing: any = await tool.execute({ id: 'nope', action: 'timer', timer_action: 'start' })
+    assert.equal(missing.ok, false)
+    assert.match(String(missing.error), /任务不存在：nope/)
+
+    const invalid: any = await tool.execute({ id: 'timer', action: 'timer', timer_action: 'pause' })
+    assert.equal(invalid.ok, false)
+    assert.match(String(invalid.error), /timer_action 只能是 start 或 stop/)
+
+    const absent: any = await tool.execute({ id: 'timer', action: 'timer' })
+    assert.equal(absent.ok, false)
+    assert.match(String(absent.error), /timer_action/)
   } finally {
     await rmrf(root)
   }

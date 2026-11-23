@@ -12,6 +12,30 @@ export const NOTES_MAX_LENGTH = 2000
 
 export type TaskPriority = 'low' | 'normal' | 'high'
 
+/** Relative task sizes; points, not hours. */
+export const TASK_ESTIMATES = [1, 2, 3, 5, 8] as const
+
+export type TaskEstimate = typeof TASK_ESTIMATES[number]
+
+export type EstimateParse = { ok: true; value: TaskEstimate | null } | { ok: false }
+
+/**
+ * Parse a size estimate. Numbers or numeric strings in 1/2/3/5/8 are valid;
+ * null/undefined/'' clear the field; anything else (0, negatives, 4, booleans,
+ * objects, fractions) is rejected instead of being coerced.
+ */
+export function parseEstimate(value: unknown): EstimateParse {
+  if (value === null || value === undefined || value === '') return { ok: true, value: null }
+  if (typeof value === 'boolean' || typeof value === 'object') return { ok: false }
+  const text = typeof value === 'string' ? value.trim() : value
+  if (text === '') return { ok: true, value: null }
+  const number = Number(text)
+  if (!Number.isFinite(number) || !Number.isInteger(number)) return { ok: false }
+  return (TASK_ESTIMATES as readonly number[]).includes(number)
+    ? { ok: true, value: number as TaskEstimate }
+    : { ok: false }
+}
+
 /**
  * Split one free-text tag field into normalized tags.
  *

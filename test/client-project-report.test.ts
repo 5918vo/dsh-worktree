@@ -78,8 +78,8 @@ test('project report carries metadata, stats, the task table and per-task blocks
   assert.match(text, /- review：1/)
   assert.match(text, /- merged：1/)
   assert.match(text, /## 任务清单/)
-  assert.match(text, /\| 序号 \| 状态 \| 任务 \| 分支 \| 验收 \| 优先级 \| 截止 \| 标签 \| 最近活动 \|/)
-  assert.match(text, /\| 1 \| review \| Alpha \| `dsh\/one` \| 1\/1 \| 普通 \| — \| — \|/)
+  assert.match(text, /\| 序号 \| 状态 \| 任务 \| 分支 \| 验收 \| 优先级 \| 估算 \| 截止 \| 工时 \| 标签 \| 最近活动 \|/)
+  assert.match(text, /\| 1 \| review \| Alpha \| `dsh\/one` \| 1\/1 \| 普通 \| 未估算 \| — \| 未记录 \| — \|/)
   assert.match(text, /### 任务 1：Alpha/)
   assert.match(text, /- \[x\] one/)
   assert.match(text, /### 任务 2：Beta/)
@@ -189,7 +189,7 @@ test('a due date shows in the table and the per-task block, with overdue days', 
   ], project(), new Date(2026, 0, 3, 10).getTime())
   // 2026-01-01 against now 2026-01-03 is two days late, but the project table
   // keeps the plain date; only the per-task block repeats the deadline.
-  assert.match(text, /\| 1 \| review \| Late \| `dsh\/one` \| — \| 普通 \| 2026-01-01 \|/)
+  assert.match(text, /\| 1 \| review \| Late \| `dsh\/one` \| — \| 普通 \| 未估算 \| 2026-01-01 \|/)
   assert.match(text, /\| 2 \| review \| Some day \|.*\| 2026-02-15 \|/)
   assert.match(text, /- 截止日期: 2026-01-01/)
   assert.match(text, /- 截止日期: 2026-02-15/)
@@ -198,14 +198,38 @@ test('a due date shows in the table and the per-task block, with overdue days', 
 
 test('a project task without a deadline reads as unset', () => {
   const text = report([view({ title: 'No due' })])
-  assert.match(text, /\| 1 \| review \| No due \| `dsh\/one` \| — \| 普通 \| — \| — \|/)
+  assert.match(text, /\| 1 \| review \| No due \| `dsh\/one` \| — \| 普通 \| 未估算 \| — \| 未记录 \|/)
   assert.match(text, /- 截止日期: 未设置/)
+})
+
+test('an estimate shows in the table and the per-task block', () => {
+  const text = report([
+    view({ id: 'a', title: 'Sized', estimate: 5 }),
+    view({ id: 'b', title: 'Odd', estimate: 4 as any }),
+  ])
+  assert.match(text, /\| 1 \| review \| Sized \| `dsh\/one` \| — \| 普通 \| 5 点 \| — \| 未记录 \|/)
+  assert.match(text, /\| 2 \| review \| Odd \|.*\| 未估算 \|/, 'an invalid estimate reads as unestimated')
+  assert.match(text, /- 规模估算: 5 点/)
+  assert.match(text, /- 规模估算: 未估算/)
+})
+
+test('the task table carries a work-time column and repeats it per task', () => {
+  const text = report([
+    view({ id: 'a', title: 'Timed', workMs: 45 * 60 * 1000 }),
+    view({ id: 'b', title: 'Running', workMs: 60 * 1000, workStartedAt: 1 }),
+  ])
+  assert.match(text, /\| 工时 \|/, 'the header names the column')
+  assert.match(text, /\| 1 \| review \| Timed \| `dsh\/one` \| — \| 普通 \| 未估算 \| — \| 45 分 \|/)
+  assert.match(text, /- 工时: 45 分/)
+  // A clock that is still running is marked, not silently under-reported.
+  assert.match(text, /- 工时: .*（计时中）/)
+  assert.equal(/逾期/.test(text), false)
 })
 
 test('English locale produces the same structure', () => {
   const text = buildProjectReport({
     project: project(),
-    views: [view({ title: 'Alpha', notes: 'n' })],
+    views: [view({ title: 'Alpha', notes: 'n', workMs: 45 * 60 * 1000 })],
     t: en,
     statusLabel: () => 'review',
     now: 0,
@@ -213,4 +237,7 @@ test('English locale produces the same structure', () => {
   assert.match(text, /^# Project acceptance report/)
   assert.match(text, /## Task list/)
   assert.match(text, /\*\*Notes\*\*: n/)
+  // Duration units follow the English dictionary instead of leaking 分 / 小时.
+  assert.match(text, /\| 45 min \|/)
+  assert.match(text, /- Work time: 45 min/)
 })

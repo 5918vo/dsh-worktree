@@ -195,6 +195,23 @@ export class Runtime {
     return result.task
   }
 
+  /** Start the manually driven work timer; closed tasks refuse to start (400). */
+  startTaskTimer(id: string): WorktreeTask {
+    const result = this.ctx.store.startTaskTimer(id)
+    if (result.ok) return result.task
+    throw new TaskError(
+      result.reason === 'missing' ? `任务不存在：${id}` : '已合并 / 已清理 / 已归档的任务不能开始计时',
+      result.reason === 'missing' ? 404 : 400,
+    )
+  }
+
+  /** Stop the work timer and fold the running interval into the total. */
+  stopTaskTimer(id: string): WorktreeTask {
+    const result = this.ctx.store.stopTaskTimer(id)
+    if (!result.ok) throw new TaskError(`任务不存在：${id}`, 404)
+    return result.task
+  }
+
   /** Atomically update tags / priority / notes / dependencies; unknown ids are 404s. */
   updateTaskMeta(id: string, patch: TaskMetaPatch): WorktreeTask {
     const result = this.ctx.store.updateTaskMeta(id, patch)
@@ -204,7 +221,8 @@ export class Runtime {
         : result.reason === 'tags-too-long' ? '单个标签最多 24 个字符'
           : result.reason === 'priority-invalid' ? '优先级只能是 low、normal 或 high'
             : result.reason === 'due-invalid' ? '截止日期无效'
-              : result.reason === 'notes-too-long' ? '备注最多 2000 个字符'
+              : result.reason === 'estimate-invalid' ? '规模估算只能是 1、2、3、5 或 8 点'
+                : result.reason === 'notes-too-long' ? '备注最多 2000 个字符'
                 : result.reason === 'deps-too-many' ? '前置任务最多 8 个'
                   : result.reason === 'deps-self' ? '不能依赖自己'
                     : result.reason === 'deps-missing' ? '前置任务不存在'

@@ -8,7 +8,7 @@ import { basename, dirname, join } from 'node:path'
 import { normalizeCriteria } from '../criteria.js'
 import * as gitx from '../gitx.js'
 import { Project, ProjectView, TaskView, WorktreeTask } from '../models.js'
-import { compareTaskOrder, normalizePriority, normalizeTags, parseDueAt, validateTags } from '../task-meta.js'
+import { compareTaskOrder, normalizePriority, normalizeTags, parseDueAt, parseEstimate, validateTags } from '../task-meta.js'
 import { assertTaskBranchName, buildFirstPrompt, id8, normalizeModelSelection } from './prompt.js'
 import {
   absPath,
@@ -310,6 +310,8 @@ export async function publishTask(ctx: RuntimeContext, input: PublishInput): Pro
   }
   const due = input.dueAt === undefined ? null : parseDueAt(input.dueAt)
   if (due && !due.ok) throw new TaskError('截止日期无效')
+  const estimate = input.estimate === undefined ? null : parseEstimate(input.estimate)
+  if (estimate && !estimate.ok) throw new TaskError('规模估算只能是 1、2、3、5 或 8 点')
 
   const project = await ensureProject(ctx, input)
   const repoPath = project.repoPath
@@ -385,6 +387,7 @@ export async function publishTask(ctx: RuntimeContext, input: PublishInput): Pro
     ...(tags.length ? { tags } : {}),
     ...(priority && priority !== 'normal' ? { priority } : {}),
     ...(due && due.ok && due.value !== null ? { dueAt: due.value } : {}),
+    ...(estimate && estimate.ok && estimate.value !== null ? { estimate: estimate.value } : {}),
     sessionId: null,
     firstPrompt: '',
     startOnBind: input.start !== false && input.autoBind !== false,

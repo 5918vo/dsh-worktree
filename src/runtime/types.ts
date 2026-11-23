@@ -36,6 +36,8 @@ export interface PublishInput {
   priority?: unknown
   /** Deadline: YYYY-MM-DD, epoch ms, or null; normalized to local midnight. */
   dueAt?: number | string | null
+  /** Relative size (1/2/3/5/8 points); null/empty clears, other values are rejected. */
+  estimate?: unknown
 }
 
 export interface AddProjectInput {

@@ -1,1101 +1,830 @@
-# 每日功能批次 · 2026-11-23 · v1.14.0
+# 每日功能批次 · 2026-11-23 · v1.15.0
 
-> 批次主题：**任务规划、检索、度量与追溯**（让任务在「发布之后」也能被安排时间、说明依赖、按条件找到、用数据回看、按时间复盘）
+> 批次主题：**执行节奏与风险可视化**（工时、规模、依赖、风险、视图）
 >
-> 交付方式：一个 PR（`t3/daily-5-feature-pipeline` → `master`），5 个功能同批验收。
+> 一句话目标：让任务不仅「能被记录和找到」，还能回答五个问题——**花了多久、有多大、先做哪个、哪里有风险、常用筛选怎么一键回来**。
 >
-> 分工：主线程负责方案、任务拆分、集成、验收、文档与 PR；5 个 `pi` 子 agent 分别负责 5 个功能的编码落地与测试。上一批次（1.13.0 标签 / 优先级 / 备注 / 项目报告 / 停滞检测）的文档见 git 历史。
+> 交付方式：一个 PR（`t3/daily-five-feature-pipeline` → `master`），5 个功能同批验收。
 >
-> 状态：已规划 / 实施中（验收记录见第 10 节）。
+> 分工：主线程负责方案、任务拆分、集成、验收、文档与 PR；5 个 `pi` 子 agent 分别负责 5 个功能的编码落地与测试。上一批次（1.14.0 截止日期 / 依赖 / 洞察 / 结构化搜索 / 时间线）的文档见 git 历史。
+>
+> 状态：已实施 / 已验收（验收记录见第 10 节）。
 
 ## 0. 批次总览
 
 | # | 功能 | 一句话价值 | 主要落点 |
 | --- | --- | --- | --- |
-| 1 | 任务截止日期 | 给任务一个「什么时候要」，逾期自动进入注意力视图 | 模型 / Store / HTTP / 发布弹窗 / 任务信息 / 左栏 / 注意力 / 报告 |
-| 2 | 前置任务依赖 | 标明「先做哪个」，未完成的前置任务在行内与详情中可见 | 模型 / Store / HTTP / 任务信息 / 左栏 / 工具 |
-| 3 | 项目洞察 | 用已有时间戳算出周期、吞吐与验收核对率 | 纯函数 / 项目详情 / 文案 |
-| 4 | 结构化搜索 | 用 `tag:` / `priority:` / `status:` 精确找任务，纯文本搜索不变 | 纯函数 / 左栏模型 / 搜索框 / 文案 |
-| 5 | 任务生命周期时间线 | 把发布、置顶、合并、清理、归档、最近更新串成一条可复盘的时间线 | 纯函数 / 概览 / 验收报告 / 文案 |
+| 1 | 任务工时计时 | 一键记录每个任务的实际投入时长，为估算校准和交接提供数据 | 模型 / Store / HTTP / 工具 / 任务信息 / 左栏 / 报告 |
+| 2 | 任务规模估算与项目负载 | 用 `1/2/3/5/8` 点估算任务，项目详情看到进行中负载与估算覆盖率 | 模型 / 元数据 / Store / HTTP / 工具 / 发布 / 任务信息 / 左栏 / 项目洞察 / 报告 |
+| 3 | 依赖关系图 | 把前置依赖画成分层 DAG，直观看执行顺序、阻塞链与缺失依赖 | 纯函数 / 项目详情 / SVG / 文案 |
+| 4 | 项目风险雷达 | 按逾期、停滞、阻塞、验收缺口给开放任务打分，列出最该处理的几项 | 纯函数 / 项目详情 / 文案 |
+| 5 | 保存的筛选视图 | 把搜索、注意力筛选、标签与归档开关存成命名视图，一键恢复 | 纯函数 / localStorage / 左栏 / 看板 / 文案 |
 
 设计原则：
 
-- **全部字段可选，旧台账零迁移**：`dueAt`、`dependsOn` 都是可选字段；没有这些字段的旧任务按「无截止日期 / 无前置任务」处理。
-- **元数据统一走一个原子入口**：截止日期与前置依赖继续复用 `Store.updateTaskMeta` 与 `POST task/meta`，在跨进程账本锁内读改写，两个 DSH 实例不会互相覆盖。
-- **不改变任务状态机**：新功能只增加展示字段、派生视图和编辑入口，不改变 `statusOf` 的任何分支，也不改变 Git / 会话行为。
-- **默认不打扰**：没有截止日期不显示 chip，没有前置任务不显示依赖行，没有结构化 token 时搜索行为与 1.13.0 完全一致。
-- **不引入依赖、不加新路由**：不新增 npm 包，不新增 HTTP 路由；只扩展 `task/meta` 与 `publish` 的可选字段。
+- **全部字段可选，旧台账零迁移**：`workMs`、`workStartedAt`、`estimate` 都是可选字段；没有这些字段的旧任务按「未计时 / 未估算」处理，读取、排序、状态推导都不变。
+- **服务端时间**：工时开始 / 停止的时间戳由服务端在账本锁内写入，客户端不提交时间，避免多窗口时钟漂移和伪造。
+- **纯函数优先**：工时计算、规模校验、依赖图布局、风险评分、视图序列化都放在无 DOM 的纯模块里，服务端、客户端与测试共用同一套规则；所有涉及「现在」的函数都接受可注入的 `now`。
+- **元数据统一走一个原子入口**：规模估算继续复用 `Store.updateTaskMeta` 与 `POST task/meta`，在跨进程账本锁内读改写；工时因为要写服务端时间，单独走 `Store` 的计时方法，但同样在锁内完成。
+- **不改变任务状态机**：新功能只增加展示字段、派生视图、编辑入口和客户端本地状态，不改变 `statusOf` 的任何分支，也不改变 Git / 会话行为。
+- **默认不打扰**：没有计时不显示计时行，没有估算不显示点数 chip，没有依赖不显示依赖图，没有风险不显示风险条目，没有保存视图时下拉只显示「自定义」。
+- **不引入依赖、只新增一个路由**：不新增 npm 包；只新增 `POST task/timer`，其余只扩展 `publish` 与 `task/meta` 的可选字段。
 - **文档即验收**：每个功能都必须有功能说明、动机、预期效果、收益、实现方案、验收标准和测试要点。
 
 ---
 
-## 1. 任务截止日期（`dueAt`）
+## 1. 任务工时计时（Work timer）
 
 ### 1.1 功能说明
 
-任务新增可选截止日期。语义是**本地日历日**，存储为当天本地零点的毫秒时间戳。入口与展示：
+任务详情「任务信息」新增「工时」一行：
 
-1. **发布任务**：高级选项新增「截止日期」`<input type="date">`；发布成功写入任务。
-2. **任务详情**：「任务信息」分区新增「截止日期」行，可设置、修改、清除；写入后左栏立即刷新。
-3. **左栏任务行**：逾期显示「逾期 N 天」（err 色），今天到期显示「今天到期」（warn 色），未来 1–3 天显示「N 天后到期」（warn 色），更远不显示 chip。
-4. **注意力视图**：逾期任务进入新的「逾期」分类与筛选，并计入顶部汇总条的计数；**不产生重复的 alert chip**（行内 chip 已直接显示）。
-5. **验收报告**：单任务报告与项目验收报告都输出截止日期；逾期时附带「逾期 N 天」。
-6. **模型工具**：`worktree_publish` 接受 `due_at`（`YYYY-MM-DD`），`worktree_act` 的 `meta` 动作接受 `due_at`（`null` / 空串清除）。
+- 显示累计已记录时长，例如「2 小时 15 分」「45 分」「不足 1 分」；从未计时显示「未记录」。
+- 提供「开始计时 / 停止计时」按钮；计时中显示「计时中」状态和当前累计时长（每 30 秒刷新一次显示，不产生额外请求）。
+- 左栏任务行在计时中显示「计时中」chip，切换任务或刷新页面后仍能看到。
+- 单任务验收报告新增「工时」行；项目验收报告的任务表新增「工时」列，逐任务详情也输出同一口径。
+- 计时是**手动**的：插件不会根据会话运行状态自动开始或停止，避免把「Agent 在跑」误当成「人在投入」。已合并 / 已清理 / 已归档任务不能开始新计时，但允许停止正在跑的计时，保证最后一次投入能落账。
 
 ### 1.2 为什么做
 
-现有看板能回答「任务在哪个状态、有没有会话、有没有提交」，但回答不了「这批任务里哪个最晚必须交付」。标签和优先级表达的是分类与轻重，不是时间；停滞检测只能事后发现「很久没动」，不能提前提醒「明天到期」。截止日期是最小、最通用、最容易被用户理解的时间维度，并且可以完全复用现有元数据写入链路，不需要后台任务或通知系统。
+当前任务台账记录了创建、更新、合并、清理等事件时间，但无法回答「这个任务实际花了多久」。对并行 Agent 工作流来说，这个缺口有三个直接后果：
+
+1. **估算没有校准依据**：下一批任务的规模只能凭感觉，无法用历史实际投入修正。
+2. **交接和验收缺少成本上下文**：报告里有分支、提交、改动文件，却没有「这项工作投入了多少」。
+3. **多任务并行时感知失真**：任务切换频繁，人很难凭记忆还原每个任务的实际投入。
 
 ### 1.3 预期效果
 
-- 今天 2026-11-23，任务截止 2026-11-20：行内显示「逾期 3 天」，左栏筛选「逾期」计数 +1，顶部汇总条显示「N 个任务逾期」。
-- 任务截止 2026-11-23：行内显示「今天到期」，不计入逾期。
-- 任务截止 2026-11-25：行内显示「2 天后到期」，不计入逾期。
-- 任务截止 2026-12-10：不显示截止 chip，但详情与报告仍能查到日期。
-- 没有 `dueAt` 的任务：行为与 1.13.0 完全一致，不出现任何占位 chip。
-- 清除截止日期后 `dueAt` 键被删除（不是写 `null`），刷新页面仍为空。
-- 非法值（`2026-02-30`、`not-a-date`、负数）返回 400，且不写入记录。
+- 用户在任务详情点一次「开始计时」，做别的事，回来点「停止计时」，累计时长自动落账。
+- 重复点「开始计时」不会重复计时；停止后再开始会在原累计值上继续累加。
+- 计时跨刷新、跨窗口、跨 DSH 重启保留；两个窗口同时操作时以账本锁内的结果为准。
+- 系统时钟回拨、字段损坏、旧记录缺少字段时，显示 0 或忽略异常值，不出现负数、NaN、`Infinity`。
+- 报告中的工时与界面完全一致，复制 / 下载后可直接贴到 PR 或周报。
 
 ### 1.4 收益
 
-- **对用户**：发布时就能约定交付日，左栏直接看到「今天到期 / 已逾期」，不用逐个点开。
-- **对团队**：验收报告带截止日期，交接时能说明时间承诺；逾期任务进入注意力筛选，批次收尾前可以先处理逾期项。
-- **对插件**：注意力模型从「会话 / 合并 / 停滞」扩展到「计划时间」，为后续到期提醒、日历视图留下纯函数基础。
-- **风险可控**：纯展示字段 + 派生视图，不参与状态推导；不设置截止日期时零行为变化。
+- **可度量**：第一次有「实际投入」这一列数据，能回答「时间去哪了」。
+- **可校准**：与功能 2 的规模估算配合，逐步建立「1 点大约等于多少实际时间」的团队经验值。
+- **可交接**：验收报告自带成本上下文，接手的 Agent 或人不需要再问「这个任务重不重」。
+- **低打扰**：不自动计时、不弹提醒、不写会话，只在用户主动点击时记录。
 
 ### 1.5 实现方案
 
-#### 1.5.1 共享纯函数（`src/task-meta.ts`）
-
-新增以下导出，全部不依赖 DOM / Node API：
+**模型字段**（`src/models.ts`）：
 
 ```ts
-export const DUE_SOON_DAYS = 3
+/** 累计已记录的主动工时（毫秒）；从未停止过计时则不存在。 */
+workMs?: number
+/** 当前计时的开始时间（毫秒）；不存在表示未计时。 */
+workStartedAt?: number
+```
 
-export type DueParse = { ok: true; value: number | null } | { ok: false }
+两个字段都可选，旧记录不需要迁移。读取时按「0 / 未计时」处理。
 
-/** 本地日历日的零点（毫秒）。非有限数返回 0。 */
-export function startOfLocalDay(value: number): number
+**纯函数模块**（新增 `src/task-timer.ts`）：
 
-/**
- * 解析截止日期。
- * - null / undefined / '' -> { ok: true, value: null }（表示清除）
- * - number：有限且 > 0 -> 归一到本地零点；否则 ok: false
- * - 'YYYY-MM-DD'：按本地日历解析并回读校验（2026-02-30 必须失败）
- * - 其他字符串：Date.parse 后归一到本地零点；NaN -> ok: false
- */
-export function parseDueAt(value: unknown): DueParse
+```ts
+export interface TimerSnapshot { workMs?: unknown; workStartedAt?: unknown }
 
-/** dueAt 与 now 的日历日差（due - today）。非法输入返回 null。 */
-export function dueDayOffset(dueAt: number | null | undefined, now?: number): number | null
+/** 累计毫秒：已记录 + 正在跑的区间；异常值按 0 处理，时钟回拨不产生负数。 */
+export function elapsedWorkMs(task: TimerSnapshot, now?: number): number
 
-export type DueKind = 'overdue' | 'today' | 'soon' | 'later'
-export interface DueState {
-  kind: DueKind
-  /** 逾期时为逾期天数（正数）；未到期时为距今天数。 */
-  days: number
-}
+/** 开始计时：已在计时则返回原值；返回要写入的字段。 */
+export function startWorkTimer(task: TimerSnapshot, now?: number): { workMs: number; workStartedAt: number }
 
-/** 派生展示状态；没有截止日期或非法值返回 null。 */
-export function dueStateOf(dueAt: number | null | undefined, now?: number): DueState | null
+/** 停止计时：未计时则原样返回；时钟回拨时本段按 0 计。 */
+export function stopWorkTimer(task: TimerSnapshot, now?: number): { workMs: number; workStartedAt?: undefined }
 
-/** `<input type="date">` 的值：本地 YYYY-MM-DD；空值返回 ''。 */
-export function dueInputValue(dueAt: number | null | undefined): string
+/** 人类可读时长：`不足 1 分` / `45 分` / `2 小时 15 分` / `3 天 4 小时`。 */
+export function formatWorkDuration(ms: unknown): string
 ```
 
 规则：
 
-- 日历日差用「本地年月日 -> `Date.UTC` -> 除以 86400000」计算，避免夏令时导致的 23/25 小时误差。
-- `dueStateOf`：offset `< 0` -> `overdue`，`days = -offset`；`0` -> `today`；`1..DUE_SOON_DAYS` -> `soon`；其余 -> `later`。
-- `dueInputValue` 必须补零；非法值返回 `''`。
-- 不修改 `compareTaskOrder`：截止日期不改变排序。
+- `workMs` 只接受有限非负数；`workStartedAt` 只接受有限正数，未来时间按「刚开始」处理（区间为 0）。
+- 停止时 `added = max(0, now - workStartedAt)`；累计值使用安全整数上限，溢出时截断到 `Number.MAX_SAFE_INTEGER`。
+- `formatWorkDuration` 对 0、负数、NaN、Infinity 统一返回「未记录」或「不足 1 分」，由调用方决定；不产生 `NaN` 文本。
+- 纯函数不修改入参，返回新的字段值；Store 负责写入。
 
-#### 1.5.2 数据模型（`src/models.ts`）
+**Store**（`src/store.ts`）：
 
 ```ts
-export interface WorktreeTask {
-  // ...
-  /** 可选截止日期：本地日历日零点的毫秒时间戳。 */
-  dueAt?: number
-}
+export type TimerResult =
+  | { ok: true; task: WorktreeTask }
+  | { ok: false; reason: 'missing' | 'closed' }
+
+startTaskTimer(taskId: string, now?: number): TimerResult
+stopTaskTimer(taskId: string, now?: number): TimerResult
 ```
 
-#### 1.5.3 Store（`src/store.ts`）
+- 在 `withLock` 内 `refreshTasks()`、取任务、计算、写入、`saveTasks()`。
+- 开始：任务不存在返回 `missing`；`merged` / `cleaned` / `archivedAt` 存在返回 `closed`；已在计时则不写盘、直接返回当前任务（幂等）。
+- 停止：任务不存在返回 `missing`；未计时则不写盘、直接返回；计时中则累加并删除 `workStartedAt`。
+- 写入成功时更新 `updatedAt = now`，让「最近活动」反映计时操作；不改变任何状态字段。
 
-- `TaskMetaPatch` 增加 `dueAt?: unknown`。
-- `TaskMetaResult` 的失败原因增加 `'due-invalid'`。
-- `updateTaskMeta` 内：
-  - `has('dueAt')` 时调用 `parseDueAt(patch.dueAt)`；`ok: false` 返回 `{ ok: false, reason: 'due-invalid' }`。
-  - `value === null` 时 `delete task.dueAt`，否则 `task.dueAt = value`。
-  - 与现有字段一致：只有实际处理了字段才更新 `updatedAt` 并 `saveTasks()`。
-  - 校验失败时不能留下半写入状态（沿用现有「先全部归一化 / 校验，再写记录」的结构）。
+**Runtime / HTTP / 工具**：
 
-#### 1.5.4 Runtime / HTTP / 工具
+- `src/runtime.ts` 新增 `startTaskTimer(id)` / `stopTaskTimer(id)`：`missing` → 404「任务不存在」，`closed` → 400「已合并 / 已清理 / 已归档的任务不能开始计时」。
+- 新增 `POST task/timer`，请求体 `{ id, action: 'start' | 'stop' }`；`action` 非法返回 400；成功返回 `{ ok: true, view }`。
+- `worktree_act` 的 `action` 枚举新增 `timer`，并新增参数 `timer_action: 'start' | 'stop'`；`action === 'timer'` 时必须提供合法 `timer_action`。
+- 任务 briefing 增加 `workMs`、`workStartedAt`（只读展示，工具侧不需要新动作）。
 
-- `src/runtime.ts` 的 `updateTaskMeta` 错误映射增加：
-  - `due-invalid` -> `截止日期无效`，HTTP 400。
-- `src/http.ts` 的 `act('meta')` 增加：
-  ```ts
-  if (Object.prototype.hasOwnProperty.call(body, 'dueAt')) patch.dueAt = body.dueAt
-  ```
-- `src/tools.ts`：
-  - `worktree_publish` 参数增加 `due_at`（string，`YYYY-MM-DD`），透传到 `runtime.publish`。
-  - `worktree_act` 参数增加 `due_at`（string 或 null），`meta` 动作映射为 `patch.dueAt`。
-  - `brief()` 输出增加 `dueAt: Number(v.task.dueAt) || 0`（没有时为 0）。
+**客户端**：
 
-#### 1.5.5 Runtime 发布（`src/runtime/types.ts`、`src/runtime/projects.ts`）
+- `src/client/stage.ts`：在「任务信息」网格中新增「工时」行。只读模式显示格式化时长与「计时中」；编辑模式显示时长、开始 / 停止按钮。计时中时用 `setInterval` 每 30 秒触发一次重渲染（卸载时清理），不请求服务端。按钮有可访问名称（包含任务标题），运行状态用 `role="status"` 文本表达，不只靠颜色。
+- `src/client/board.ts`：把 `onTimer` 回调传给 `Stage`，内部 `post('task/timer', { id, action })`，成功后 `refresh()`；失败交给现有 Toast。
+- `src/client/rail.ts`：任务行在 `workStartedAt` 存在时显示「计时中」chip，title 说明「从 HH:mm 开始计时」。
+- `src/client/report.ts`：在截止日期之后输出「工时」行；计时中标注「计时中」。
+- `src/client/project-report.ts`：任务表新增「工时」列；逐任务详情输出「工时」行。
+- `src/client/format.ts` 如需复用时长格式化，直接引用 `task-timer.ts`，不要复制第二套规则。
 
-- `PublishInput` 增加 `dueAt?: number | string | null`。
-- `publishTask` 内用 `parseDueAt` 校验；非法时抛出 `TaskError('截止日期无效', 400)`（与现有校验风格一致）；合法且非空时写入 `task.dueAt`。
+**边界**：
 
-#### 1.5.6 发布弹窗（`src/client/publish-state.ts`、`src/client/publish.ts`）
-
-- `PublishDraft` 增加 `dueAt: string`（`<input type="date">` 的值，`''` 表示未设置）。
-- `initialPublishForm`：`dueAt: String(d.dueAt || '')`；`publishDraftDirty` 比较该字段。
-- `publish.ts`：
-  - 读取 `form0.dueAt`，增加 `const [dueAt, setDueAt] = React.useState(form0.dueAt)`。
-  - 高级区在标签 / 优先级之后增加「截止日期」日期输入；`aria-label` 使用 `t.taskDue`。
-  - `currentForm()` 带上 `dueAt`。
-  - 提交前用 `parseDueAt` 校验；失败时 `fieldErrors.dueAt = t.taskDueInvalid`，并在输入框下用 `role="alert"` 展示。
-  - 请求体只在 `dueAt` 非空时带 `dueAt`（传规范化后的数字或原始 `YYYY-MM-DD` 均可，服务端会归一）。
-  - `advanced` 初始展开条件增加 `!!form0.dueAt`；`applyPublishTemplate` 不带截止日期（模板不覆盖时间承诺）。
-  - 恢复草稿时 `initialPublishForm` 已覆盖；切换项目 / 基线不重置日期。
-
-#### 1.5.7 任务信息（`src/client/stage.ts`）
-
-- `StageProps.onSaveMeta` 的 patch 类型增加 `dueAt?: number | null`。
-- **只读模式**（无 `onSaveMeta`）：新增一行「截止日期」，显示 `dueInputValue(task.dueAt)` 与状态 chip（逾期 / 今天 / N 天后）；未设置显示 `t.taskDueEmpty`。
-- **编辑模式**：
-  - 新增一行「截止日期」：`<input type="date">` + 「清除」按钮。
-  - 本地状态 `dueDraft`、`dueError`；切换任务时从 `task.dueAt` 重置。
-  - 选择日期后立即保存：`parseDueAt(value)` 成功则 `save({ dueAt: parsed.value })`；失败则内联报错且不保存。
-  - 清除时 `save({ dueAt: null })`。
-  - 保存中禁用输入；保存失败时恢复原值（与优先级下拉一致）。
-  - 空值不写 `undefined` 键。
-- 布局沿用现有 `dshwd-meta-row` / `dshwd-meta-label` / `dshwd-meta-value`，不加新 CSS。
-
-#### 1.5.8 左栏与注意力（`src/client/rail.ts`、`src/client/task-attention.ts`、`src/client/attention-filter.ts`、`src/client/attention-summary.ts`、`src/client/board.ts`）
-
-- `rail.ts` 任务行在状态 / 优先级 chip 之后增加截止 chip：
-  - `overdue`：`t.taskDueOverdue`（`{n}` = 天数），`err` tone；
-  - `today`：`t.taskDueToday`，`warn` tone；
-  - `soon`：`t.taskDueSoon`（`{n}`），`warn` tone；
-  - `later` / 无值：不显示。
-  - chip 的 `title` 使用 `t.taskDueHint`。
-  - 不要在 `alertText` 里再加一遍，避免和通用 alert chip 重复。
-- `task-attention.ts`：
-  - `AttentionCategory` 增加 `'overdue'`；
-  - `AttentionInput` 增加 `overdueDays?: number | null`；
-  - `deriveTaskAttention`：`Math.floor(Number(input.overdueDays) || 0) > 0` 时 `categories.add('overdue')`；**不新增 AlertKind**，不 push alert；
-  - `SEVERITY` 增加 `overdue: 2`；
-  - `CATEGORY_ORDER` 调整为 `['recovery', 'broken', 'pending', 'overdue', 'review', 'stalled']`；
-  - `categoryKey` 增加 `overdue: 'attentionOverdue'`；
-  - `summarizeAttention` 的 counts 初始化增加 `overdue: 0`；
-  - `computeFilterCounts` 的 counts 增加 `overdue`，`hurting` 列表加入 `'overdue'`（计入 `total`）。
-- `attention-filter.ts`：`options` 在 `'pending'` 之后插入 `'overdue'`；图标用 `clock`；不使用 danger 样式。
-- `attention-summary.ts`：`severity >= 2` 分支改为：
-  ```ts
-  if (severity >= 2) {
-    if (Number(counts.pending || 0) > 0) return pending 文案
-    return String(t.attentionSummaryOverdue).replace('{n}', String(counts.overdue || 0))
-  }
-  ```
-  这样「只有逾期」时不会误用「待处理」文案。
-- `board.ts`：构建 `attentionMap` 时传入：
-  ```ts
-  const due = dueStateOf(tv.task.dueAt)
-  overdueDays: due && due.kind === 'overdue' ? due.days : 0
-  ```
-  逾期任务仍然可以被停滞分类同时命中；两类计数都应正确（去重只影响 `total`）。
-
-#### 1.5.9 验收报告（`src/client/report.ts`、`src/client/project-report.ts`）
-
-- 单任务报告元数据区增加：
-  - `- 截止日期: YYYY-MM-DD`；无值输出 `t.reportDueNone`；
-  - 逾期时追加 `（t.reportDueOverdue，{n}）`。
-- 项目报告任务表增加「截止」列（放在「优先级」之后），值为 `YYYY-MM-DD` 或 `—`；逐任务块增加 `- 截止日期: ...`。
-- 报告不因为截止日期为空而少输出章节；保持现有「固定顺序、缺失给降级文案」原则。
-
-#### 1.5.10 文案（`locale/zh.json`、`locale/en.json`）
-
-至少新增（中英文 key 集合必须一致）：
-
-| key | 中文 | English |
-| --- | --- | --- |
-| `taskDue` | 截止日期 | Due date |
-| `taskDueEmpty` | 未设置截止日期 | No due date |
-| `taskDueClear` | 清除 | Clear |
-| `taskDueInvalid` | 截止日期无效 | Invalid due date |
-| `taskDueHint` | 按本地日历日计算；逾期任务会进入「逾期」筛选。 | Calculated in local calendar days; overdue tasks appear in the Overdue filter. |
-| `taskDueOverdue` | 逾期 {n} 天 | Overdue by {n}d |
-| `taskDueToday` | 今天到期 | Due today |
-| `taskDueSoon` | {n} 天后到期 | Due in {n}d |
-| `attentionOverdue` | 逾期 | Overdue |
-| `attentionSummaryOverdue` | {n} 个任务逾期 | {n} overdue |
-| `reportDue` | 截止日期 | Due date |
-| `reportDueNone` | 未设置 | Not set |
-| `reportDueOverdue` | 逾期 {n} 天 | Overdue by {n}d |
-| `projectReportColDue` | 截止 | Due |
+- 不做自动开始 / 自动停止、不做番茄钟、不做按人统计、不做计费。
+- 不做时间区间明细（只存累计值 + 当前开始时间），避免每次开始 / 停止都追加数组导致台账膨胀。
+- 计时状态不进入注意力分类，不改变筛选和排序；只在行内显示 chip。
+- 归档任务停止计时仍会更新 `updatedAt`，这是有意的：最后一次投入需要落账。
 
 ### 1.6 验收标准
 
-- [ ] 发布弹窗高级区可设置截止日期；发布后任务详情与左栏立即可见。
-- [ ] 任务详情可设置、修改、清除截止日期；刷新页面、重启 DSH 后保持。
-- [ ] 逾期 1 天 / 3 天、今天到期、未来 1–3 天、未来更远、无截止日期，六种情况的 chip 文案与颜色符合 1.3。
-- [ ] 「逾期」筛选项出现且计数正确；选中后只显示逾期任务；汇总条在只有逾期任务时显示逾期文案。
-- [ ] 逾期任务同时停滞时，两个筛选都命中，`total` 不重复计数。
-- [ ] 非法日期返回 400；清除后 `dueAt` 键被删除。
-- [ ] 单任务报告与项目报告都包含截止日期，输出可读且不破坏 Markdown 表格。
-- [ ] 截止日期不改变排序、不改变任务状态、不改变合并门禁。
-- [ ] 中英文 key 完全一致，`npm run check:locale` 通过。
+- [ ] 旧任务（无 `workMs` / `workStartedAt`）加载不报错，显示「未记录」，状态与排序不变。
+- [ ] 开始 → 停止 → 再开始 → 再停止，累计值等于两段之和；重复开始、重复停止不重复计数。
+- [ ] 计时跨刷新、跨 DSH 重启保留；两个窗口同时操作时不会互相覆盖（账本锁内读改写）。
+- [ ] 系统时钟回拨、`workStartedAt` 为未来时间、字段为字符串 / NaN 时，界面不出现负数、NaN、Infinity。
+- [ ] `merged` / `cleaned` / 已归档任务开始计时返回 400，停止计时仍可用；错误信息为中文且前端可直接展示。
+- [ ] 左栏计时中 chip、任务信息行、单任务报告、项目报告四处口径一致。
+- [ ] 中英文 locale key 完全一致，`npm run check:locale` 通过。
+- [ ] `npm run typecheck` 与 `npm test` 通过，测试数量增加。
 
 ### 1.7 测试要点
 
-- `test/task-meta.test.ts`（扩展）：`parseDueAt` 的 null / 空串 / 数字 / `YYYY-MM-DD` / 非法日期 / 非法字符串；`dueDayOffset` 跨月、跨年、夏令时边界；`dueStateOf` 五种状态；`dueInputValue` 补零。
-- `test/store.test.ts`（扩展）：设置、覆盖、清除 `dueAt`；非法值不写入；与其他 meta 字段部分更新互不覆盖。
-- `test/http-flow.test.ts`（扩展）：`task/meta` 设置 / 清除 / 非法 400；`publish` 带 `dueAt`。
-- `test/client-publish-state.test.ts`（扩展）：`dueAt` 初始值、脏检查。
-- `test/client-task-attention.test.ts`（扩展）：`overdueDays` 产生分类；计数去重；`categoryKey`。
-- `test/client-attention-summary`（如存在，扩展）：只有逾期时的标题。
-- `test/client-report.test.ts` / `test/client-project-report.test.ts`（扩展）：有值 / 无值 / 逾期三种输出。
-- 新文件优先：如现有测试结构不便扩展，可新增 `test/client-due.test.ts`，但不要复制已有断言。
+- 新增 `test/task-timer.test.ts`：开始 / 停止 / 幂等 / 时钟回拨 / 未来时间 / 非法字段 / 安全整数截断 / 时长格式化边界（0、59 秒、1 分、59 分、1 小时、25 小时、多天）。
+- 新增 `test/task-timer-store.test.ts`：临时目录 Store，验证开始 / 停止持久化、重复操作不写盘、关闭状态拒绝开始、停止仍可用、重启后读回。
+- 扩展 `test/http-flow.test.ts`：`task/timer` 成功、未认证、未知任务 404、非法 action 400、关闭任务 400。
+- 扩展 `test/tools-act.test.ts`：`worktree_act` 的 `timer` 动作与参数校验。
+- 扩展 `test/client-report.test.ts` 与 `test/client-project-report.test.ts`：工时行 / 列与计时中标注。
 
 ---
 
-## 2. 前置任务依赖（`dependsOn`）
+## 2. 任务规模估算与项目负载（Estimate + workload）
 
 ### 2.1 功能说明
 
-任务可以声明「必须先完成的前置任务」。语义是**建议性依赖**，只做展示与提示，不阻止合并、不改变状态机。入口与展示：
+任务新增可选「规模估算」，取值为 `1 / 2 / 3 / 5 / 8` 点（相对大小，不是小时）：
 
-1. **任务详情**：「任务信息」分区新增「前置任务」行：
-   - 无依赖：显示「无前置任务」；
-   - 有依赖：显示前置任务的标题 chip，已完成（已合并 / 已清理）显示完成标记；
-   - 编辑模式：可添加同项目任务作为前置，也可逐个移除；
-   - 存在未完成前置时，行内提示「等待 N 项前置」。
-2. **左栏任务行**：存在未完成前置时显示「等待 N 项前置」chip（warn 色），`title` 列出前置任务标题。
-3. **模型工具**：`worktree_act` 的 `meta` 动作接受 `depends_on`（字符串数组，`[]` 清除）；`brief()` 输出 `dependsOn`。
-4. 本批次**不做**依赖关系图、不做合并阻断、不做自动会话提醒；依赖变化只写任务记录。
+- 发布任务的高级选项可选择估算；任务详情「任务信息」可随时修改或清除。
+- 左栏任务行显示 `3 点` 之类的 chip；未估算不显示。
+- 项目洞察新增负载口径：进行中任务的估算点数总和、已估算任务数、估算覆盖率（已估算 / 进行中）。
+- 单任务报告输出估算；项目报告任务表新增「估算」列。
+- 估算只用于规划和展示，不参与排序、不改变状态、不阻塞合并。
 
 ### 2.2 为什么做
 
-一个批次里的任务经常有先后关系：先改接口，再做页面；先修基础问题，再补体验。现在这种关系只存在于聊天记录或标题里，看板无法表达。用户只能靠记忆判断「这个任务现在能不能验收」，批次一多就容易先合并后置任务，最后返工。把依赖写成结构化字段后，至少能在左栏与详情里明确「还在等谁」，为后续做依赖图、合并门禁和自动提醒留下数据基础。
+1.14.0 已经让任务能说明「什么时候要」（截止日期）和「先做哪个」（前置依赖），但还缺少「有多大」。没有规模，项目详情只能看到任务数量，无法判断进行中的工作是否已经超出可承载范围；也无法把「估算」和「实际工时」放在一起校准。
 
 ### 2.3 预期效果
 
-- 任务 B 依赖任务 A，A 仍在进行中：B 行内显示「等待 1 项前置」，详情显示 A 的标题与未完成标记。
-- A 合并后：B 的 chip 消失，详情显示 A 已完成。
-- A 被清理（`cleanedAt`）也视为完成，避免依赖永久阻塞。
-- A 被删除：B 的依赖显示为「已删除」，不再计入「等待 N 项」；不报错、不影响 B 的其他字段。
-- 尝试把自己设为前置、依赖其他项目任务、依赖不存在的任务、形成循环依赖、超过 8 个前置：返回 400，且不写入。
-- 未设置依赖的任务：行为与 1.13.0 完全一致。
+- 用户可以在发布时或事后给任务一个 1/2/3/5/8 的相对大小，清除即回到「未估算」。
+- 项目详情能看到「进行中 8 个任务 · 已估算 5 个 · 共 21 点」，一眼判断负载和估算覆盖率。
+- 报告与界面口径一致；非法值在提交前或服务端被拒绝，不会写进台账。
+- 旧任务、空项目、全部未估算的项目都能正常显示，不出现 NaN 或除零。
 
 ### 2.4 收益
 
-- **对用户**：一眼看出任务为什么还不能开始或验收，减少「先做后置任务」的返工。
-- **对团队**：交接时依赖关系是结构化上下文，不再依赖记忆。
-- **对插件**：补上「任务之间」的维度，后续可以扩展依赖图、合并前检查、自动排队。
-- **风险可控**：纯展示字段，不阻断任何 Git 操作；校验集中在 Store 锁内，旧记录零迁移。
+- **可规划**：用点数而不是任务数衡量负载，避免「大任务和小任务都算 1」。
+- **可校准**：与功能 1 的工时结合，逐步形成「1 点约等于多少实际投入」的经验值。
+- **可沟通**：报告里的估算列让交接、周报和排期有共同语言。
+- **零迁移**：字段可选，旧台账不需要任何迁移脚本。
 
 ### 2.5 实现方案
 
-#### 2.5.1 共享纯函数（`src/task-deps.ts`，新增）
+**模型与元数据**：
 
-宿主端、客户端与测试共用，不依赖 DOM / Node API：
-
-```ts
-export const DEPENDENCY_LIMIT = 8
-
-export type DependencyIssue =
-  | 'too-many'
-  | 'invalid'
-  | 'self'
-  | 'missing'
-  | 'cross-project'
-  | 'cycle'
-
-/** 接受数组或逗号 / 空白分隔字符串；去空、去重，保留首次顺序。 */
-export function normalizeDependencyIds(values: unknown): string[]
-
-/** 前置任务视为完成：已有 mergedAt 或 cleanedAt。 */
-export function isDependencyDone(task: any): boolean
-
-export interface DependencyValidationInput {
-  taskId: string
-  projectId?: string
-  repoPath?: string
-  ids: string[]
-  tasks: Array<{
-    id: string
-    projectId?: string
-    repoPath?: string
-    dependsOn?: string[]
-    mergedAt?: number
-    cleanedAt?: number
-    archivedAt?: number
-  }>
-}
-
-/**
- * 校验一组依赖 id。
- * - 数量超过 DEPENDENCY_LIMIT -> too-many
- * - 包含自己 -> self
- * - 任一 id 不存在 -> missing
- * - 任一前置与当前任务不同项目 -> cross-project
- * - 加入后形成环 -> cycle
- */
-export function validateDependencyIds(
-  input: DependencyValidationInput,
-): { ok: true } | { ok: false; error: DependencyIssue }
-
-export interface DependencyOpenItem {
-  id: string
-  title: string
-  done: boolean
-}
-
-export interface DependencyStatus {
-  /** 记录中存在的依赖总数（不含缺失 id）。 */
-  total: number
-  done: number
-  /** 尚未完成的前置任务。 */
-  open: DependencyOpenItem[]
-  /** 记录中存在、但任务已不存在的 id。 */
-  missing: string[]
-  /** open.length > 0。缺失 id 不算阻塞。 */
-  blocked: boolean
-}
-
-/**
- * 根据任务记录查找表派生展示状态。lookup 的值至少包含 id / title /
- * mergedAt / cleanedAt。缺失 id 放进 missing，不阻塞。
- */
-export function dependencyStatus(task: any, lookup: Map<string, any>): DependencyStatus
-```
-
-规则：
-
-- `normalizeDependencyIds` 对非数组非字符串返回 `[]`；字符串按 `/[,\s]+/` 切分；每项 `trim()`；空项丢弃；去重。
-- 项目一致性：两边 `projectId` 都非空时比较 `projectId`；否则两边 `repoPath` 都非空时比较 `repoPath`；都缺失时放行（兼容旧记录）。
-- 环检测：用 `tasks` 构建 `id -> dependsOn` 邻接表，把当前任务的边替换为 `ids`，从 `taskId` 做 DFS；遇到已访问节点即视为有环。
-- `dependencyStatus` 中 `total` 只统计 lookup 里存在的依赖；`missing` 只展示、不阻塞。
-- 同一个 id 重复出现只算一次。
-
-#### 2.5.2 数据模型（`src/models.ts`）
+- `src/task-meta.ts`：
 
 ```ts
-export interface WorktreeTask {
-  // ...
-  /** 可选前置任务 id 列表（同一项目，最多 8 个）。 */
-  dependsOn?: string[]
-}
+export const TASK_ESTIMATES = [1, 2, 3, 5, 8] as const
+export type TaskEstimate = typeof TASK_ESTIMATES[number]
+
+/** 合法值 → 写入；null / 空串 → 清除；其他 → invalid。 */
+export function parseEstimate(value: unknown):
+  | { ok: true; value: TaskEstimate | null }
+  | { ok: false }
 ```
 
-#### 2.5.3 Store（`src/store.ts`）
+规则：数字或数字字符串 `1/2/3/5/8` 合法；`null`、`''`（trim 后）表示清除；`0`、负数、`4`、`true`、`'high'` 等非法。不要接受浮点数（`3.0` 字符串按 3 处理可以，但 `3.5` 非法）。
 
-- `TaskMetaPatch` 增加 `dependsOn?: unknown`。
-- `TaskMetaResult` 的失败原因增加：
-  `'deps-too-many' | 'deps-self' | 'deps-missing' | 'deps-cross-project' | 'deps-cycle'`。
-- `updateTaskMeta` 内：
-  - `has('dependsOn')` 时 `normalizeDependencyIds`；
-  - `[]` -> `delete task.dependsOn`；
-  - 非空 -> 调用 `validateDependencyIds`（传入当前任务、`this.tasks` 全量记录、拟写入的 ids）；失败映射到对应 reason；
-  - 校验全部通过后才写记录、更新 `updatedAt`、`saveTasks()`。
-- 依赖任务被删除时不做全表清理：其他任务的 `dependsOn` 保留旧 id，运行时按 missing 展示。文档中注明这是有意的宽容策略。
+- `src/models.ts`：`WorktreeTask` 新增 `estimate?: TaskEstimate`。
+- `src/store.ts`：`TaskMetaPatch` 新增 `estimate?: unknown`；`updateTaskMeta` 在写入前统一校验，新增失败原因 `estimate-invalid`；显式清除时删除字段，不写 `undefined`。
+- `src/runtime.ts`：`estimate-invalid` → 400「规模估算只能是 1、2、3、5 或 8 点」。
+- `src/runtime/types.ts`：`PublishInput` 新增 `estimate?: unknown`。
+- `src/runtime/projects.ts`：发布前解析估算；非法值在创建分支 / worktree 之前返回 400；合法值写入任务记录。
+- `src/http.ts`：`publish` 接受 `estimate`；`task/meta` 透传 `estimate`。
+- `src/tools.ts`：`worktree_publish` 新增 `estimate`；`worktree_act` 的 `meta` 接受 `estimate`；briefing 返回 `estimate`。
 
-#### 2.5.4 Runtime / HTTP / 工具
+**客户端**：
 
-- `src/runtime.ts` 的 `updateTaskMeta` 错误映射增加：
-  - `deps-too-many` -> `前置任务最多 8 个`
-  - `deps-self` -> `不能依赖自己`
-  - `deps-missing` -> `前置任务不存在`
-  - `deps-cross-project` -> `只能依赖同一项目的任务`
-  - `deps-cycle` -> `不能形成循环依赖`
-  全部 HTTP 400。
-- `src/http.ts` 的 `act('meta')` 增加：
-  ```ts
-  if (Object.prototype.hasOwnProperty.call(body, 'dependsOn')) patch.dependsOn = body.dependsOn
-  ```
-- `src/tools.ts`：
-  - `worktree_act` 参数增加 `depends_on`（array of string），`meta` 动作映射为 `patch.dependsOn`；
-  - `brief()` 输出 `dependsOn: Array.isArray(v.task.dependsOn) ? v.task.dependsOn : []`。
-- 发布接口本批次不接受 `dependsOn`：依赖在任务创建后通过详情设置。
+- `src/client/publish-state.ts`：草稿增加 `estimate`，切换项目 / 模板 / 续作时按现有规则重置或保留。
+- `src/client/publish.ts`：高级选项新增「规模估算」下拉（未估算 / 1 / 2 / 3 / 5 / 8），提交前校验。
+- `src/client/stage.ts`：任务信息新增「规模估算」行；编辑模式用下拉，选择后立即保存（与优先级一致），清除选项写 `null`。
+- `src/client/rail.ts`：任务行显示 `3 点` chip；未估算不显示。
+- `src/client/project-insights.ts`：扩展 `ProjectInsights`：
 
-#### 2.5.5 任务信息（`src/client/stage.ts`）
+```ts
+/** 进行中任务（未归档、未合并、未清理）的估算点数总和。 */
+openEstimatePoints: number
+/** 进行中且已估算的任务数。 */
+estimatedOpen: number
+/** 进行中但未估算的任务数。 */
+unestimatedOpen: number
+/** 已估算 / 进行中，整数 0..100；没有进行中任务时为 null。 */
+estimateCoveragePercent: number | null
+```
 
-- `StageProps.onSaveMeta` 的 patch 类型增加 `dependsOn?: string[]`。
-- 新增两个只读 prop（由 board 计算，测试可省略）：
-  ```ts
-  /** 当前任务的前置任务（含完成状态），按 dependsOn 顺序。 */
-  dependencyItems?: Array<{ id: string; title: string; done: boolean; missing?: boolean }>
-  /** 可添加为前置的同项目任务（排除自己与已归档）。 */
-  dependencyOptions?: Array<{ id: string; title: string; done: boolean }>
-  ```
-- 只读模式：新增「前置任务」行；无依赖显示 `t.taskDepsEmpty`；有依赖显示标题 chip（完成加 `✓`，缺失显示 `t.taskDepsMissing`）；存在未完成项时行内显示 `t.taskDepsWaitingHint`（`{n}` 与 `{titles}`）。
-- 编辑模式：
-  - 已选依赖 chip 右侧提供移除按钮（`aria-label` 带任务标题）；
-  - 「添加前置任务」`<select>`：默认空 option，选项为 `dependencyOptions` 中尚未选择的任务；选择后立即 `save({ dependsOn: [...ids, chosen] })`；成功后清空 select；
-  - 移除时 `save({ dependsOn: ids.filter(id => id !== removed) })`；
-  - 保存中禁用；保存失败时保持原值（下一次轮询会回填）。
-- 不新增图标 / CSS；复用 `dshwd-chip`、`dshwd-meta-*`、`dshwd-select`。
+  只统计合法估算值；非法 / 缺失按未估算处理；进行中口径与 `open` 完全一致。
+- `src/client/project-detail.ts`：项目洞察卡片增加一行负载提示，例如「进行中 8 个 · 已估算 5 个 · 共 21 点」；没有进行中任务时显示「暂无进行中任务」。
+- `src/client/report.ts`：单任务报告输出「规模估算」行（未估算显示「未估算」）。
+- `src/client/project-report.ts`：任务表新增「估算」列，逐任务详情输出同一口径。
 
-#### 2.5.6 左栏（`src/client/rail.ts`、`src/client/board.ts`）
+**边界**：
 
-- `RailProps` 增加可选：
-  ```ts
-  depsOf?: (task: any) => DependencyStatus
-  ```
-- 任务行在截止 chip 之后（或优先级之后）：
-  - `status.blocked` 时显示 `chip(fill(t.taskDepsBlocked, { n: status.open.length }), 'warn', titles)`；
-  - `titles` = `status.open.map(item => item.title).join(', ')`；
-  - 没有 `depsOf` 或没有未完成项时不显示。
-- `board.ts`：
-  - 构建 `const taskLookup = new Map(allViews.map(tv => [tv.task.id, tv.task]))`；
-  - `const depsOf = React.useCallback((task: any) => dependencyStatus(task, taskLookup), [taskLookup])`；
-  - 传给 `Rail`；并给 `Stage` 计算：
-    - `dependencyItems`：当前任务 `dependsOn` 的逐项查找（缺失项 `missing: true`）；
-    - `dependencyOptions`：同一项目、不同 id、未归档的任务，按 `compareTaskOrder` 排序。
-
-#### 2.5.7 文案（`locale/zh.json`、`locale/en.json`）
-
-至少新增：
-
-| key | 中文 | English |
-| --- | --- | --- |
-| `taskDeps` | 前置任务 | Depends on |
-| `taskDepsEmpty` | 无前置任务 | No dependencies |
-| `taskDepsAdd` | 添加前置任务 | Add dependency |
-| `taskDepsRemove` | 移除前置任务 | Remove dependency |
-| `taskDepsBlocked` | 等待 {n} 项前置 | Waiting on {n} |
-| `taskDepsDone` | 已完成 | Done |
-| `taskDepsOpen` | 未完成 | Open |
-| `taskDepsMissing` | 已删除 | Missing |
-| `taskDepsHint` | 只能依赖同一项目的任务；前置全部合并或清理后解除等待。 | Only tasks in the same project; a dependency clears when it is merged or cleaned. |
-| `taskDepsWaitingHint` | 还有 {n} 项未完成：{titles} | Still waiting on {n}: {titles} |
-| `taskDepsAllDone` | 前置任务已全部完成 | All dependencies are done |
-| `taskDepsTooMany` | 前置任务最多 8 个 | At most 8 dependencies |
-| `taskDepsSelf` | 不能依赖自己 | A task cannot depend on itself |
-| `taskDepsCycle` | 不能形成循环依赖 | Circular dependencies are not allowed |
-| `taskDepsCrossProject` | 只能依赖同一项目的任务 | Dependencies must share the project |
+- 估算不是工期承诺，不做开始 / 结束日期推算，不做资源排班。
+- 不参与排序：继续使用 `compareTaskOrder`，估算不进入排序键。
+- 不做自定义点数、不做多人估算 / 投票、不做故事点历史。
+- 项目负载只统计进行中任务；已合并 / 已清理 / 已归档任务不计入当前负载，但报告仍保留其估算值。
 
 ### 2.6 验收标准
 
-- [ ] 任务详情可添加 / 移除前置任务；刷新、重启后保持。
-- [ ] 前置任务进行中时，详情与左栏都显示等待提示；前置合并或清理后提示消失。
-- [ ] 前置任务被删除时显示「已删除」，且不阻塞。
-- [ ] 自己 / 缺失 id / 跨项目 / 环路 / 超过 8 个全部返回 400，记录不变。
-- [ ] 未设置依赖时详情与左栏行为与 1.13.0 一致。
-- [ ] 依赖不改变排序、状态、合并门禁与 Git 操作。
-- [ ] 中英文 key 一致，`check:locale` 通过。
+- [ ] 旧任务（无 `estimate`）加载不报错，显示「未估算」，排序与状态不变。
+- [ ] 发布、任务详情、`task/meta`、模型工具四条入口都能设置和清除估算；非法值被拒绝且不写入。
+- [ ] 清除后字段被删除（不是写 `null` / `undefined`），重新读取仍为未估算。
+- [ ] 项目洞察的负载只统计进行中任务；空项目、全部未估算、全部已估算三种情况都不出现 NaN / 除零。
+- [ ] 左栏 chip、任务信息、单任务报告、项目报告四处口径一致。
+- [ ] 中英文 locale key 完全一致，`npm run check:locale` 通过。
+- [ ] `npm run typecheck` 与 `npm test` 通过，测试数量增加。
 
 ### 2.7 测试要点
 
-- 新增 `test/task-deps.test.ts`：
-  - normalize：数组 / 字符串 / 混合 / 去重 / 空值；
-  - validate：正常、too-many、self、missing、cross-project（projectId 与 repoPath 两条路径）、直接环、间接环、合法链；
-  - `isDependencyDone`：mergedAt / cleanedAt / 进行中；
-  - `dependencyStatus`：完成数、open、missing、blocked、顺序。
-- `test/store.test.ts`（扩展）：设置 / 清空 / 非法依赖 / 两个 Store 实例并发更新不同字段不互相覆盖。
-- `test/http-flow.test.ts`（扩展）：`task/meta` 的 `dependsOn` 成功与各类 400。
-- `test/tools-act.test.ts`（扩展）：`worktree_act` 的 `depends_on` 透传与 brief 输出。
+- 扩展 `test/task-meta.test.ts`：`parseEstimate` 的合法值、数字字符串、清除、非法值、浮点 / 布尔 / 对象。
+- 新增 `test/task-estimate-store.test.ts`：`updateTaskMeta` 设置 / 清除 / 非法拒绝 / 不影响其他字段 / 旧记录兼容。
+- 扩展 `test/http-flow.test.ts`：`publish` 与 `task/meta` 的估算字段、非法值 400。
+- 扩展 `test/client-project-insights.test.ts`：进行中口径、已估算 / 未估算计数、覆盖率、空项目、归档 / 合并 / 清理排除。
+- 扩展 `test/client-report.test.ts` 与 `test/client-project-report.test.ts`：估算行 / 列。
+- 扩展 `test/client-publish-state.test.ts`：草稿估算字段的初始化与重置。
+- 扩展 `test/tools-act.test.ts`：发布与 meta 的估算参数。
 
 ---
 
-## 3. 项目洞察（`project-insights`）
+## 3. 依赖关系图（Dependency graph）
 
 ### 3.1 功能说明
 
-项目详情新增「项目洞察」卡片，用**已有时间戳**计算并展示：
+项目详情新增「依赖关系图」卡片：
 
-- 平均 / 中位周期：`mergedAt - createdAt` 的天数（仅已合并任务）。
-- 近 7 天新建数与合并数。
-- 验收核对率：所有带验收标准的任务中，已核对条数 / 总条数。
-- 最久未完成任务：从创建到现在的天数。
-- 最近 7 天的每日新建 / 合并柱状条（纯 CSS，不引入图表库）。
-- 统计口径只看任务记录与快照，不额外请求 Git，不写任何状态。
+- 把项目内任务的前置依赖画成分层有向图：每一层是「可以同时开始」的任务，箭头从前置任务指向后继任务。
+- 已完成（合并 / 清理）任务弱化显示；未完成、被阻塞、缺失的前置有明确图例。
+- 缺失的前置任务（已被删除或 id 对不上）以「缺失节点」显示，不让边凭空消失。
+- 点击节点可跳到该任务详情；键盘用户可通过卡片下方的「按层任务列表」按钮完成同样操作。
+- 没有依赖时显示空态说明，不渲染空 SVG；任务过多时最多展示 60 个真实任务，并提示已截断。
 
 ### 3.2 为什么做
 
-看板能显示「现在有多少任务」，但无法回答「这个项目最近交付效率如何」「验收清单真的在核对吗」「有没有任务拖了很久」。项目验收报告是导出物，不适合日常扫一眼。用已有字段做纯函数统计，不需要新增存储或后台任务，就能把项目健康度变成常驻卡片。
+1.14.0 的依赖是「点对点」的：任务行显示「等待 N 项前置」，任务详情列出前置，但用户看不到整个项目的执行顺序。当项目有 10–20 个任务时，人很难在脑中还原「哪些能并行、哪些在等、哪个是关键路径」。一张分层图能把依赖从「字段」变成「可读的结构」。
 
 ### 3.3 预期效果
 
-- 一个有 5 个已合并任务的项目：显示平均周期、中位周期（有样本时）、近 7 天新建 / 合并数。
-- 没有已合并任务：周期显示 `—`，不显示 `0 天`。
-- 没有验收标准：验收核对率显示 `—`。
-- 没有未完成任务：最久未完成显示 `—`。
-- 空项目：卡片显示降级文案，不报错。
-- 已归档任务计入历史合并统计，但不计入「未完成」。
-- 未来时间戳、缺失时间戳、`mergedAt < createdAt` 的异常记录被忽略，不产生负周期。
+- 打开项目详情就能看到任务分成几层、每层有哪些任务、箭头指向哪里。
+- 缺失依赖、循环依赖（异常数据）不会让页面卡死或报错，而是用图例和提示说明。
+- 点击 / 键盘操作都能从图跳到任务；空项目、无依赖项目有明确空态。
+- 图形完全由已有任务记录派生，不请求 Git、不写台账、不改变任何状态。
 
 ### 3.4 收益
 
-- **对用户**：不用导出报告就能看到项目节奏与积压。
-- **对团队**：验收核对率暴露「有标准但没人勾」的流程问题。
-- **对插件**：建立纯函数统计层，后续可以做跨项目总览、周报和趋势图。
-- **风险可控**：纯派生、无存储、无网络、无新依赖。
+- **看清顺序**：分层布局直接回答「先做哪个、哪些可以并行」。
+- **发现阻塞**：缺失前置、未完成前置、循环依赖在图上可见，减少「以为能开始、其实在等」。
+- **降低沟通成本**：截图即可说明执行计划，不需要逐条念依赖。
+- **零副作用**：纯派生视图，不引入新的持久化字段和后台任务。
 
 ### 3.5 实现方案
 
-#### 3.5.1 新增纯函数 `src/client/project-insights.ts`
+**纯函数模块**（新增 `src/client/dependency-graph.ts`）：
 
 ```ts
-import type { TaskView } from '../models'
+export const DEP_GRAPH_LIMIT = 60
 
-export const INSIGHTS_DAYS = 7
-
-export interface InsightDay {
-  /** 相对今天的天数：-6 .. 0，0 表示今天。 */
-  offset: number
-  /** 当地零点时间戳，用于 tooltip。 */
-  start: number
-  created: number
-  merged: number
+export interface DepGraphNode {
+  id: string
+  title: string
+  /** 任务快照状态；缺失节点为 'missing'。 */
+  status: string
+  done: boolean
+  archived: boolean
+  missing: boolean
+  layer: number
+  x: number
+  y: number
+  width: number
+  height: number
+  /** 该节点缺失的前置 id（仅真实任务）。 */
+  missingDeps: string[]
 }
 
-export interface ProjectInsights {
+export interface DepGraphEdge {
+  from: string
+  to: string
+  /** 指向缺失节点的边。 */
+  missing: boolean
+  /** 异常数据形成的环上的边。 */
+  cycle: boolean
+}
+
+export interface DepGraphLayer { index: number; nodeIds: string[] }
+
+export interface DependencyGraph {
+  nodes: DepGraphNode[]
+  edges: DepGraphEdge[]
+  layers: DepGraphLayer[]
+  width: number
+  height: number
+  truncated: boolean
+  cycles: string[][]
   total: number
-  open: number
-  merged: number
-  archived: number
-  createdLast7: number
-  mergedLast7: number
-  /** 参与周期统计的已合并任务数。 */
-  cycleSamples: number
-  cycleMedianDays: number | null
-  cycleAverageDays: number | null
-  acceptanceChecked: number
-  acceptanceTotal: number
-  /** 0..100 的整数；没有标准时为 null。 */
-  acceptancePercent: number | null
-  oldestOpenDays: number | null
-  statusCounts: Record<string, number>
-  /** 最近 7 个本地日历日，按时间升序。 */
-  daily: InsightDay[]
+  shown: number
 }
 
-export function buildProjectInsights(views: TaskView[], now?: number): ProjectInsights
+export function buildDependencyGraph(views: TaskView[]): DependencyGraph
 ```
 
 规则：
 
-- `total` = `views.length`（含归档）。
-- `archived` = 有 `archivedAt` 的任务数。
-- `merged` = `snapshot.status === 'merged'` 或存在 `task.mergedAt`。
-- `open` = 未归档、且状态不是 `merged` / `cleaned` 的任务数（`broken` 也算未完成）。
-- 周期样本：`mergedAt` 与 `createdAt` 都是有限正数且 `mergedAt >= createdAt`；天数为毫秒差 / 86400000，保留 1 位小数；中位数按排序后取中间（偶数个取平均）。
-- 近 7 天：以 `now` 的本地日历日为准，构造 `offset = -6..0` 的 7 个桶；`createdAt` 落在桶内的计入 `created`，`mergedAt` 落在桶内的计入 `merged`。桶边界用本地零点，避免时区漂移。
-- 验收核对：对每个任务调用现有 `criteria(task, snapshot.status)` 与 `criteriaProgress(items)`，累加 `checked` 与 `total`；`acceptancePercent = total ? Math.round(checked / total * 100) : null`。
-- `oldestOpenDays`：`open` 任务中 `now - createdAt` 的最大天数（向下取整）；没有 open 返回 null。
-- 所有非法 / 未来时间戳按 0 或忽略处理，不抛异常。
-- 不导入 `task-meta.ts` 的截止日期函数，保持该功能独立。
+- 输入是**一个项目**的 `TaskView[]`（调用方传入项目详情的 `v.tasks`）；模块不关心项目边界，但服务端已保证依赖同项目。
+- 真实任务按 `compareTaskOrder` 排序后截取前 `DEP_GRAPH_LIMIT` 个；`total` 是原始任务数，`shown` 是真实节点数，`truncated = total > shown`。
+- 对每个真实任务的 `dependsOn`：目标存在 → 正常边；目标不存在 → 创建缺失节点（每个缺失 id 一个，标题用 id，`missing: true`），边标记 `missing`。
+- 分层：Kahn 拓扑，`layer(node) = max(layer(prereq)) + 1`，无前置为 0。遇到环时，剩余节点放到当前最大层 + 1，环上的边标记 `cycle`，`cycles` 记录环上的节点 id；算法必须有迭代上限，异常数据不能死循环。
+- 节点内顺序：同层按 `compareTaskOrder`，缺失节点排最后；最终用 id 兜底，保证同一输入输出稳定。
+- 布局：固定 `NODE_W = 168`、`NODE_H = 40`、`GAP_X = 28`、`GAP_Y = 12`；`x = layer * (NODE_W + GAP_X)`，`y = index * (NODE_H + GAP_Y)`；不同层可做垂直居中偏移，但必须确定性、不出现负坐标。
+- `width` / `height` 至少为 1，空图返回 0 节点、0 边、空层、宽高为 0，调用方据此显示空态。
+- 不读时钟、不请求网络、不写任何记录。
 
-#### 3.5.2 项目详情卡片（`src/client/project-detail.ts`）
+**客户端**（`src/client/project-detail.ts`）：
 
-- 在现有统计卡片之后、项目验收报告卡片之前插入：
-  ```ts
-  h(Card, null,
-    h(CardHead, { icon: 'grid', title: t.projectInsights }),
-    ...统计与每日柱状条)
-  ```
-- 统计使用现有 `Stat` 原语，四项：
-  - `t.insightsCycle`：有样本时 `t.insightsCycleValue`（`{n}` 保留 1 位小数），否则 `t.insightsNoData`；
-  - `t.insightsMerged7`：数字；
-  - `t.insightsAcceptance`：百分比或 `t.insightsNoData`；
-  - `t.insightsOldest`：天数或 `t.insightsNoData`。
-- 每日柱状条：
-  - 容器 `dshwd-insights-days`，7 个 `dshwd-insights-day`；
-  - 每格两根细柱（新建 / 合并），高度按 7 天内最大值归一；全 0 时高度为 0（不显示假数据）；
-  - 每格 `title` 使用 `t.insightsDailyTip`（`{date}` / `{created}` / `{merged}`），`aria-label` 同文案；
-  - 日期用本地 `M/D` 格式，`dshw-mono`；
-  - 图例使用 `t.insightsCreated` / `t.insightsMerged`。
-- 空项目：仍渲染卡片，统计为 0 / `—`，每日柱状条为空；不隐藏卡片（与报告卡片保持一致）。
-- 计算使用 `buildProjectInsights(v.tasks, Date.now())`；`Date.now()` 只在渲染时取一次，避免同一次渲染内桶边界漂移。
-- 新增少量 CSS 到 `src/client/styles/workbench.ts`，只使用现有 CSS 变量（`--line`、`--accent`、`--ok`、`--text-3` 等）。
+- 在「项目洞察」卡片之后新增「依赖关系图」卡片；卡片头包含标题和图例（未完成 / 已完成 / 缺失 / 循环）。
+- SVG：`viewBox="0 0 width height"`，`role="img"`，`aria-label` 用一句摘要（层数、任务数、缺失数、是否有环）；SVG 本身 `aria-hidden="true"`，真正的可访问入口是下方的按层列表。
+- 节点：`<g>` + `<rect>` + 截断标题（超出宽度用省略号，`title` 给完整标题）；已完成节点弱化；缺失节点虚线边框；点击调用 `props.onSelectTask?.(id)`（项目详情已有该 prop）。键盘用户通过按层列表的按钮跳转。
+- 边：从源节点右侧中点到目标节点左侧中点的三次贝塞尔曲线；缺失边虚线，循环边告警色。边不承载文字。
+- 按层列表：每层一个分组，标题「第 N 层」，层内任务按钮显示标题与状态；按钮有可访问名称。
+- 空态：项目没有任务 → 「暂无任务」；有任务但没有依赖 → 「当前项目还没有任务依赖」；截断时显示「仅展示前 60 个任务」。
+- 样式加到 `src/client/styles/workbench.ts` 的 `.dshwd-depgraph*` 作用域，使用现有 token，不引入新颜色体系。
 
-#### 3.5.3 文案
+**边界**：
 
-| key | 中文 | English |
-| --- | --- | --- |
-| `projectInsights` | 项目洞察 | Project insights |
-| `insightsCycle` | 平均周期 | Avg cycle |
-| `insightsCycleValue` | {n} 天 | {n} days |
-| `insightsNoData` | — | — |
-| `insightsMerged7` | 近 7 天合并 | Merged in 7d |
-| `insightsCreated` | 新建 | Created |
-| `insightsMerged` | 合并 | Merged |
-| `insightsAcceptance` | 验收核对率 | Criteria checked |
-| `insightsOldest` | 最久未完成 | Oldest open |
-| `insightsOldestValue` | {n} 天 | {n} days |
-| `insightsAcceptanceValue` | {n}% | {n}% |
-| `insightsDaily` | 最近 7 天 | Last 7 days |
-| `insightsDailyTip` | {date}：新建 {created} · 合并 {merged} | {date}: created {created} · merged {merged} |
-| `insightsEmpty` | 还没有任务数据 | No task data yet |
+- 不做拖拽编辑、不做依赖图上的增删依赖（依赖仍在任务详情维护）。
+- 不做跨项目依赖（服务端已禁止）；跨项目 id 一律按缺失处理。
+- 不做关键路径耗时计算、不做自动排期。
+- 图只展示结构，不替代任务详情里的依赖编辑。
 
 ### 3.6 验收标准
 
-- [ ] 卡片在项目详情中显示，四项统计与 7 天柱状条均可读。
-- [ ] 空项目、无合并任务、无验收标准、无未完成任务都有降级文案，不出现 NaN / Infinity / 负值。
-- [ ] 周期统计只包含有效已合并任务；中位数偶数样本正确。
-- [ ] 近 7 天桶边界按本地日历日，今天的数据计入最后一桶。
-- [ ] 归档任务计入历史合并与吞吐，不计入未完成。
-- [ ] 不发起任何网络请求，不新增依赖，不写任务记录。
-- [ ] 中英文 key 一致，`check:locale` 通过。
+- [ ] 空项目、无依赖项目、单任务项目都能正常渲染空态，不报错、不出现空 SVG 占位。
+- [ ] 线性链、菱形依赖、多根节点、多个缺失前置都能正确分层；同一输入多次渲染结果一致。
+- [ ] 异常循环数据不会死循环或崩溃，环上的边有标记，页面给出提示。
+- [ ] 已完成 / 已归档 / 缺失节点有可区分的视觉与文字说明，不只靠颜色。
+- [ ] 点击节点和按层列表按钮都能选中对应任务；键盘可达，焦点可见。
+- [ ] 超过 60 个任务时截断并提示，`total` / `shown` 正确。
+- [ ] 不发起网络请求、不写台账、不改变任务状态与排序。
+- [ ] 中英文 locale key 完全一致，`npm run check:locale` 通过。
 
 ### 3.7 测试要点
 
-- 新增 `test/client-project-insights.test.ts`：
-  - 空项目；单任务；多任务；
-  - 周期平均 / 中位数（奇数、偶数）、异常 `mergedAt < createdAt`；
-  - 近 7 天边界（今天、6 天前、7 天前排除）；
-  - 验收核对率（无标准、部分、全部）；
-  - 最久未完成（含归档排除）；
-  - 未来时间戳与缺失字段。
-- `test/client-project-report.test.ts` 不需要改（本功能不碰报告）。
+- 新增 `test/client-dependency-graph.test.ts`：
+  - 无任务 / 无依赖 / 单链 / 菱形 / 多根 / 多前置。
+  - 缺失依赖生成缺失节点与缺失边。
+  - 循环数据：不死循环、`cycles` 非空、环边标记、节点仍全部输出。
+  - 已完成 / 已归档节点标记正确。
+  - 截断：61 个任务只输出 60 个真实节点，`truncated` 为 true。
+  - 确定性：同一输入两次输出深度相等；宽高非负、无 NaN。
+- 扩展 `test/client-report.test.ts` 或项目详情相关测试（如有）：图数据不影响报告输出（纯派生，不应改变现有文本）。
 
 ---
 
-## 4. 结构化搜索（`search-query`）
+## 4. 项目风险雷达（Risk radar）
 
 ### 4.1 功能说明
 
-左栏搜索框在保留纯文本模糊搜索的基础上，支持结构化 token：
+项目详情新增「风险雷达」卡片：
 
-```text
-tag:前端                    # 必须包含标签「前端」（大小写不敏感）
-tag:"需要设计"              # 引号包住含空格的值
-priority:high               # low / normal / high，可重复，多个取 OR
-status:review               # ready / developing / review / reviewing / merged / cleaned / broken，可重复，多个取 OR
-登录 修复 tag:紧急          # 纯文本 + 结构化条件同时生效
-```
-
-- 多个 `tag:` 之间取 **AND**（必须同时包含）；多个 `priority:` / `status:` 之间取 **OR**。
-- 不同类别之间取 **AND**。
-- 纯文本仍然匹配项目名、任务标题、分支、标签、备注与待处理状态。
-- 未知 key（如 `foo:bar`）按纯文本处理，不报错。
-- 已知 key 但值非法（如 `priority:urgent`）按纯文本处理，并在解析结果中标记，便于测试；不弹错误。
-- 搜索框下方增加一行弱提示，说明支持的语法；空查询时不显示额外结果变化。
+- 对项目内**开放任务**（未归档、未合并、未清理）计算风险分，分为高 / 中 / 低三档。
+- 风险因子：逾期、临近截止、停滞、被未完成前置阻塞、待验收但验收标准未核对、Git 状态异常（`broken`）。
+- 卡片显示三档计数和「最该处理的 5 项」，每项列出任务标题、风险分和命中的原因；点击可跳到任务。
+- 没有开放任务或没有任何风险信号时显示空态；风险分是启发式提示，不阻止任何操作、不改变任务状态。
 
 ### 4.2 为什么做
 
-标签、优先级、状态都已经存在，但用户只能通过下拉逐个筛选，不能组合表达「待验收的高优先级前端任务」。纯文本搜索又无法区分「标签里包含 high」和「优先级是 high」。加一层很薄的查询语法，不新增 UI 控件、不新增存储，就能把已有字段变成可组合的查询条件，并为保存视图、命令面板留下解析基础。
+现有注意力分类（待处理 / 逾期 / 停滞 / 恢复 / 异常）是**看板级**的离散分类，回答「哪些任务需要看一眼」；项目详情已经有统计和洞察，回答「项目整体怎么样」。但项目负责人还需要一个**排序**：在 20 个开放任务里，今天最该先处理哪 3 个？风险雷达把多个信号合成一个可排序的分数，并解释「为什么它排前面」。
 
 ### 4.3 预期效果
 
-- 输入 `tag:前端 priority:high`：只显示同时带「前端」标签且优先级为高的任务；项目名匹配不会绕过条件。
-- 输入 `tag:"需要设计"`：标签值带空格也能精确匹配。
-- 输入 `tag:前端 tag:紧急`：只显示同时带两个标签的任务。
-- 输入 `status:merged`：只显示已合并任务（即使当前注意力筛选是「全部」）。
-- 输入 `登录`：行为与 1.13.0 的纯文本搜索完全一致。
-- 输入 `priority:urgent`：没有任务匹配（按纯文本），清空搜索后恢复。
-- 标签下拉与注意力筛选仍然叠加生效。
+- 打开项目详情，先看到高风险 / 中风险数量，再看到前 5 项及原因。
+- 逾期且停滞、被前置阻塞、待验收但验收没核对等组合信号能被识别，而不是只显示单一分类。
+- 已合并 / 已清理 / 已归档任务不参与评分；异常时间戳、缺失依赖、空验收标准不会产生 NaN 或误报。
+- 评分完全由已有字段派生，不请求 Git、不写记录、不自动改优先级。
 
 ### 4.4 收益
 
-- **对用户**：用一行查询组合已有字段，不用在多个下拉之间来回切换。
-- **对团队**：查询语法可以写进文档、交接说明和未来保存视图。
-- **对插件**：搜索从「字符串包含」升级为「可扩展查询 AST」，后续可以加 `due:`、`blocked:`、`is:` 等。
-- **风险可控**：纯客户端纯函数，未使用 token 时行为不变。
+- **可排序**：从「知道有风险」到「知道先处理哪个」。
+- **可解释**：每个分数都带原因，用户能判断是误报还是真问题。
+- **可组合**：把截止日期、停滞、依赖、验收、Git 异常串起来，避免用户逐个筛选。
+- **零副作用**：纯派生，不新增字段、不改变状态机、不触发任何写操作。
 
 ### 4.5 实现方案
 
-#### 4.5.1 新增纯函数 `src/client/search-query.ts`
+**纯函数模块**（新增 `src/client/project-risk.ts`）：
 
 ```ts
-import type { TaskPriority } from '../task-meta'
+export type RiskLevel = 'high' | 'medium' | 'low' | 'none'
 
-export type SearchStatus =
-  | 'ready' | 'developing' | 'review' | 'reviewing' | 'merged' | 'cleaned' | 'broken'
+export type RiskReasonCode =
+  | 'broken'
+  | 'overdue'
+  | 'due-soon'
+  | 'stalled'
+  | 'blocked'
+  | 'criteria'
 
-export interface ParsedSearchQuery {
-  /** 去掉结构化 token 后剩余的纯文本（多段用单个空格连接）。 */
-  text: string
-  /** 需要全部命中的标签（小写比较）。 */
-  tags: string[]
-  priorities: TaskPriority[]
-  statuses: SearchStatus[]
-  /** 已知 key 但值非法的原始 token；仍会作为纯文本参与匹配。 */
-  invalid: string[]
+export interface RiskReason {
+  code: RiskReasonCode
+  /** 逾期天数 / 停滞天数 / 阻塞数量 / 未核对项数；无数字时省略。 */
+  n?: number
 }
 
-/** 空值 / 非字符串返回全空的查询。 */
-export function parseSearchQuery(raw: unknown): ParsedSearchQuery
+export interface RiskItem {
+  taskId: string
+  title: string
+  score: number
+  level: RiskLevel
+  reasons: RiskReason[]
+}
 
-/** 是否包含任何有效结构化条件。 */
-export function hasStructuredFilters(query: ParsedSearchQuery): boolean
+export interface ProjectRisk {
+  items: RiskItem[]
+  high: number
+  medium: number
+  low: number
+  /** 开放任务数（参与评分的总数）。 */
+  open: number
+  /** 分数降序的前 5 项。 */
+  top: RiskItem[]
+}
 
-/**
- * 任务是否命中查询。
- * - text 非空时，调用方传入的 extraFields 参与大小写不敏感包含匹配；
- * - 标签按小写精确比较，多个标签 AND；
- * - 优先级、状态多个值 OR；
- * - invalid token 已并入 text，不单独处理。
- */
-export function matchesStructuredQuery(
-  query: ParsedSearchQuery,
-  task: any,
-  snapshot: any,
-  extraFields?: Array<string | null | undefined>,
-): boolean
+export function buildProjectRisk(views: TaskView[], now?: number): ProjectRisk
 ```
 
-解析规则：
+评分规则（可微调，但必须写进测试）：
 
-- 扫描输入，支持双引号值：`tag:"foo bar"`；未闭合引号时把剩余内容当作值。
-- 支持的 key（大小写不敏感）：`tag` / `tags`、`priority` / `prio`、`status`。
-- `tag:` 值用现有 `parseTagText` 归一化（去 `#`、折叠空白）；空值丢弃。
-- `priority:` 只接受 `low` / `normal` / `high`；非法进 `invalid` 并保留原文到 `text`。
-- `status:` 只接受上述 7 个状态；非法同上。
-- 纯文本按空白切分后重新用单个空格连接；引号只用于结构化值，不作为文本保留。
-- 解析器必须容错：`undefined`、数字、超长字符串都不能抛异常。
-
-匹配规则：
-
-- 标签：任务 `task.tags` 按小写集合判断，`query.tags` 的每一项都必须存在。
-- 优先级：`task.priority || 'normal'`，命中任一即可。
-- 状态：`snapshot.status` 命中任一即可；`snapshot` 缺失时状态条件不命中（但纯文本仍可命中）。
-- 纯文本：沿用 `matchesSearch` 的大小写不敏感包含匹配，字段为调用方传入的 `extraFields`；调用方负责把 title / branch / tags / notes / pending 文本传进来。
-- 空查询返回 true。
-
-#### 4.5.2 左栏过滤（`src/client/model.ts`）
-
-`filterProjectViews` 改为：
-
-1. `const parsed = parseSearchQuery(query)`；
-2. `const text = parsed.text`；
-3. `keepEmpty` 条件保持 `filter === 'all' && !text && !parsed.tags.length && !parsed.priorities.length && !parsed.statuses.length && !wantedTag`（invalid token 已在 text 中，因此非空查询不会保留空项目）；
-4. `projectHit` 只在 `text` 非空时计算；
-5. 每个任务依次检查：标签下拉、注意力筛选、`matchesStructuredQuery(parsed, task, snapshot, [title, branch, tags, notes, pendingText])`；
-6. 纯文本命中规则：如果 `text` 为空直接通过；否则 `projectHit || matchesSearch(text, fields)`；
-7. 原有 `matchesSearch` 保持不变，供其他调用方复用。
-
-注意：`filterProjectViews` 的签名不变，避免改动大量调用方；解析在函数内部完成。
-
-#### 4.5.3 搜索框（`src/client/rail.ts`、`src/client/styles/workbench.ts`）
-
-- 输入框增加 `title={t.searchSyntaxHint}` 与 `aria-description={t.searchSyntaxHint}`（若宿主不支持 `aria-description` 也不报错）。
-- 搜索框下方增加一行弱提示：
-  ```ts
-  h('div', { className: 'dshwd-search-hint' }, t.searchSyntaxHint)
-  ```
-  只在 `props.query` 为空时显示，避免占用有查询时的视觉空间；点击提示不改变输入。
-- 新增 `.dshwd-search-hint` 样式：小字号、`var(--text-3)`、省略号（长文案不撑破 272px 左栏）。
-- 不新增按钮、不新增弹层。
-
-#### 4.5.4 文案
-
-| key | 中文 | English |
+| 因子 | 条件 | 分值 |
 | --- | --- | --- |
-| `searchSyntaxHint` | 支持 tag:前端 priority:high status:review；含空格用引号，如 tag:"需要设计"。 | Try tag:frontend priority:high status:review; quote values with spaces, e.g. tag:"needs design". |
+| `broken` | 快照状态为 `broken` | +4 |
+| `overdue` | 截止日期已过 | +3，另外每满 7 天 +1，最多再 +2 |
+| `due-soon` | 今天 / 3 天内到期且未逾期 | +1 |
+| `stalled` | 停滞天数 > 0（复用 `staleness.ts` 阈值） | +2 |
+| `blocked` | 存在未完成或缺失的前置 | +2（多个前置不叠加） |
+| `criteria` | 状态为 `review` / `reviewing` 且验收标准未全部核对 | +1 |
 
-`boardSearch` 保持原文案不变，避免破坏现有测试。
+- 分数上限 10；`high >= 5`、`medium >= 3`、`low >= 1`、`none = 0`。
+- 排除：`archivedAt` 存在、状态 `merged` / `cleaned` 的任务不参与评分。
+- 复用现有纯函数：`dueStateOf`（`src/task-meta.ts`）、`stalledDays`（`src/client/staleness.ts`）、`dependencyStatus` / `isDependencyDone`（`src/task-deps.ts`）、`criteria` / `criteriaProgress`（`src/client/model.ts`）。不要复制阈值或判定逻辑。
+- 排序：分数降序 → 截止日期升序（无截止排后）→ 创建时间升序 → id 字典序；保证稳定。
+- `now` 可注入；非法 / 未来时间戳按缺失处理，不产生负数。
+
+**客户端**（`src/client/project-detail.ts`）：
+
+- 在「项目洞察」之后（依赖图之前或之后均可，最终顺序由主线程集成时统一）新增「风险雷达」卡片。
+- 卡片头：标题 + 一句说明「按逾期、停滞、阻塞、验收缺口综合排序，不改变任务状态」。
+- 三个统计块：高风险 / 中风险 / 低风险数量；`open` 为 0 时显示「暂无开放任务」。
+- 前 5 项列表：标题、`score`、原因标签（本地化），点击 / 键盘激活调用 `props.onSelectTask?.(id)`。
+- 原因文案由 locale 提供，使用 `fill` 替换数字；没有数字的原因不显示占位。
+- 空态：无开放任务 → 「暂无开放任务」；有开放任务但 `high + medium + low === 0` → 「当前没有明显风险信号」。
+- 样式加到 `src/client/styles/workbench.ts` 的 `.dshwd-risk*` 作用域，复用现有 warn / err token。
+
+**边界**：
+
+- 分数是启发式排序，不是 SLA、不是承诺、不是自动决策；文档中明确说明。
+- 不自动修改优先级、不自动归档、不自动发通知。
+- 不读取 Git 实时状态之外的新数据；`broken` 直接使用快照状态。
+- 与看板注意力分类并存：注意力是全局筛选，风险雷达是项目内排序，两者可以同时使用。
 
 ### 4.6 验收标准
 
-- [ ] 纯文本搜索行为与 1.13.0 完全一致。
-- [ ] `tag:` 单个 / 多个（AND）、引号空格值、大小写不敏感均正确。
-- [ ] `priority:` / `status:` 多值 OR，非法值不崩溃。
-- [ ] 结构化条件与标签下拉、注意力筛选叠加生效。
-- [ ] 只含结构化条件时，项目名匹配不会把所有任务放行。
-- [ ] 未知 key 按纯文本处理；空查询显示全部。
-- [ ] 搜索提示在空查询时可见、窄栏不溢出；中英文 key 一致。
+- [ ] 空项目、无开放任务、无风险项目都能正常显示空态，不出现 NaN。
+- [ ] 每个风险因子单独命中时分数正确；组合命中时按上限截断；高 / 中 / 低分档与计数一致。
+- [ ] 已合并 / 已清理 / 已归档任务不参与评分；缺失依赖、空验收标准、异常时间戳不会误报或崩溃。
+- [ ] 前 5 项排序稳定，原因文案本地化，点击 / 键盘可跳到任务。
+- [ ] 不写台账、不请求网络、不改变任务状态、排序或优先级。
+- [ ] 中英文 locale key 完全一致，`npm run check:locale` 通过。
 
 ### 4.7 测试要点
 
-- 新增 `test/client-search-query.test.ts`：
-  - 解析：空值、纯文本、单 token、多 token、引号、未闭合引号、大小写 key、非法值、未知 key、重复 token；
-  - 匹配：标签 AND、优先级 OR、状态 OR、组合 AND、缺失 snapshot、缺失 tags。
-- `test/client-model.test.ts`（扩展）：
-  - `filterProjectViews` 的结构化过滤；
-  - 项目名命中但结构化条件不满足时不放行；
-  - 空查询 / 纯文本 / 标签下拉 / 注意力组合。
-- 现有 `boardNoMatches` 空态相关断言不应改变。
+- 新增 `test/client-project-risk.test.ts`：
+  - 单因子：`broken`、逾期（含 7 天 / 14 天封顶）、临近截止、停滞、阻塞、验收缺口。
+  - 组合因子与 10 分上限；`high` / `medium` / `low` 分档边界（4/5、2/3、0/1）。
+  - 排除归档 / 合并 / 清理；缺失前置、空标准、异常时间戳。
+  - 排序稳定性与 `top` 截断；空输入；`now` 注入。
+- 扩展 `test/client-project-insights.test.ts` 如复用统计口径，确保两卡片不互相影响（只读派生）。
 
 ---
 
-## 5. 任务生命周期时间线（`task-lifecycle`）
+## 5. 保存的筛选视图（Saved views）
 
 ### 5.1 功能说明
 
-把任务记录里已有的时间戳整理成一条按时间升序的生命周期：
+左栏新增「视图」下拉：
 
-- 发布（`createdAt`）
-- 置顶（`pinnedAt`）
-- 合并到基线（`mergedAt`，附带合并提交短 SHA）
-- 清理 worktree（`cleanedAt`）
-- 归档（`archivedAt`）
-- 最近更新（`updatedAt`，只在明显晚于其他事件时出现，避免每次轮询都多一条「刚刚」）
-
-展示位置：
-
-1. **任务概览**：在「任务信息」之后新增「任务时间线」分区，纵向列表显示事件名、相对时间与可选提交号。
-2. **验收报告**：单任务报告新增「任务时间线」章节；每条事件输出本地时间（`YYYY-MM-DD HH:mm`）。
-3. **周期说明**：如果任务已合并，时间线顶部或底部显示「发布 → 合并 N 天」。
-4. 纯派生视图，不新增存储字段、不改变状态机、不发送任何请求。
+- 可以把当前的搜索文本、注意力筛选、标签筛选和「显示已归档」开关保存为一个命名视图（最多 20 个，名称最长 40 字符）。
+- 选择视图即可一次性恢复这四项状态；手动修改任一条件后，下拉回到「自定义」，不会悄悄覆盖已保存的视图。
+- 同名保存视为更新该视图（保留原 id 和创建时间）；可删除当前视图。
+- 视图保存在浏览器 `localStorage`（key `dshw-board:saved-views:v1`），刷新、重启浏览器后仍在；不写入任务台账，不同步到其他机器。
+- 损坏的存储内容、超限、空名称、非法筛选值都被安全处理：忽略坏条目、给出明确错误，不阻塞看板。
 
 ### 5.2 为什么做
 
-任务记录里已经有发布、置顶、合并、清理、归档、更新时间，但界面上只有零散的「最近活动」和报告里的几个字段。验收或交接时，用户需要回答「这个任务放了多久」「什么时候合并的」「合并之后有没有再动过」。把这些时间戳按顺序排成一条线，成本极低，却能把「任务的一生」直接讲清楚，也为后续活动日志（记录每次状态变更）留下展示层基础。
+看板已经有搜索语法、标签筛选、注意力筛选和归档开关，但每次重新打开工作台都要重新组合一遍。对每天使用同一套筛选（例如「待验收 + 高优先级标签」「逾期 + 停滞」「我的项目 + 未归档」）的用户，这是一笔重复成本。1.14.0 明确把「保存搜索视图」列为不做的事，本批次补上这个缺口，同时保持纯客户端、零服务端风险。
 
 ### 5.3 预期效果
 
-- 刚发布的任务：只有「发布」与「最近更新」（若更新时间明显更晚）。
-- 置顶后：出现「置顶」；合并后出现「合并到基线」与短 SHA；清理后出现「清理 worktree」。
-- 时间线严格按时间升序；同一时间戳按固定事件顺序排列，不闪烁。
-- 已合并任务显示周期「发布 → 合并 N 天」。
-- 缺失 / 非法时间戳不产生空行；没有事件时显示降级文案（理论上 `createdAt` 总会存在）。
-- 报告中的时间线使用本地时间，与界面一致。
+- 用户保存一次「逾期 + 前端标签」视图，之后下拉一键恢复，搜索框、筛选按钮、标签下拉、归档开关同时到位。
+- 保存后刷新页面仍在；同一浏览器的多个窗口共享（localStorage 同源）；换机器不同步，文档中说明。
+- 存储损坏、配额不足、名称非法时，看板仍可用，用户看到可理解的提示。
+- 视图不会自动更新任务集合：它保存的是筛选条件，不是任务快照；任务变化后重新应用即可。
 
 ### 5.4 收益
 
-- **对用户**：一眼看懂任务从发布到合并 / 清理的节奏。
-- **对团队**：报告自带时间线，评审者不用再翻提交记录推断。
-- **对插件**：建立统一的生命周期事件模型，后续可以扩展为完整活动日志。
-- **风险可控**：纯派生、无存储、无网络、无新依赖。
+- **省时间**：常用筛选从「四次操作」变成「一次选择」。
+- **可复用**：把个人工作流固化下来，减少记忆负担。
+- **零服务端风险**：不新增路由、不写台账、不改任务状态，失败也只影响本机视图。
+- **可回滚**：删除 localStorage key 即完全恢复原状。
 
 ### 5.5 实现方案
 
-#### 5.5.1 新增纯函数 `src/client/task-lifecycle.ts`
-
-注意：不要修改现有的 `src/client/timeline.ts`（实时会话时间线），新模块单独命名。
+**纯函数模块**（新增 `src/client/saved-views.ts`）：
 
 ```ts
-export type LifecycleKind =
-  | 'created' | 'pinned' | 'merged' | 'cleaned' | 'archived' | 'updated'
+export const SAVED_VIEW_LIMIT = 20
+export const SAVED_VIEW_NAME_MAX = 40
 
-export interface LifecycleEvent {
-  kind: LifecycleKind
-  at: number
-  /** 合并事件附带的提交短 SHA（7 位）；其他事件没有。 */
-  commit?: string
+export interface ViewState {
+  query: string
+  filter: BoardFilter
+  tag: string
+  showArchived: boolean
 }
 
-/** 按时间升序返回事件；非法 / 缺失时间戳被忽略。 */
-export function buildTaskLifecycle(task: any): LifecycleEvent[]
+export interface SavedView extends ViewState {
+  id: string
+  name: string
+  createdAt: number
+}
 
-/** 发布到合并的天数（保留 1 位小数）；没有有效合并时间返回 null。 */
-export function lifecycleCycleDays(task: any): number | null
-
-/** 事件对应的 locale key。 */
-export function lifecycleLabelKey(kind: LifecycleKind): string
+export function normalizeViewName(value: unknown): string | null
+export function isViewState(value: unknown): value is ViewState
+export function createSavedView(
+  state: ViewState,
+  name: unknown,
+  options?: { now?: number; id?: string },
+): { ok: true; view: SavedView } | { ok: false; reason: 'name-empty' | 'name-too-long' | 'limit' | 'state-invalid' }
+export function sanitizeSavedViews(raw: unknown): SavedView[]
+export function parseSavedViews(text: string | null): SavedView[]
+export function serializeSavedViews(views: SavedView[]): string
+export function sameViewState(view: SavedView, state: ViewState): boolean
+export function upsertSavedView(views: SavedView[], view: SavedView): SavedView[]
+export function removeSavedView(views: SavedView[], id: string): SavedView[]
 ```
 
 规则：
 
-- 固定时间戳来源：`createdAt`、`pinnedAt`、`mergedAt`、`cleanedAt`、`archivedAt`、`updatedAt`。
-- 只接受有限且 `> 0` 的时间戳。
-- `updatedAt`：仅当它比其余所有已包含事件的最大时间至少晚 1000ms 时才加入；否则忽略，避免「最近更新」与「合并」同一时刻重复。
-- 排序：`at` 升序；相同时按 `created -> pinned -> merged -> cleaned -> archived -> updated` 的固定顺序。
-- `merged` 的 `commit`：`task.mergedCommit` 的字符串前 7 位（没有则不填）。
-- `lifecycleCycleDays`：`mergedAt >= createdAt` 时返回 `(mergedAt - createdAt) / 86400000`，保留 1 位小数；否则 null。
-- `lifecycleLabelKey` 返回 `lifecycleCreated` 等 key。
-- 不依赖 DOM、不依赖 locale 文案本身。
+- `BoardFilter` 的合法值从 `src/client/model.ts` 新导出的 `BOARD_FILTERS` 读取（`all` + 全部 `AttentionCategory`），不要在 `saved-views.ts` 手写第二份列表；`isBoardFilter` 一并导出，Rail 与校验共用。
+- 名称：`String(value).trim()`，空 → `name-empty`，超过 40 字符 → `name-too-long`；不做大小写转换，但同名判断忽略大小写和首尾空白。
+- `query` / `tag` 截断到合理长度（query 最多 200 字符，tag 最多 24 字符），避免存储膨胀；`showArchived` 必须是布尔值，否则该条目丢弃。
+- `sanitizeSavedViews`：非数组 → `[]`；逐条校验，丢弃坏条目；id 去重（保留第一条）；按 `createdAt` 升序后截取前 20 条；`createdAt` 非法按 0。
+- `parseSavedViews`：`try/catch` JSON 解析，任何异常返回 `[]`，不抛给调用方。
+- `createSavedView`：未提供 id 时用 `view-<now base36>-<随机后缀>`；`limit` 只有在 `views` 已满时由调用方判断（纯函数不持有列表时可不返回该原因，具体以实现为准，但 UI 必须限制 20 个）。
+- `upsertSavedView`：同 id 替换；否则按名称忽略大小写查重，命中则替换内容但保留 id / createdAt；都未命中则追加；最后截取 20 条。
+- `sameViewState`：四项严格相等（query 按 trim 后比较，filter / tag / showArchived 精确比较）；用于判断「当前是否仍是某个已保存视图」。
+- 不依赖 React、不直接访问 `window`；存储适配器单独一层，便于测试。
 
-#### 5.5.2 任务概览（`src/client/stage.ts`）
+**存储适配器**（新增 `src/client/view-storage.ts`）：
 
-- 在 `Overview` 中、`TaskMetaSection` 之后插入：
-  ```ts
-  h(TaskLifecycleSection, props)
-  ```
-- `TaskLifecycleSection`：
-  - `const events = buildTaskLifecycle(task)`；
-  - 分区标题 `t.taskLifecycle`；
-  - 已合并时标题右侧显示 `t.lifecycleCycle`（`{n}` = `lifecycleCycleDays`，1 位小数）；
-  - 纵向列表：每条事件一个圆点 + 事件名 + 相对时间（`relTime(event.at, t)`），合并事件追加 `shortSha(event.commit)`；
-  - 事件的 `title` 使用完整本地时间（`new Date(at).toLocaleString()`）；
-  - 空列表显示 `t.lifecycleEmpty`；
-  - 复用 `dshwd-block`、`dshwd-chip`，新增少量 `dshwd-lifecycle*` CSS。
-- 不新增交互（不可点击、不可编辑）。
+```ts
+export const SAVED_VIEWS_KEY = 'dshw-board:saved-views:v1'
 
-#### 5.5.3 验收报告（`src/client/report.ts`）
+export function loadSavedViews(storage?: Storage | null): SavedView[]
+export function saveSavedViews(views: SavedView[], storage?: Storage | null): { ok: true } | { ok: false; error: string }
+```
 
-- 在「备注」章节之后、「提交」章节之前增加：
-  ```md
-  ## 任务时间线
-  - YYYY-MM-DD HH:mm · 发布任务
-  ...
-  ```
-- 使用 `reportTimestamp(event.at)`；合并事件追加 `(短 SHA)`。
-- 已合并时追加一行 `t.lifecycleCycle`。
-- 没有事件时输出 `t.lifecycleEmpty`。
-- 不改变现有章节顺序与降级行为（只插入新章节）。
+- `storage` 默认取 `window.localStorage`，但用 `try/catch` 包裹：隐私模式 / 配额不足 / 被禁用时返回空列表或 `{ ok: false }`，不抛异常。
+- 读取时调用 `parseSavedViews`；写入时 `serializeSavedViews`，失败返回可展示的错误。
 
-#### 5.5.4 样式（`src/client/styles/workbench.ts`）
+**看板与左栏**：
 
-- 新增 `.dshwd-lifecycle`、`.dshwd-lifecycle-item`、`.dshwd-lifecycle-dot`、`.dshwd-lifecycle-label`、`.dshwd-lifecycle-time`。
-- 使用现有 CSS 变量；左侧竖线用 `border-left`；圆点用伪元素或小 `span`。
-- 支持明暗主题；不引入动画。
+- `src/client/board.ts`：
+  - 初始化 `savedViews`（惰性 `useState` 从 `loadSavedViews()` 读取）。
+  - 派生当前视图状态 `{ query, filter, tag: tagFilter, showArchived }`；用 `savedViews.find(v => sameViewState(v, state))` 得到 `activeViewId`，不额外维护「激活 id」状态，手动修改后自动回到自定义。
+  - `applyView(view)`：依次 `setQuery` / `setFilter` / `setTagFilter` / `setShowArchived`；如果视图里的标签已不存在，现有 effect 会自动清空标签筛选，不额外处理。
+  - `saveView(name)`：`createSavedView` → `upsertSavedView` → 持久化 → 成功 Toast；失败（空名 / 超长 / 存储失败）返回错误给对话框。
+  - `deleteView(id)`：`removeSavedView` → 持久化 → Toast。
+  - 把 `savedViews`、`activeViewId`、`onApplyView`、`onSaveView`、`onDeleteView` 传给 `Rail`。
+- `src/client/rail.ts`：
+  - 搜索框下方新增一行：`<select>`（选项「自定义」+ 保存的视图名称，`aria-label` 为「保存的视图」）、「保存视图」按钮；当前有激活视图时显示「删除视图」按钮。
+  - 保存对话框使用现有 `Modal` 原语（或与宿主一致的轻量对话框）：名称输入、保存 / 取消、空名与超长错误 `role="alert"`、保存中禁用、Escape 关闭、关闭后焦点回到「保存视图」按钮。
+  - 视图下拉为空时只显示「自定义」，不显示空分组。
+- `src/client/styles/workbench.ts`：新增 `.dshwd-view-*` 样式，复用现有控件高度与 token。
 
-#### 5.5.5 文案
+**边界**：
 
-| key | 中文 | English |
-| --- | --- | --- |
-| `taskLifecycle` | 任务时间线 | Task timeline |
-| `lifecycleCreated` | 发布任务 | Task published |
-| `lifecyclePinned` | 置顶任务 | Pinned |
-| `lifecycleMerged` | 合并到基线 | Merged into base |
-| `lifecycleCleaned` | 清理 worktree | Worktree cleaned |
-| `lifecycleArchived` | 归档任务 | Archived |
-| `lifecycleUpdated` | 最近更新 | Last updated |
-| `lifecycleEmpty` | 暂无时间线记录 | No timeline yet |
-| `lifecycleCycle` | 发布 → 合并 {n} 天 | Published → merged in {n} days |
-| `reportLifecycle` | 任务时间线 | Task timeline |
+- 视图只保存筛选条件，不保存选中任务、不保存滚动位置、不保存任务快照。
+- 不做跨设备同步、不做服务端共享、不做视图排序拖拽。
+- 不做「视图自动更新」：任务集合变化后，视图按当前条件重新过滤。
+- localStorage 不可用时，视图功能降级为「本会话内存」还是完全隐藏？本批次选择**仍可用但提示无法持久化**：保存成功后在内存中生效，Toast 说明「仅本次会话有效」。实现时若判断复杂，可退化为禁用保存并提示，但不得抛异常。
 
 ### 5.6 验收标准
 
-- [ ] 概览显示时间线，事件顺序、文案、时间正确；合并事件带短 SHA。
-- [ ] `updatedAt` 只在明显晚于其他事件时出现，不因轮询重复。
-- [ ] 已合并任务显示周期天数；未合并不显示。
-- [ ] 单任务报告包含时间线章节，时间格式与界面一致（本地时间）。
-- [ ] 时间线不改变任务状态、不发请求、不新增存储字段。
-- [ ] 中英文 key 一致，`check:locale` 通过。
+- [ ] 保存视图后，搜索、注意力筛选、标签、归档开关四项状态一次恢复；手动修改任一项后下拉显示「自定义」。
+- [ ] 同名保存更新原视图（id / 创建时间不变），不同名追加；最多 20 个，超出时给出明确提示。
+- [ ] 刷新页面、重启浏览器后视图仍在；损坏 JSON、非数组、坏条目、重复 id 不导致看板崩溃。
+- [ ] 空名称、超长名称、非法筛选值被拒绝或丢弃，错误可读；不写入坏数据。
+- [ ] localStorage 不可用 / 配额不足时不抛异常，看板其余功能正常。
+- [ ] 视图下拉、保存对话框、删除按钮键盘可达，有可访问名称，Escape 关闭并恢复焦点。
+- [ ] 不新增 HTTP 路由、不写台账、不改变任务状态与排序。
+- [ ] 中英文 locale key 完全一致，`npm run check:locale` 通过。
 
 ### 5.7 测试要点
 
-- 新增 `test/client-task-lifecycle.test.ts`：
-  - 只有 `createdAt`；
-  - 全部时间戳；
-  - `updatedAt` 早于 / 等于 / 明显晚于其他事件；
-  - 非法 / 缺失 / 负数时间戳；
-  - 同一时刻的固定排序；
-  - `lifecycleCycleDays` 正常 / 缺失 / `mergedAt < createdAt`；
-  - `lifecycleLabelKey` 全覆盖。
-- `test/client-report.test.ts`（扩展）：时间线章节、合并短 SHA、空事件降级。
-- 不修改 `test/client-timeline.test.ts`（实时会话时间线）。
+- 新增 `test/client-saved-views.test.ts`：
+  - `normalizeViewName` 空 / 空白 / 超长 / 正常。
+  - `isViewState` 合法 / 缺字段 / 非法 filter / 非布尔 showArchived。
+  - `createSavedView` 成功 / 空名 / 超长 / 非法状态 / 注入 now 与 id。
+  - `sanitizeSavedViews` 非数组 / 坏条目 / 重复 id / 超 20 条 / 非法 createdAt。
+  - `parseSavedViews` 损坏 JSON / `null` / 空串；`serializeSavedViews` 往返。
+  - `sameViewState` 四项相等 / 任一不同 / query trim。
+  - `upsertSavedView` 同 id 替换 / 同名更新保留 id / 新增 / 截断；`removeSavedView` 删除 / 不存在。
+- 新增 `test/client-view-storage.test.ts`：用内存 Storage mock 验证读取 / 写入 / 抛异常降级 / 损坏内容。
+- 扩展 `test/client-model.test.ts`：`BOARD_FILTERS` 覆盖全部 `AttentionCategory` 且无重复。
 
 ---
 
 ## 6. 通用实现约定
 
-1. **共享纯函数优先**：截止日期、依赖、洞察、搜索、生命周期都放在无 DOM 的纯模块里；服务端与客户端共用同一套规则，不要在多个文件复制。
-2. **原子写**：所有任务字段写操作走 Store 的 `withLock` + `refresh` + `save`；HTTP / Runtime 只做校验与错误映射。
-3. **可选字段**：不写 `undefined` 键；清空即删除字段（沿用 `putTask` / `setTaskPinned` / `updateTaskMeta` 的约定）。
-4. **错误语义**：校验失败 400，任务不存在 404；错误信息使用中文，前端直接展示。
-5. **排序唯一入口**：继续使用 `compareTaskOrder`；截止日期与依赖不参与排序。
-6. **文案**：所有新文案同时加入 `locale/zh.json` 与 `locale/en.json`，key 集合一致；`check-locale` 必须通过。
-7. **可访问性**：日期输入、依赖下拉、移除按钮必须有可访问名称；错误用 `role="alert"`；保存中禁用；不引入仅靠颜色表达的状态。
-8. **不新增依赖**：不引入日期库、Markdown 库、图表库或 UI 库；继续使用现有原语与手写样式。
-9. **文档同步由主线程完成**：实施者不要修改 `README.md`、`CHANGELOG.md`、`docs/`、`package.json`、`package-lock.json`、`feature.md`；这些由主线程在集成时统一更新到 1.14.0。
+1. **共享纯函数优先**：工时、规模、依赖图、风险、视图都放在无 DOM 的纯模块里；服务端与客户端共用同一套规则，不要在多个文件复制。所有涉及「现在」的函数接受可注入的 `now`。
+2. **原子写**：所有任务字段写操作走 Store 的 `withLock` + `refreshTasks` + `saveTasks`；HTTP / Runtime 只做校验与错误映射。工时的开始 / 停止也必须走同一把账本锁。
+3. **可选字段**：不写 `undefined` 键；清空即删除字段（沿用 `putTask` / `setTaskPinned` / `updateTaskMeta` 的约定）。旧记录读取时按「未计时 / 未估算」处理。
+4. **错误语义**：校验失败 400，任务不存在 404，关闭任务开始计时 400；错误信息使用中文，前端直接展示。
+5. **排序唯一入口**：继续使用 `compareTaskOrder`；估算、工时、风险分都不参与排序。
+6. **文案**：所有新文案同时加入 `locale/zh.json` 与 `locale/en.json`，key 集合一致；`npm run check:locale` 必须通过。
+7. **可访问性**：计时按钮、估算下拉、视图下拉、保存对话框、依赖图按层列表、风险跳转按钮都必须有可访问名称；错误用 `role="alert"`；保存中禁用；不引入仅靠颜色表达的状态。
+8. **不新增依赖**：不引入日期库、图表库、DAG 库、状态管理库或 UI 库；继续使用现有原语与手写样式。只新增 `POST task/timer` 一个路由。
+9. **文档同步由主线程完成**：实施者不要修改 `README.md`、`CHANGELOG.md`、`docs/`、`package.json`、`package-lock.json`、`feature.md`；这些由主线程在集成时统一更新到 1.15.0。
 10. **最小 diff**：不重排现有代码、不重命名既有函数、不格式化整文件；共享文件只改本功能需要的行。
-11. **测试**：每个功能至少一个新增测试文件；必要时扩展已有测试。不要复制已有断言，不要依赖系统时钟（使用可注入的 `now`）。
-12. **实施边界**：每个子 agent 只实现自己负责的第 1–5 节之一；完成前运行 `npm run typecheck` 与 `npm test`（node_modules 缺失时先 `npm ci`），失败必须修复；最后只提交一次，并在结果中报告分支名、HEAD SHA、变更文件与测试数量。
+11. **测试**：每个功能至少一个新增测试文件；必要时扩展已有测试。不要复制已有断言，不要依赖系统时钟（使用可注入的 `now`）。新增测试文件名按第 1–5 节指定，避免与现有文件重名。
+12. **实施边界**：每个子 agent 只实现自己负责的第 1–5 节之一；完成前运行 `npm run typecheck` 与 `npm test`（node_modules 缺失时先 `npm ci`），失败必须修复；最后只提交一次，并在结果中报告分支名、HEAD SHA、变更文件与测试数量。不要 push，不要创建 PR。
+
+---
 
 ## 7. 批次验收标准
 
-- [ ] 5 个功能均可从 UI 或模型工具触发；未设置截止日期 / 未设置依赖 / 未使用搜索语法时行为与 1.13.0 一致。
-- [ ] `dueAt`、`dependsOn` 在发布、详情编辑、刷新、重启、双实例场景下不丢失、不互相覆盖。
-- [ ] 截止日期、依赖、结构化搜索、注意力筛选、标签筛选、归档开关互相兼容；组合结果正确。
-- [ ] 项目洞察与生命周期时间线在空项目、旧记录、异常时间戳下不报错、不出现 NaN / 负值。
-- [ ] 旧任务记录（无新字段）加载不报错，排序与状态不变。
-- [ ] `npm run check:locale` 通过；中英文 key 完全一致。
-- [ ] `npm run verify`（typecheck + locale + 测试 + 构建）通过，测试数量不少于 1.13.0 的 408 项并有所增加。
-- [ ] README、CHANGELOG、docs/frontend-design.md、docs/i18n-terminology.md、package.json、package-lock.json 由主线程更新到 1.14.0。
-- [ ] 不引入新依赖，不新增 HTTP 路由，不改变现有接口语义（只扩展 `task/meta` 与 `publish` 的可选字段）。
+- [x] 5 个功能均可从 UI 或模型工具触发；未计时 / 未估算 / 无依赖 / 无风险 / 未保存视图时，行为与 1.14.0 一致。
+- [x] `workMs` / `workStartedAt` 在开始、停止、刷新、重启、双实例场景下不丢失、不重复计数、不出现负数。
+- [x] `estimate` 在发布、详情编辑、`task/meta`、模型工具四条入口下都能设置 / 清除；非法值被拒绝。
+- [x] 依赖关系图在空项目、旧记录、缺失依赖、循环异常数据下不报错、不死循环、不出现 NaN。
+- [x] 风险雷达在空项目、旧记录、异常时间戳、缺失依赖、空验收标准下不报错、不出现 NaN / 负分。
+- [x] 保存视图在损坏 localStorage、超限、空名称、非法筛选值下不阻塞看板；四项筛选一次恢复。
+- [x] 截止日期、依赖、估算、工时、注意力筛选、标签筛选、归档开关互相兼容；组合结果正确。
+- [x] 旧任务记录（无新字段）加载不报错，排序与状态不变。
+- [x] `npm run check:locale` 通过；中英文 key 完全一致。
+- [x] `npm run verify`（typecheck + locale + 测试 + 构建）通过，测试数量不少于当前基线的 **560** 项并有所增加（目标 600–640 项；实际 645 项）。
+- [x] README、CHANGELOG、docs/frontend-design.md、docs/i18n-terminology.md、package.json、package-lock.json 由主线程更新到 1.15.0。
+- [x] 不引入新依赖；只新增 `task/timer` 路由；现有接口语义只做可选字段扩展。
+
+---
 
 ## 8. 风险、边界与回滚
 
-- **旧记录兼容**：`dueAt`、`dependsOn` 全部可选；读取时不假设存在；清空用删除字段而不是写 `null`。
-- **双实例并发**：截止日期与依赖继续走 `updateTaskMeta` 的锁内读改写，只改传入的字段，避免覆盖另一实例刚写的会话 / 合并字段。
-- **依赖删除**：依赖任务被删除后，其他任务保留旧 id；UI 显示「已删除」且不阻塞，不自动清理，避免在未持有全部上下文时改写其他任务。
-- **循环依赖**：Store 在锁内做 DFS；客户端只做展示，不自行判断是否允许。
-- **日期时区**：`dueAt` 统一存本地日历日零点；跨时区迁移机器的用户可能看到日期漂移一天，这是「按本地日历」语义的已知边界，文档中注明。
-- **搜索性能**：解析与匹配都是线性字符串操作，任务量在本地台账规模内；不新增索引。
-- **洞察口径**：周期只统计 `mergedAt - createdAt`，不扣除等待验收时间；这是有意的最小口径，后续可扩展。
-- **时间线重复**：`updatedAt` 只在明显晚于其他事件时出现，避免轮询噪声。
+- **工时字段兼容**：`workMs` / `workStartedAt` 全部可选；读取时不假设存在；旧版本看到新字段会忽略，不影响状态机。
+- **工时时钟异常**：系统时钟回拨、未来时间、字段损坏都按 0 / 未计时处理；不做自动纠正，不写负数。
+- **工时并发**：开始 / 停止在账本锁内完成，两个窗口同时点只会有一个生效；重复开始 / 停止幂等，不重复计数。
+- **工时语义**：只记录用户主动开始到停止的区间，不推断「Agent 在跑 = 人在投入」；不做自动开始 / 停止。
+- **估算兼容**：`estimate` 可选；清除即删除字段；旧版本忽略；估算不参与排序、不阻塞合并。
+- **估算校验**：服务端在创建分支 / worktree 之前校验发布参数；`task/meta` 在锁内校验，非法值不落盘。
+- **依赖图异常数据**：循环、缺失、跨项目 id 都按「安全展示」处理；算法有迭代上限；缺失节点不伪造任务记录。
+- **依赖图规模**：最多 60 个真实节点，超出截断并提示；不做虚拟滚动。
+- **风险评分口径**：分值是启发式排序，不是 SLA；权重写在文档与测试中，后续调整需同步更新测试与文案。
+- **风险与注意力并存**：注意力是看板级筛选，风险是项目内排序；两者不互相写入，不互相阻塞。
+- **视图存储**：localStorage 可能被禁用、配额不足或内容损坏；读取失败返回空列表，写入失败给出提示；不把坏数据写回。
+- **视图共享**：同一浏览器同源窗口共享 localStorage；跨设备 / 跨机器不同步；不写入任务台账，不参与服务端并发控制。
+- **集成冲突**：本批次预计在 `stage.ts`、`rail.ts`、`project-detail.ts`、`store.ts`、`http.ts`、`tools.ts` 与 locale 文件产生 cherry-pick 冲突；主线程按功能顺序集成，逐段保留双方新增内容，不重排无关代码。
 - **回滚**：
-  - 截止日期：移除 UI 与注意力分类即可，字段留在记录中不影响旧版本。
-  - 依赖：移除详情行、左栏 chip 与校验即可，字段留在记录中不影响旧版本。
-  - 洞察：移除卡片与 `project-insights.ts` 即可。
-  - 搜索：删除语法解析，恢复 `matchesSearch` 纯文本行为即可。
-  - 时间线：移除分区与报告章节即可。
-- **不做的事**：不做到期通知 / 日历视图、不做依赖图 / 合并阻断、不做跨项目依赖、不做保存搜索视图、不做完整状态变更日志。
+  - 工时：移除任务信息行、左栏 chip 与报告行即可；字段留在记录中不影响旧版本。
+  - 估算：移除发布 / 详情 / 洞察 / 报告入口即可；字段留在记录中不影响旧版本。
+  - 依赖图：移除卡片与 `dependency-graph.ts` 即可。
+  - 风险雷达：移除卡片与 `project-risk.ts` 即可。
+  - 保存视图：移除下拉与对话框，或删除 localStorage key 即可；不影响台账。
+- **不做的事**：不做自动计时 / 番茄钟 / 计费、不做自定义点数 / 多人估算、不做依赖图拖拽编辑 / 关键路径耗时、不做风险自动处置 / 通知、不做视图跨设备同步 / 任务快照。
+
+---
 
 ## 9. 文件清单
 
 | 文件 | 改动 |
 | --- | --- |
-| `src/task-meta.ts` | 截止日期纯函数 |
-| `src/task-deps.ts` | 新增依赖纯函数 |
-| `src/models.ts` | `WorktreeTask` 增加 `dueAt` / `dependsOn` |
-| `src/store.ts` | `TaskMetaPatch` / `TaskMetaResult` / `updateTaskMeta` 扩展 |
-| `src/runtime.ts` | 元数据错误映射 |
-| `src/runtime/types.ts` | `PublishInput` 增加 `dueAt` |
-| `src/runtime/projects.ts` | 发布时校验并写入 `dueAt` |
-| `src/http.ts` | `task/meta` 透传 `dueAt` / `dependsOn` |
-| `src/tools.ts` | 发布 / meta / brief 支持截止日期与依赖 |
-| `src/client/publish-state.ts` | 草稿增加 `dueAt` |
-| `src/client/publish.ts` | 高级区截止日期与校验 |
-| `src/client/stage.ts` | 任务信息增加截止日期 / 前置任务；概览增加生命周期时间线 |
-| `src/client/rail.ts` | 截止 / 依赖 chip；搜索语法提示 |
-| `src/client/model.ts` | 结构化搜索接入 `filterProjectViews` |
-| `src/client/search-query.ts` | 新增搜索解析与匹配纯函数 |
-| `src/client/task-attention.ts` | `overdue` 分类与计数 |
-| `src/client/attention-filter.ts` | 逾期筛选项 |
-| `src/client/attention-summary.ts` | 逾期汇总文案 |
-| `src/client/board.ts` | 逾期输入、依赖查找、Stage / Rail props |
-| `src/client/board-data.ts` | 如搜索空态需要，透传查询（仅在必要时） |
-| `src/client/project-insights.ts` | 新增项目洞察纯函数 |
-| `src/client/project-detail.ts` | 项目洞察卡片 |
-| `src/client/task-lifecycle.ts` | 新增生命周期纯函数 |
-| `src/client/report.ts` | 单任务报告增加截止日期与时间线 |
-| `src/client/project-report.ts` | 项目报告增加截止日期列与逐任务截止行 |
-| `src/client/styles/workbench.ts` | 搜索提示 / 洞察柱状 / 时间线样式 |
-| `locale/zh.json`、`locale/en.json` | 新增文案 |
-| `test/task-meta.test.ts` | 截止日期用例 |
-| `test/task-deps.test.ts` | 新增依赖用例 |
-| `test/client-search-query.test.ts` | 新增搜索语法用例 |
-| `test/client-project-insights.test.ts` | 新增洞察用例 |
-| `test/client-task-lifecycle.test.ts` | 新增生命周期用例 |
-| `test/store.test.ts` | `updateTaskMeta` 新字段用例 |
-| `test/http-flow.test.ts` | `task/meta` / `publish` 新字段用例 |
-| `test/client-model.test.ts` | 结构化搜索过滤用例 |
-| `test/client-publish-state.test.ts` | 草稿截止日期用例 |
-| `test/client-task-attention.test.ts` | 逾期分类 / 计数用例 |
-| `test/client-report.test.ts` | 报告截止日期 / 时间线用例 |
-| `test/client-project-report.test.ts` | 项目报告截止列用例 |
-| `test/tools-act.test.ts` | 工具元数据用例 |
-| `README.md`、`CHANGELOG.md`、`docs/frontend-design.md`、`docs/i18n-terminology.md` | 主线程更新到 1.14.0 |
-| `package.json`、`package-lock.json` | 主线程更新到 1.14.0 |
+| `src/task-timer.ts` | 新增：工时纯函数（累计、开始、停止、格式化） |
+| `src/task-meta.ts` | 新增：`TASK_ESTIMATES` / `TaskEstimate` / `parseEstimate` |
+| `src/models.ts` | `WorktreeTask` 增加 `workMs` / `workStartedAt` / `estimate` |
+| `src/store.ts` | `TaskMetaPatch` 增加 `estimate`；新增 `startTaskTimer` / `stopTaskTimer`；`TimerResult` |
+| `src/runtime.ts` | 工时动作与 `estimate-invalid` 错误映射 |
+| `src/runtime/types.ts` | `PublishInput` 增加 `estimate` |
+| `src/runtime/projects.ts` | 发布时校验并写入 `estimate` |
+| `src/http.ts` | 新增 `task/timer`；`publish` / `task/meta` 透传 `estimate` |
+| `src/tools.ts` | `worktree_publish` 增加 `estimate`；`worktree_act` 增加 `timer` 动作与 `meta` 估算 |
+| `src/client/model.ts` | 导出 `BOARD_FILTERS` / `isBoardFilter`（视图校验共用） |
+| `src/client/publish-state.ts` | 草稿增加 `estimate` |
+| `src/client/publish.ts` | 高级区规模估算下拉 |
+| `src/client/stage.ts` | 任务信息增加工时行与规模估算行；计时 30 秒刷新 |
+| `src/client/work-format.ts` | 新增：把当前语言字典映射为工时单位模板（界面与报告共用） |
+| `src/client/rail.ts` | 计时中 chip、估算 chip、保存视图下拉 / 对话框 |
+| `src/client/board.ts` | 计时回调、保存视图状态与持久化接线 |
+| `src/client/project-insights.ts` | 负载口径（进行中点数 / 已估算 / 覆盖率） |
+| `src/client/project-detail.ts` | 洞察卡片负载提示、依赖图卡片、风险雷达卡片 |
+| `src/client/dependency-graph.ts` | 新增：依赖图分层布局纯函数 |
+| `src/client/project-risk.ts` | 新增：风险评分纯函数 |
+| `src/client/saved-views.ts` | 新增：视图校验 / 序列化纯函数 |
+| `src/client/view-storage.ts` | 新增：localStorage 适配器 |
+| `src/client/report.ts` | 单任务报告增加工时 / 估算 |
+| `src/client/project-report.ts` | 项目报告增加工时 / 估算列与逐任务行 |
+| `src/client/styles/workbench.ts` | 依赖图、风险雷达、保存视图样式 |
+| `locale/zh.json`、`locale/en.json` | 新增文案（key 集合一致） |
+| `test/task-timer.test.ts` | 新增：工时纯函数用例 |
+| `test/task-timer-store.test.ts` | 新增：工时 Store 用例 |
+| `test/task-estimate-store.test.ts` | 新增：估算 Store 用例 |
+| `test/client-dependency-graph.test.ts` | 新增：依赖图布局用例 |
+| `test/client-project-risk.test.ts` | 新增：风险评分用例 |
+| `test/client-saved-views.test.ts` | 新增：视图纯函数用例 |
+| `test/client-view-storage.test.ts` | 新增：存储适配器用例 |
+| `test/task-meta.test.ts` | 扩展：估算解析 |
+| `test/http-flow.test.ts` | 扩展：`task/timer`、估算字段 |
+| `test/tools-act.test.ts` | 扩展：计时动作、估算参数 |
+| `test/client-project-insights.test.ts` | 扩展：负载口径 |
+| `test/client-publish-state.test.ts` | 扩展：草稿估算 |
+| `test/client-report.test.ts` | 扩展：工时 / 估算行 |
+| `test/client-project-report.test.ts` | 扩展：工时 / 估算列 |
+| `test/client-model.test.ts` | 扩展：`BOARD_FILTERS` |
+| `README.md`、`CHANGELOG.md`、`docs/frontend-design.md`、`docs/i18n-terminology.md` | 主线程更新到 1.15.0 |
+| `package.json`、`package-lock.json` | 主线程更新到 1.15.0 |
+
+---
 
 ## 10. 验收记录
 
-- **状态**：5 个功能已全部实现并集成，`npm run verify` 通过；等待独立复核与 PR。
+- **状态**：已实施，主线程集成与验收通过。
 
 ### 10.1 实施来源
 
 | 功能 | 子 agent 分支 | 子 agent HEAD | 集成提交 |
 | --- | --- | --- | --- |
-| 截止日期 | `t3/task-due-dates-overdue-reminders` | `97579eb` | `f859567` |
-| 前置依赖 | `t3/bd6f4b94` | `9c1473b` | `bad4e8c` |
-| 项目洞察 | `t3/project-insights-cycle-stats` | `1c85f6d` | `a65da1d` |
-| 结构化搜索 | `t3/046189c9` | `63775a9` | `f0bfd64` |
-| 任务时间线 | `t3/task-lifecycle-timeline` | `00e2b75` | `c1b7e3b` |
+| 工时计时 | `t3/task-work-timer` | `195c133d5f92d6fb6cf8c5f60535cb5e0fc8c77b` | `557c266fe755775c1e31df6c83cc9674de824f3e` |
+| 规模估算与负载 | `t3/task-estimate-load` | `f0031f53524a1c03af97f6d450cac5fb6c6ad178` | `5046cb3927eb97ebf154b8f68624badf627449f5` |
+| 依赖关系图 | `t3/dependency-graph` | `5e391e9de90af621cb2fc5dae6fe03774a678ee4` | `92fa563f5c96d61e6ecabdd68e6e8859ef55119c` |
+| 风险雷达 | `t3/project-risk-radar` | `b0fa9e18ac6e41e6f4da50c807daa9b70f438976` | `87326ad9d5243dd185512080192dc6a520929e34` |
+| 保存的筛选视图 | `t3/saved-filter-views` | `392afb0cd6084650846597657fca9337c7885523` | `71150e23e45d9f3f7a8d647f81f6958a534db239` |
 
-所有子 agent 均从规划提交 `e74dfa1` 切出独立 worktree，各自只提交一次；主线程按顺序 cherry-pick 并解决 locale、`stage.ts`、`rail.ts`、`store.ts`、`http.ts`、`tools.ts` 与报告模块的集成冲突。
+集成顺序按改动面从小到大（依赖图 → 估算 → 视图 → 风险 → 工时），每个子 agent 只交一个提交；主线程逐个 `cherry-pick`，冲突处保留双方字段与渲染分支。
 
 ### 10.2 主线程复核修正
 
-- `search-query.ts` 原先回引 `model.ts` 造成模块循环，改为模块内纯文本匹配（`1485894`）。
-- 集成冲突合并时同时保留依赖与截止日期的字段链路：`Store.updateTaskMeta` 先校验全部字段再写入，`runtime` 错误映射、HTTP `task/meta` 与 `worktree_act` 同时接受 `dueAt` / `dependsOn`。
-- `stage.ts` 只读与编辑两种模式同时渲染截止日期行与前置任务行；`rail.ts` 同时渲染截止 chip 与「等待 N 项前置」chip。
-- 补全 README / CHANGELOG / `docs/frontend-design.md` / `docs/i18n-terminology.md`，版本升至 1.14.0（`cd094d3`）。
-- 独立复核后修正：模型工具 `due_at` 不再强制 `String`，并允许 `number`，与 HTTP 的毫秒时间戳口径一致；前置任务候选排除已清理任务；README 补充时间戳与 `status:` 快照语义。
+- **共享模型**：`src/models.ts` 同时保留 `estimate` 与 `workMs` / `workStartedAt`；旧记录不迁移。
+- **Store**：`src/store.ts` 的 task-meta 导入同时保留 `parseEstimate` 与 `isWorkTiming` / `startWorkTimer` / `stopWorkTimer`；计时开始 / 停止都在 `withLock` 内完成，重复操作不写账本，关闭任务拒绝开始但允许停止。
+- **工具层**：`src/tools.ts` 的 briefing 同时返回 `estimate`、`workMs`、`workStartedAt`；`worktree_act` 同时接受 `estimate` 与 `timer_action`，`timer` 动作校验参数并映射 400 / 404。
+- **任务信息与左栏**：`stage.ts` 与 `rail.ts` 的导入合并估算、计时与保存视图依赖；任务信息保留「估算 → 截止 → 工时」顺序，左栏同时显示计时 chip、估算 chip 与保存视图下拉。
+- **报告**：单任务报告同时输出「规模估算」与「工时」行；项目报告任务表列顺序统一为 `序号 / 状态 / 任务 / 分支 / 验收 / 优先级 / 估算 / 截止 / 工时 / 标签 / 最近活动`，表头、分隔行、数据行与每任务详情同步调整。
+- **测试**：`test/http-flow.test.ts` 拼接估算与计时的 publish / meta / timer 用例；`test/client-project-report.test.ts` 的期望表头与行数据加入估算 / 工时两列，并修正前缀匹配顺序。
+- **文案**：locale 自动合并后统一为 `zh=855` / `en=855`；`docs/i18n-terminology.md` 的键名与占位符按实际 locale 修正（`taskWorkEmpty` / `taskWorkTiming` / `taskEstimateEmpty` / `depGraphHasCycle` / `riskRadar` / `savedViewSelect` 等，移除不存在的 `{points}`）。
+- **独立复核修正（英文工时单位）**：复核发现英文报告仍输出中文「分 / 小时 / 天」。`formatWorkDuration` 改为接受 `WorkDurationUnits` 模板，新增 `src/client/work-format.ts` 把当前字典映射为模板；新增 7 个 locale 键（`taskWorkUnderMinute` / `taskWorkMinutes` / `taskWorkHours` / `taskWorkHoursMinutes` / `taskWorkDays` / `taskWorkDaysHours` / `taskWorkTimingSuffix`），界面与两份报告共用。英文报告现在输出 `45 min` / `2 h 15 m (Timing)`，并有单任务与项目报告双侧测试。
+- **独立复核修正（依赖图可访问性）**：依赖图 SVG 原同时带 `role="img"` / `aria-label` 与 `aria-hidden="true"`，语义矛盾；改为纯装饰 SVG（仅 `aria-hidden`），图摘要移到卡片可见提示行，键盘与读屏入口仍是下方按层任务列表。
+- 复核提出的其余 nit（保存视图对话框同步 busy 状态、项目详情纯函数未 memo、`upsertSavedView` 对纯空白名字的回退）不影响正确性或性能，留待后续清理。
 
 ### 10.3 验证结果
 
 - `npm run typecheck`：通过。
-- `npm run check:locale`：`zh=778 en=778`，客户端引用 547 个 key，全部存在。
-- `npm test`：**483 通过 / 0 失败**（基线 408，新增 75 项）。
-- `npm run build`：`dist/index.js` 166.5kb，`dist/client.js` 562.0kb。
-- `npm run verify`：以上四项全部通过。
+- `npm run check:locale`：通过，`zh=855 en=855`，客户端引用 625 个键。
+- `npm test`：645 项全部通过，0 失败；基线 560 项，净增 85 项。
+- `npm run build`：通过，`dist/index.js` 与 `dist/client.js`（649.5kb）生成。
+- `npm run verify`：通过（typecheck + locale + 645 项测试 + 构建）。
+- 集成提交后工作区无冲突标记，`git diff --check` 无空白错误。
 
 ### 10.4 验收审批
 
-- 用户要求使用 `advisor` 审批。当前会话经 magpie 网关连接，官方 `advisor_20260301` 服务端工具未被网关转发，`advisor` 返回 `failed: unavailable`（本次再次确认）。
-- 按用户全局约定改用独立模型复核：`delegate_task` + `role: review` + provider `magpie` / model `mm/workbuddy/glm-5.3[1m]`，只读审查，不改代码。
-- 复核结论：**APPROVE**，0 个阻塞问题；5 条非阻塞建议中采纳 3 条（工具 `due_at` 数字透传、README `status:` 语义、前置候选排除已清理任务），其余 2 条（`depFailureText` 中文关键词耦合、引号内逗号仍按标签分隔）保留为已知边界，不影响交付。
+- 独立 reviewer：`delegate_task` + `role: review`，模型 `mm/workbuddy/glm-5.3[1m]`（实际运行 `mm/workbuddy/glm-5.3`），只读，不共享主线程推理。
+- 复核结论：**可合并**，未发现 blocker / major；1 个 minor（英文报告工时单位仍为中文）已在合并前修复，1 个可访问性 nit（依赖图 SVG 语义矛盾）已修复，其余 3 个 nit 记录在 10.2 并留待后续。
+- reviewer 在复核时独立运行 `typecheck`、`check:locale`、643 项测试、构建与 `git diff --check`，并对风险雷达、依赖图、保存视图、工时格式化做了定向验证；修复后主线程复跑 `npm run verify`，645 项测试通过。
 
 ### 10.5 PR
 
-- 分支：`t3/daily-5-feature-pipeline`
-- PR：待创建（创建后回填编号与链接）。
+- 分支：`t3/daily-five-feature-pipeline`
+- PR：https://github.com/5918vo/dsh-worktree/pull/30

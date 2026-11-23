@@ -319,6 +319,24 @@ export function useBoardActions(args: UseBoardActionsArgs) {
   }
 
   /**
+   * Start or stop the manual work timer. Only the action travels: the server
+   * owns the arithmetic, so a refresh is enough to show the new total, and a
+   * failure (closed task, unknown id) speaks through the shared toast.
+   */
+  async function runTimer(action: 'start' | 'stop') {
+    if (!selectedTask || busy) return
+    setBusy('timer')
+    try {
+      await post('task/timer', { id: selectedTask.task.id, action })
+    } catch (e: any) {
+      say(String((e && e.message) || t.failed), true)
+    } finally {
+      setBusy('')
+      void refresh()
+    }
+  }
+
+  /**
    * Persist task metadata (tags / priority / notes) through one endpoint so the
    * server's atomic read-modify-write stays the only writer.
    */
@@ -489,6 +507,7 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     runCopyReport,
     runDownloadReport,
     runSaveMeta,
+    runTimer,
     runCleanup,
     runDeleteTask,
     runMergeRestore,

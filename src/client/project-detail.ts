@@ -7,8 +7,24 @@ import { resolveStatus, pendingLabel } from './status'
 import { boardStatus, boardStatusLabel } from './model'
 import { buildProjectReport, projectReportFilename } from './project-report'
 import { buildProjectInsights } from './project-insights'
+import { buildDependencyGraph, DEP_GRAPH_LIMIT } from './dependency-graph'
+import { buildProjectRisk } from './project-risk'
 import { fill } from './markdown'
 import { DEFAULT_WORKTREE_DIR } from '../worktree-layout'
+
+/** Character-budget truncation for SVG labels (a pure render cannot measure text). */
+function graphLabel(text: string, maxWidth: number): string {
+  const value = String(text == null ? '' : text)
+  let used = 0
+  let out = ''
+  for (const char of value) {
+    const width = char.charCodeAt(0) > 0x2e7f ? 12 : 7
+    if (used + width > maxWidth) return out + '…'
+    used += width
+    out += char
+  }
+  return out
+}
 
 export function ProjectDetail(props: any) {
     const t = props.t
@@ -264,6 +280,9 @@ export function ProjectDetail(props: any) {
       insights.cycleMedianDays == null
         ? null
         : h('div', { className: 'dshw-hint' }, fill(t.insightsCycleMedian, { n: insights.cycleMedianDays.toFixed(1) })),
+      h('div', { className: 'dshw-hint' }, insights.open === 0
+        ? t.insightsWorkloadEmpty
+        : fill(t.insightsWorkload, { open: insights.open, estimated: insights.estimatedOpen, points: insights.openEstimatePoints })),
       insights.total === 0
         ? h('div', { className: 'dshw-hint' }, t.insightsEmpty)
         : h('div', { className: 'dshwd-insights' },
@@ -282,6 +301,195 @@ export function ProjectDetail(props: any) {
           h('div', { className: 'dshwd-insights-legend' },
             h('span', null, h('i', { className: 'dshwd-insights-swatch dshwd-insights-swatch--created', 'aria-hidden': 'true' }), t.insightsCreated),
             h('span', null, h('i', { className: 'dshwd-insights-swatch dshwd-insights-swatch--merged', 'aria-hidden': 'true' }), t.insightsMerged))))
+
+    // Dependency graph: a pure, layered view of the same records. It never
+    // blocks anything and never writes; missing ids become placeholder nodes.
+    const depGraph = buildDependencyGraph(v.tasks)
+    const depNodeById = new Map(depGraph.nodes.map((node: any) => [node.id, node]))
+    const depCycleIds = new Set<string>(depGraph.cycles.reduce((all: string[], cycle: string[]) => all.concat(cycle), []))
+    const depNodeStatus = (node: any) => node.missing
+      ? t.depGraphMissing
+      : [node.done ? t.depGraphDone : t.depGraphOpen, node.archived ? t.depGraphArchived : ''].filter(Boolean).join(' · ')
+    const depMissingCount = depGraph.nodes.filter((node: any) => node.missing).length
+    const depSummary = fill(t.depGraphSummary, {
+      layers: depGraph.layers.length,
+      tasks: depGraph.shown,
+      missing: depMissingCount,
+      cycle: depGraph.cycles.length ? fill(t.depGraphHasCycle, { n: depGraph.cycles.length }) : t.depGraphNoCycle,
+    })
+    const depEdgePath = (edge: any) => {
+      const from = depNodeById.get(edge.from)
+      const to = depNodeById.get(edge.to)
+      if (!from || !to) return ''
+      const x1 = from.x + from.width
+      const y1 = from.y + from.height / 2
+      const x2 = to.x
+      const y2 = to.y + to.height / 2
+      const bend = Math.max(16, Math.abs(x2 - x1) / 2)
+      return `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`
+    }
+    const depLegend = [
+      { key: 'open', label: t.depGraphLegendOpen, mod: 'open' },
+      { key: 'done', label: t.depGraphLegendDone, mod: 'done' },
+      { key: 'missing', label: t.depGraphLegendMissing, mod: 'missing' },
+      { key: 'cycle', label: t.depGraphLegendCycle, mod: 'cycle' },
+    ]
+    const depArrows = [
+      { key: 'normal', mod: '' },
+      { key: 'missing', mod: '--missing' },
+      { key: 'cycle', mod: '--cycle' },
+    ]
+    const depGraphBody: any[] = []
+    if (depGraph.total === 0) {
+      depGraphBody.push(h('div', { key: 'empty', className: 'dshw-hint' }, t.depGraphEmptyTasks))
+    } else if (depGraph.edges.length === 0) {
+      depGraphBody.push(h('div', { key: 'nodeps', className: 'dshw-hint' }, t.depGraphEmptyDeps))
+    } else {
+      depGraphBody.push(h('div', { key: 'canvas', className: 'dshwd-depgraph-scroll' },
+        h('svg', {
+          className: 'dshwd-depgraph-svg',
+          viewBox: '0 0 ' + depGraph.width + ' ' + depGraph.height,
+          width: depGraph.width,
+          height: depGraph.height,
+          'aria-hidden': 'true',
+          focusable: 'false',
+        },
+          h('defs', null, depArrows.map((arrow: any) => h('marker', {
+            key: arrow.key,
+            id: 'dshwd-depgraph-arrow' + arrow.mod,
+            viewBox: '0 0 8 8',
+            refX: 7,
+            refY: 4,
+            markerWidth: 7,
+            markerHeight: 7,
+            orient: 'auto-start-reverse',
+          }, h('path', { d: 'M0 0 L8 4 L0 8 z', className: 'dshwd-depgraph-arrow' + arrow.mod })))),
+          h('g', { className: 'dshwd-depgraph-edges' }, depGraph.edges.map((edge: any, i: number) => h('path', {
+            key: edge.from + '>' + edge.to + ':' + i,
+            className: 'dshwd-depgraph-edge'
+              + (edge.missing ? ' dshwd-depgraph-edge--missing' : '')
+              + (edge.cycle ? ' dshwd-depgraph-edge--cycle' : ''),
+            d: depEdgePath(edge),
+            markerEnd: 'url(#dshwd-depgraph-arrow' + (edge.cycle ? '--cycle' : edge.missing ? '--missing' : '') + ')',
+          }))),
+          h('g', { className: 'dshwd-depgraph-nodes' }, depGraph.nodes.map((node: any) => h('g', {
+            key: node.id,
+            className: 'dshwd-depgraph-node'
+              + (node.done ? ' dshwd-depgraph-node--done' : '')
+              + (node.archived ? ' dshwd-depgraph-node--archived' : '')
+              + (node.missing ? ' dshwd-depgraph-node--missing' : '')
+              + (depCycleIds.has(node.id) ? ' dshwd-depgraph-node--cycle' : ''),
+            transform: 'translate(' + node.x + ' ' + node.y + ')',
+            onClick: node.missing || !props.onSelectTask ? undefined : () => props.onSelectTask(node.id, project.id),
+          },
+            h('title', null, node.title + (node.archived ? ' · ' + t.depGraphArchived : '')),
+            h('rect', { className: 'dshwd-depgraph-rect', width: node.width, height: node.height, rx: 6 }),
+            h('text', { className: 'dshwd-depgraph-label', x: 10, y: node.height / 2, dy: '0.35em' },
+              graphLabel(node.title, node.width - 20))))))))
+      if (depGraph.cycles.length) {
+        depGraphBody.push(h('div', { key: 'cycles', className: 'dshwd-depgraph-warn', role: 'status' },
+          h(Icon, { name: 'alert' }),
+          h('span', null, fill(t.depGraphCycles, { n: depGraph.cycles.length }))))
+      }
+      depGraphBody.push(h('div', { key: 'layers', className: 'dshwd-depgraph-layers' },
+        h('div', { className: 'dshw-block-label' }, t.depGraphLayers),
+        depGraph.layers.map((layer: any) => h('div', {
+          key: layer.index,
+          className: 'dshwd-depgraph-layer',
+          role: 'group',
+          'aria-label': fill(t.depGraphLayer, { n: layer.index + 1 }),
+        },
+          h('div', { className: 'dshwd-depgraph-layer-title' }, fill(t.depGraphLayer, { n: layer.index + 1 })),
+          h('div', { className: 'dshwd-depgraph-layer-items' }, layer.nodeIds.map((id: string) => {
+            const node = depNodeById.get(id)
+            if (!node) return null
+            const status = depNodeStatus(node)
+            const itemClass = 'dshwd-depgraph-item'
+              + (node.done ? ' dshwd-depgraph-item--done' : '')
+              + (node.archived ? ' dshwd-depgraph-item--archived' : '')
+              + (node.missing ? ' dshwd-depgraph-item--missing' : '')
+              + (depCycleIds.has(id) ? ' dshwd-depgraph-item--cycle' : '')
+            if (node.missing) {
+              return h('span', { key: id, className: itemClass },
+                h('span', { className: 'dshwd-depgraph-item-title' }, node.title),
+                h('span', { className: 'dshwd-depgraph-item-status' }, status))
+            }
+            return h('button', {
+              key: id,
+              type: 'button',
+              className: itemClass,
+              title: node.title,
+              'aria-label': fill(t.depGraphJump, { title: node.title }) + ' · ' + status,
+              onClick: props.onSelectTask ? () => props.onSelectTask(id, project.id) : undefined,
+            },
+              h('span', { className: 'dshwd-depgraph-item-title' }, node.title),
+              h('span', { className: 'dshwd-depgraph-item-status' }, status))
+          }))))))
+    }
+    if (depGraph.truncated) {
+      depGraphBody.push(h('div', { key: 'truncated', className: 'dshw-hint' }, fill(t.depGraphTruncated, { n: DEP_GRAPH_LIMIT })))
+    }
+    const depGraphCard = h(Card, { className: 'dshwd-depgraph-card' },
+      h(CardHead, {
+        icon: 'grid',
+        title: t.depGraphTitle,
+        right: h('div', { className: 'dshwd-depgraph-legend', role: 'group', 'aria-label': t.depGraphTitle },
+          depLegend.map((item: any) => h('span', { key: item.key, className: 'dshwd-depgraph-legend-item' },
+            h('i', { className: 'dshwd-depgraph-swatch dshwd-depgraph-swatch--' + item.mod, 'aria-hidden': 'true' }),
+            item.label))),
+      }),
+      h('div', { className: 'dshw-hint', style: { marginBottom: '8px' } }, t.depGraphHint + ' · ' + depSummary),
+      depGraphBody)
+
+    // Risk radar: a sortable, explainable hint derived from the rows on screen.
+    // The card never writes, never reorders the board and never changes status.
+    const risk = buildProjectRisk(v.tasks, Date.now())
+    const riskReasonLabel = (reason: any): string => {
+      switch (reason && reason.code) {
+        case 'broken': return t.riskReasonBroken
+        case 'overdue': return fill(t.riskReasonOverdue, { n: reason.n })
+        case 'due-soon': return t.riskReasonDueSoon
+        case 'stalled': return fill(t.riskReasonStalled, { n: reason.n })
+        case 'blocked': return fill(t.riskReasonBlocked, { n: reason.n })
+        case 'criteria': return fill(t.riskReasonCriteria, { n: reason.n })
+        default: return ''
+      }
+    }
+    const riskStat = (key: string, label: string, value: number, tone: string) => h('div', {
+      key,
+      className: 'dshwd-risk-stat dshwd-risk-stat--' + tone,
+    },
+      h('span', { className: 'dshwd-risk-stat-num' }, value),
+      h('span', { className: 'dshwd-risk-stat-label' }, label))
+    const riskCard = h(Card, null,
+      h(CardHead, { icon: 'alert', title: t.riskRadar }),
+      h('div', { className: 'dshw-hint' }, t.riskRadarHint),
+      risk.open === 0
+        ? h('div', { className: 'dshw-hint' }, t.riskEmptyOpen)
+        : [
+          h('div', { key: 'stats', className: 'dshwd-risk-stats' },
+            riskStat('high', t.riskHigh, risk.high, 'err'),
+            riskStat('medium', t.riskMedium, risk.medium, 'warn'),
+            riskStat('low', t.riskLow, risk.low, 'ok')),
+          risk.high + risk.medium + risk.low === 0
+            ? h('div', { key: 'clear', className: 'dshw-hint' }, t.riskEmptyClear)
+            : h('div', { key: 'list', className: 'dshwd-risk-list', role: 'group', 'aria-label': t.riskRadar },
+              risk.top.map((item: any) => {
+                const reasons = item.reasons.map(riskReasonLabel).filter(Boolean)
+                const label = fill(t.riskItemLabel, { title: item.title, score: item.score, reasons: reasons.join(' · ') })
+                return h('button', {
+                  key: item.taskId,
+                  type: 'button',
+                  className: 'dshwd-risk-item',
+                  'aria-label': label,
+                  onClick: () => { if (props.onSelectTask) props.onSelectTask(item.taskId) },
+                },
+                  h('span', { className: 'dshwd-risk-item-title' }, item.title),
+                  h('span', { className: 'dshwd-risk-score dshwd-risk-score--' + item.level, 'aria-hidden': 'true' }, item.score),
+                  h('span', { className: 'dshwd-risk-reasons' },
+                    reasons.map((reason: string, index: number) => h('span', { key: index, className: 'dshwd-risk-chip' }, reason))))
+              })),
+        ])
 
     // The project report is generated locally from the views already on screen;
     // copying and downloading must never disagree, so both share one text.
@@ -351,6 +559,8 @@ export function ProjectDetail(props: any) {
               h('span', { className: 'dshw-act-time dshw-mono' }, pendingLabel(t, props.pendingMap[item.task.sessionId]))))))
           : null,
         insightsCard,
+        depGraphCard,
+        riskCard,
         h(Card, null,
           h(CardHead, { icon: 'file', title: t.projectReport }),
           h('div', { className: 'dshw-hint', style: { marginBottom: '10px' } }, t.projectReportHint),

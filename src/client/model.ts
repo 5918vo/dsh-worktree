@@ -1,11 +1,19 @@
 import type { ProjectView, TaskDiff, TaskSnapshot, TaskStatus, TaskView, WorktreeTask } from '../models'
-import type { AttentionCategory } from './task-attention'
+import { CATEGORY_ORDER, type AttentionCategory } from './task-attention'
 import { DEFAULT_WORKTREE_DIR, worktreePreviewRoot } from '../worktree-layout'
 import { matchesStructuredQuery, parseSearchQuery } from './search-query'
 
 /** The rail filter is an attention category, never a lifecycle status. */
 export type BoardFilter = AttentionCategory | 'all'
 export type BoardTheme = 'dark' | 'light'
+
+/** Every value the rail filter can hold: `all` plus each attention category. */
+export const BOARD_FILTERS: BoardFilter[] = ['all', ...CATEGORY_ORDER]
+
+/** True for any value the board can store as a filter. */
+export function isBoardFilter(value: unknown): value is BoardFilter {
+  return typeof value === 'string' && (BOARD_FILTERS as string[]).includes(value)
+}
 
 export interface BoardStatus {
   key: 'ready' | 'developing' | 'running' | 'review' | 'reviewing' | 'merged' | 'cleaned' | 'broken'

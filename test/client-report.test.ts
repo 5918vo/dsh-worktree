@@ -326,6 +326,10 @@ test('both dictionaries keep the exact same report placeholders', () => {
 
 // The overview is a plain function component; a createElement stub is enough to
 // inspect the rendered tree without pulling React or a DOM into the test.
+//
+// The work-time row arms a 30 s interval while a clock runs, so the two hooks it
+// uses are stubbed as no-ops: a single static render never reaches them, and the
+// values on screen are already the ones under test.
 initReact({
   createElement: (type: any, props: any, ...children: any[]) => {
     // Function components are invoked so the overview subtree is inspectable;
@@ -333,6 +337,8 @@ initReact({
     if (typeof type === 'function') return type({ ...(props || {}), children })
     return { type, props: props || {}, children }
   },
+  useState: (value: any) => [typeof value === 'function' ? value() : value, () => {}],
+  useEffect: () => {},
 })
 
 function stageProps(overrides: Partial<StageProps> = {}): StageProps {
@@ -416,6 +422,23 @@ test('the report lists tags and priority in the headline facts', () => {
 
   const low = buildAcceptanceReport(makeInput({ task: makeTask({ priority: 'low' }) }))
   assert.ok(low.includes('- 优先级: 低'))
+})
+
+test('the report shows the size estimate with the other metadata', () => {
+  const line = (estimate?: number) => {
+    const task = estimate === undefined ? makeTask() : makeTask({ estimate: estimate as any })
+    return buildAcceptanceReport(makeInput({ task })).split('\n').find((l) => l.startsWith('- 规模估算:'))
+  }
+  assert.equal(line(5), '- 规模估算: 5 点')
+  assert.equal(line(1), '- 规模估算: 1 点')
+  assert.equal(line(), '- 规模估算: 未估算')
+  assert.equal(line(4), '- 规模估算: 未估算', 'an invalid estimate is not shown as points')
+
+  const ordered = buildAcceptanceReport(makeInput({
+    task: makeTask({ priority: 'low', dueAt: new Date(2026, 0, 10).getTime() }),
+  }))
+  assert.ok(ordered.indexOf('- 优先级:') < ordered.indexOf('- 规模估算:'))
+  assert.ok(ordered.indexOf('- 规模估算:') < ordered.indexOf('- 截止日期:'))
 })
 
 test('the report shows the deadline and how late it is', () => {
@@ -518,4 +541,87 @@ test('the overview timeline degrades to the empty text and hides the cycle', () 
   assert.ok(!nodes.some((node) => node.props && node.props.className === 'dshwd-lifecycle-item'))
   const texts = nodes.flatMap((node) => (node.children || []).filter((child) => typeof child === 'string'))
   assert.ok(!texts.some((text) => text.includes('发布 → 合并')))
+})
+
+test('the report shows the accumulated work time and marks a running clock', () => {
+  const now = new Date(2026, 0, 5, 9, 7).getTime()
+  const line = (over: Partial<WorktreeTask>) =>
+    buildAcceptanceReport(makeInput({ task: makeTask(over), now }))
+      .split('\n')
+      .find((l) => l.startsWith('- 工时:'))
+
+  assert.equal(line({}), '- 工时: 未记录')
+  assert.equal(line({ workMs: 45 * 60 * 1000 }), '- 工时: 45 分')
+  // 45 minted minutes plus a running 90-minute stretch.
+  assert.equal(
+    line({ workMs: 45 * 60 * 1000, workStartedAt: now - 90 * 60 * 1000 }),
+    '- 工时: 2 小时 15 分（计时中）',
+  )
+})
+
+test('an English report localizes work units and the running marker', () => {
+  const now = new Date(2026, 0, 5, 9, 7).getTime()
+  const line = (over: Partial<WorktreeTask>) =>
+    buildAcceptanceReport(makeInput({ task: makeTask(over), t: en, now }))
+      .split('\n')
+      .find((l) => l.startsWith('- Work time:'))
+
+  assert.equal(line({ workMs: 45 * 60 * 1000 }), '- Work time: 45 min')
+  assert.equal(
+    line({ workMs: 45 * 60 * 1000, workStartedAt: now - 90 * 60 * 1000 }),
+    '- Work time: 2 h 15 m (Timing)',
+  )
+})
+
+const workButtons = (tree: any) => flatten(tree).filter((node) =>
+  node.type === 'button'
+  && (String(node.props?.['aria-label'] || '').startsWith(zh.taskWorkStart)
+    || String(node.props?.['aria-label'] || '').startsWith(zh.taskWorkStop)))
+
+test('the overview shows the work time row and starts the clock on request', () => {
+  const seen: string[] = []
+  const tree = Stage(stageProps({
+    taskView: { task: makeTask({ workMs: 45 * 60 * 1000 }), snapshot: makeSnapshot() },
+    onTimer: async (action) => { seen.push(action) },
+  }))
+  const nodes = flatten(tree)
+  assert.ok(nodes.some((node) => (node.children || []).some((child: any) => child === zh.taskWork)), 'the row is labelled')
+  assert.ok(nodes.some((node) => (node.children || []).some((child: any) => child === '45 分')), 'the total is formatted')
+
+  const buttons = workButtons(tree)
+  assert.equal(buttons.length, 1)
+  assert.ok((buttons[0].children || []).includes(zh.taskWorkStart))
+  buttons[0].props.onClick()
+  assert.deepEqual(seen, ['start'])
+})
+
+test('a running clock shows the timing mark, a stop button and no start button', () => {
+  const seen: string[] = []
+  const tree = Stage(stageProps({
+    taskView: {
+      task: makeTask({ workMs: 60 * 1000, workStartedAt: 1 }),
+      snapshot: makeSnapshot(),
+    },
+    onTimer: async (action) => { seen.push(action) },
+  }))
+  const nodes = flatten(tree)
+  assert.ok(nodes.some((node) => node.props?.role === 'status'
+    && (node.children || []).some((child: any) => child === zh.taskWorkTiming)), 'the timing chip is announced')
+
+  const buttons = workButtons(tree)
+  assert.equal(buttons.length, 1)
+  assert.ok((buttons[0].children || []).includes(zh.taskWorkStop))
+  buttons[0].props.onClick()
+  assert.deepEqual(seen, ['stop'])
+})
+
+test('the work timer controls need a callback and disable while busy', () => {
+  const plain = Stage(stageProps())
+  assert.equal(workButtons(plain).length, 0, 'no callback means no controls')
+  assert.ok(flatten(plain).some((node) => (node.children || []).some((child: any) => child === zh.taskWorkEmpty)),
+    'an unrecorded task still explains itself')
+
+  const busy = workButtons(Stage(stageProps({ onTimer: async () => {}, metaBusy: true })))
+  assert.equal(busy.length, 1)
+  assert.equal(busy[0].props.disabled, true)
 })

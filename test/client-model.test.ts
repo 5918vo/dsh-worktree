@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { acceptanceHintFor, boardBranch, boardCta, boardStat, boardStatTitle, boardStatus, branchHeadSha, cleanupPrimaryLabel, collectTags, commitRangeText, criteria, criteriaProgress, diffBaseSha, diffCount, diffHeadSha, diffLineKind, filterProjectViews, matchesSearch, mergeSummary, mergeSummaryText, pathPreview, railEmptyKind, railStatsText, shortSha, switchConfirmText, taskMergeSummary, themeFor, type BoardStatus } from '../src/client/model.js'
+import { BOARD_FILTERS, acceptanceHintFor, boardBranch, boardCta, boardStat, boardStatTitle, boardStatus, branchHeadSha, cleanupPrimaryLabel, collectTags, commitRangeText, criteria, criteriaProgress, diffBaseSha, diffCount, diffHeadSha, diffLineKind, filterProjectViews, matchesSearch, mergeSummary, mergeSummaryText, pathPreview, railEmptyKind, railStatsText, shortSha, switchConfirmText, taskMergeSummary, themeFor, isBoardFilter, type BoardStatus } from '../src/client/model.js'
 import { compareTaskOrder } from '../src/task-meta.js'
+import { CATEGORY_ORDER } from '../src/client/task-attention.js'
 
 const T = {
   boardReady: '待开始',
@@ -419,4 +420,19 @@ test('compareTaskOrder is the single order used by the board', () => {
   const newer = task({ id: 'new', createdAt: 20 })
   const pinned = task({ id: 'pin', createdAt: 1, priority: 'low', pinnedAt: 5 })
   assert.deepEqual([newer, older, pinned].sort(compareTaskOrder).map((t: any) => t.id), ['pin', 'old', 'new'])
+})
+
+test('BOARD_FILTERS covers every attention category exactly once', () => {
+  const categories = ['pending', 'review', 'recovery', 'broken', 'stalled', 'overdue']
+  assert.equal(BOARD_FILTERS[0], 'all')
+  assert.equal(new Set(BOARD_FILTERS).size, BOARD_FILTERS.length)
+  for (const category of categories) assert.ok(BOARD_FILTERS.includes(category as any), category)
+  assert.equal(BOARD_FILTERS.length, categories.length + 1)
+  // Guard against the shared category order drifting away from the filter list.
+  assert.deepEqual([...BOARD_FILTERS].sort(), ['all', ...CATEGORY_ORDER].sort())
+
+  for (const value of BOARD_FILTERS) assert.equal(isBoardFilter(value), true)
+  for (const value of ['', 'merged', 'all ', 'ALL', null, undefined, 1, {}, []]) {
+    assert.equal(isBoardFilter(value), false)
+  }
 })

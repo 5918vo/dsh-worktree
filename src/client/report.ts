@@ -10,7 +10,8 @@ import { pad2 } from './format'
 import { fill, mdBlock, mdCodeCell, mdInline, reportTimestamp } from './markdown'
 import { branchHeadSha, criteria, criteriaProgress } from './model'
 import { buildTaskLifecycle, lifecycleCycleDays, lifecycleLabelKey } from './task-lifecycle'
-import { dueInputValue, dueStateOf } from '../task-meta'
+import { dueInputValue, dueStateOf, parseEstimate } from '../task-meta'
+import { workTimingText } from './work-format'
 
 export interface ReportInput {
   task: WorktreeTask
@@ -99,6 +100,10 @@ export function buildAcceptanceReport(input: ReportInput): string {
   lines.push(metaLine(t.taskPriority, mdInline(
     task.priority === 'high' ? t.priorityHigh : task.priority === 'low' ? t.priorityLow : t.priorityNormal,
   )))
+  const estimate = parseEstimate(task.estimate)
+  lines.push(metaLine(t.taskEstimate, mdInline(
+    estimate.ok && estimate.value != null ? fill(t.taskEstimatePoints, { n: estimate.value }) : t.taskEstimateEmpty,
+  )))
   // The deadline is dated in local calendar days and repeats the overdue count
   // so a printed report carries the same warning as the board.
   const dueValue = dueInputValue(task.dueAt)
@@ -109,6 +114,9 @@ export function buildAcceptanceReport(input: ReportInput): string {
       : dueValue
     : t.reportDueNone
   lines.push(metaLine(t.reportDue, dueText))
+  // Hand-timed work, in the same words as the board; a running timer is marked
+  // so a printed report never looks like a finished stretch.
+  lines.push(metaLine(t.taskWork, workTimingText(t, task, now)))
   const head = branchHeadSha(task, snapshot)
   lines.push(metaLine(t.reportHead, mdCodeCell(head || '—')))
   if (task.mergedCommit) lines.push(metaLine(t.reportMergedCommit, mdCodeCell(task.mergedCommit)))

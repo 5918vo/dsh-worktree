@@ -41,6 +41,11 @@
 | 结构化搜索 | 结构化搜索 | structured search | `searchSyntaxHint`；语法 `tag:` / `priority:` / `status:`，解析器 `src/client/search-query.ts` |
 | 停滞 | 停滞 | stalled | `attentionStalled`；行内「停滞 {n} 天」`attentionStalledDays`，汇总 `attentionSummaryStalled` |
 | 项目验收报告 | 项目验收报告 | project acceptance report | `projectReport`；文件名 `project-<slug>-<YYYYMMDD>-<HHmm>.md`，与单任务 `acceptance report` 区分 |
+| 工时 | 工时 | work time | `taskWork`；未记录 `taskWorkEmpty`，计时中 `taskWorkTiming`，按钮 `taskWorkStart` / `taskWorkStop`；单位模板 `taskWorkUnderMinute` / `taskWorkMinutes` / `taskWorkHours` / `taskWorkHoursMinutes` / `taskWorkDays` / `taskWorkDaysHours`，计时中后缀 `taskWorkTimingSuffix`；报告复用这些键 |
+| 规模估算 | 规模估算 | estimate | `taskEstimate`；点数 `{n} 点` / "{n} pt"，下拉空选项 `taskEstimateEmpty` / `taskEstimatePoints`；项目负载 `insightsWorkload` |
+| 依赖关系图 | 依赖关系图 | dependency graph | `depGraphTitle`；层 `depGraphLayer`，缺失 `depGraphMissing`，循环 `depGraphHasCycle` / `depGraphNoCycle` / `depGraphCycles`，截断 `depGraphTruncated` |
+| 风险雷达 | 风险雷达 | risk radar | `riskRadar`；高 / 中 / 低 `riskHigh` / `riskMedium` / `riskLow`，原因 `riskReasonOverdue` 等 |
+| 保存的视图 | 保存的视图 | saved views | `savedViewSelect`；自定义 `savedViewCustom`，保存 `savedViewSave`，删除 `savedViewDelete`，保存失败 `savedViewSaveFailed`，仅本次会话 `savedViewSessionOnly` |
 
 ## 2. 单位规则
 
@@ -51,6 +56,9 @@
 - 标签 / 备注：长度限制用「个字符」，不写「位」；标签数量用「个」。
 - 日期：截止日期输入与报告统一 `YYYY-MM-DD`，按本地日历日解释；不写「MM/DD」或相对日期。
 - 天数：逾期、剩余、停滞与周期统一用「天」；英文用 day(s)，不写 d。
+- 工时：中文用「小时」「分」，英文用 h / m；小于 1 分统一「不足 1 分」/ "under 1 min"，不显示秒。
+- 规模：中文用「点」，英文用 "pt"；只允许 `1/2/3/5/8`，不写小数。
+- 风险分：中文「{n} 分」，英文 "{n} pts"；分数只作排序提示，不写百分比。
 
 ## 3. 占位符规则
 
@@ -58,6 +66,7 @@
 - 验收报告使用 `{title}`（任务标题）、`{n}`/`{total}`（已核对 / 总数）、`{files}`/`{add}`/`{del}`（文件数与行数），中英两侧集合必须一致。
 - `duration` 从历史 `{s}` 统一为 `{n}`（代码已同步替换逻辑，避免插值失败）。
 - 任何模板必须同时在中英两边保留相同占位符集合。
+- 工时 / 估算 / 风险新增占位符：`{n}`（时长数字、点数、分数、数量）、`{titles}`（阻塞任务标题）；中英两侧必须一致，不使用 `{hours}` 与 `{minutes}` 两套写法。
 
 ## 4. 英文复数
 

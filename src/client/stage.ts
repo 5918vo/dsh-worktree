@@ -1,6 +1,6 @@
 import { React, h } from './ui'
 import { fmtK, pad2, relTime, taskStamp } from './format'
-import type { TaskDiff, TaskView } from '../models'
+import type { TaskDiff, TaskView, WorktreeTask } from '../models'
 import { QUICK_PROMPTS, quickPromptDisabledReason, quickPromptReasonKey, quickPromptText } from './quick-prompts'
 import { acceptanceHintFor, criteria, criteriaProgress, boardStatus, boardStatusLabel, commitRangeText, diffCount, diffHeadSha, diffLineKind, shortSha, type BoardAction, type BoardCta } from './model'
 import { pendingLabel } from './status'
@@ -9,7 +9,9 @@ import type { SessionHealth } from './task-attention'
 import { fallbackEntries, type TimelineEntry } from './timeline'
 import { entryTag, entryTitle, liveStatsText, modelLabel, modelLabelFull, nearBottom, pressurePercent, readLive, shouldFollowLive, stepStatusLabel, tokenSummary } from './live-session'
 import { postMergeCount, reviewStaleCount } from './review-surfaces'
-import { NOTES_MAX_LENGTH, dueInputValue, dueStateOf, parseDueAt, parseTagText, validateTags } from '../task-meta'
+import { NOTES_MAX_LENGTH, dueInputValue, dueStateOf, parseDueAt, parseEstimate, parseTagText, TASK_ESTIMATES, validateTags } from '../task-meta'
+import { isWorkTiming } from '../task-timer'
+import { workTotalText } from './work-format'
 import { DEPENDENCY_LIMIT } from '../task-deps'
 import { fill } from './markdown'
 
@@ -42,9 +44,14 @@ export interface StageProps {
   /** A report action is in flight; both report buttons stay disabled. */
   reportBusy?: boolean
   /** Persist tags / priority / notes / dependencies / deadline; omitted keeps the info block read-only. */
-  onSaveMeta?: (patch: { tags?: string[]; priority?: string; notes?: string; dependsOn?: string[]; dueAt?: number | null }) => Promise<void>
+  onSaveMeta?: (patch: { tags?: string[]; priority?: string; notes?: string; dependsOn?: string[]; dueAt?: number | null; estimate?: number | null }) => Promise<void>
   /** A metadata write is in flight; the editors stay disabled. */
   metaBusy?: boolean
+  /**
+   * Start or stop the manual work timer; omitted keeps the clock read-only.
+   * The board owns the request and the toast, so failures never surface here.
+   */
+  onTimer?: (action: 'start' | 'stop') => Promise<void>
   /** Current prerequisites with their state, in `dependsOn` order (computed by the board). */
   dependencyItems?: Array<{ id: string; title: string; done: boolean; missing?: boolean }>
   /** Same-project tasks offered as prerequisites (self and archived rows excluded). */
@@ -369,6 +376,52 @@ function depFailureText(t: any, error: any): string {
   return message || t.taskDepsHint
 }
 
+/** How often a running clock re-renders its total; the value is local, no request. */
+const WORK_TICK_MS = 30 * 1000
+
+/**
+ * The manual work clock: accumulated total, a 「计时中」 marker and — in the
+ * editable variant — one start/stop button.
+ *
+ * While the timer runs the row re-renders every 30 s so the total stays live;
+ * the start stamp is enough to recompute it locally, so this never asks the
+ * server. The interval is cleared on unmount and when the clock stops.
+ */
+function TaskWorkRow(props: {
+  t: any
+  task: WorktreeTask
+  busy?: boolean
+  onTimer?: (action: 'start' | 'stop') => Promise<void>
+}) {
+  const { t, task } = props
+  const timing = isWorkTiming(task)
+  const [, bump] = React.useState(0)
+  React.useEffect(() => {
+    if (!timing) return undefined
+    const id = setInterval(() => bump((n: number) => n + 1), WORK_TICK_MS)
+    return () => clearInterval(id)
+  }, [timing, task.id])
+  const onTimer = props.onTimer
+  const total = workTotalText(t, task)
+  return h('div', { className: 'dshwd-meta-row' },
+    h('div', { className: 'dshwd-meta-label' }, t.taskWork),
+    h('div', { className: 'dshwd-meta-value' },
+      h('div', { className: 'dshwd-meta-chips' },
+        h('span', { className: 'dshwd-mono', title: t.taskWorkHint }, total),
+        timing ? h('span', { className: 'dshwd-chip dshwd-accent', role: 'status' }, t.taskWorkTiming) : null,
+        onTimer
+          ? h('button', {
+            type: 'button',
+            className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini',
+            disabled: !!props.busy,
+            // The task title keeps several open buttons distinguishable.
+            'aria-label': (timing ? t.taskWorkStop : t.taskWorkStart) + ' · ' + task.title,
+            title: t.taskWorkHint,
+            onClick: () => { void onTimer(timing ? 'stop' : 'start').catch(() => {}) },
+          }, timing ? t.taskWorkStop : t.taskWorkStart)
+          : null)))
+}
+
 /**
  * Read-only task info. Deliberately hook-free so the shallow-render tests can
  * walk it; the editable variant is only created when a save callback exists.
@@ -386,6 +439,8 @@ function TaskMetaSection(props: StageProps) {
   // Deadline: date plus a near-term chip; far-off dates keep it quiet.
   const dueValue = dueInputValue(task.dueAt)
   const dueState = dueStateOf(task.dueAt)
+  const estimate = parseEstimate(task.estimate)
+  const estimatePoints = estimate.ok ? estimate.value : null
   return h('section', { className: 'dshwd-block dshwd-task-meta' },
     h('div', { className: 'dshwd-block-label' }, t.taskInfo),
     h('div', { className: 'dshwd-meta-grid' },
@@ -397,6 +452,11 @@ function TaskMetaSection(props: StageProps) {
       h('div', { className: 'dshwd-meta-row' },
         h('div', { className: 'dshwd-meta-label' }, t.taskPriority),
         h('div', { className: 'dshwd-meta-value' }, h('span', { className: 'dshwd-chip dshwd-chip-sm' }, priority === 'high' ? t.priorityHigh : priority === 'low' ? t.priorityLow : t.priorityNormal))),
+      h('div', { className: 'dshwd-meta-row' },
+        h('div', { className: 'dshwd-meta-label' }, t.taskEstimate),
+        h('div', { className: 'dshwd-meta-value' }, estimatePoints != null
+          ? h('span', { className: 'dshwd-chip' }, fill(t.taskEstimatePoints, { n: estimatePoints }))
+          : h('span', { className: 'dshwd-hint' }, t.taskEstimateEmpty))),
       h('div', { className: 'dshwd-meta-row' },
         h('div', { className: 'dshwd-meta-label' }, t.taskDue),
         h('div', { className: 'dshwd-meta-value' }, dueValue
@@ -411,6 +471,7 @@ function TaskMetaSection(props: StageProps) {
                 : dueState.kind === 'today' ? t.taskDueToday : String(t.taskDueSoon).replace('{n}', String(dueState.days)))
               : null)
           : h('span', { className: 'dshwd-hint' }, t.taskDueEmpty))),
+      h(TaskWorkRow, { t, task, busy: !!props.metaBusy, onTimer: props.onTimer }),
       h('div', { className: 'dshwd-meta-row' },
         h('div', { className: 'dshwd-meta-label' }, t.taskNotes),
         h('div', { className: 'dshwd-prose dshwd-notes' }, task.notes || t.taskNotesEmpty)),
@@ -478,6 +539,9 @@ function TaskMetaEditor(props: StageProps) {
   // Keep the select responsive while the save is in flight; a failed save
   // snaps it back to the stored value.
   const [priorityDraft, setPriorityDraft] = React.useState(priority)
+  const estimate = parseEstimate(task.estimate)
+  const estimatePoints = estimate.ok ? estimate.value : null
+  const [estimateDraft, setEstimateDraft] = React.useState(estimatePoints == null ? '' : String(estimatePoints))
   const [dueDraft, setDueDraft] = React.useState(dueInputValue(task.dueAt))
   const [dueError, setDueError] = React.useState('')
   const [editingTags, setEditingTags] = React.useState(false)
@@ -510,6 +574,9 @@ function TaskMetaEditor(props: StageProps) {
   React.useEffect(() => {
     setPriorityDraft(priority)
   }, [task.id, task.priority])
+  React.useEffect(() => {
+    setEstimateDraft(estimatePoints == null ? '' : String(estimatePoints))
+  }, [task.id, task.estimate])
   // A refresh can replace the task while the editor is open; reset the date
   // buffer only when the stored deadline actually changed.
   React.useEffect(() => {
@@ -636,6 +703,25 @@ function TaskMetaEditor(props: StageProps) {
               h('option', { value: 'high' }, t.priorityHigh))
             : h('span', { className: 'dshwd-chip dshwd-chip-sm' }, priority === 'high' ? t.priorityHigh : priority === 'low' ? t.priorityLow : t.priorityNormal))),
       h('div', { className: 'dshwd-meta-row' },
+        h('div', { className: 'dshwd-meta-label' }, t.taskEstimate),
+        h('div', { className: 'dshwd-meta-value' },
+          save
+            ? h('select', {
+              className: 'dshwd-select dshwd-meta-select',
+              value: estimateDraft,
+              disabled: busy,
+              'aria-label': t.taskEstimate,
+              onChange: (e: any) => {
+                const next = e.target.value
+                const previous = estimateDraft
+                setEstimateDraft(next)
+                void save({ estimate: next === '' ? null : Number(next) }).catch(() => setEstimateDraft(previous))
+              },
+            },
+              h('option', { value: '' }, t.taskEstimateEmpty),
+              TASK_ESTIMATES.map((points) => h('option', { key: String(points), value: String(points) }, fill(t.taskEstimatePoints, { n: points }))))
+            : h('span', { className: 'dshwd-chip dshwd-chip-sm' }, estimatePoints != null ? fill(t.taskEstimatePoints, { n: estimatePoints }) : t.taskEstimateEmpty))),
+      h('div', { className: 'dshwd-meta-row' },
         h('div', { className: 'dshwd-meta-label' }, t.taskDue),
         h('div', { className: 'dshwd-meta-value' },
           h('div', { className: 'dshwd-meta-editor' },
@@ -657,6 +743,7 @@ function TaskMetaEditor(props: StageProps) {
               }, t.taskDueClear)),
             h('div', { className: 'dshwd-hint' }, t.taskDueHint),
             dueError ? h('div', { className: 'dshwd-alert', role: 'alert' }, dueError) : null))),
+      h(TaskWorkRow, { t, task, busy, onTimer: props.onTimer }),
       h('div', { className: 'dshwd-meta-row' },
         h('div', { className: 'dshwd-meta-label' }, t.taskNotes),
         h('div', { className: 'dshwd-meta-value' },

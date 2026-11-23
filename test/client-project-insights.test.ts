@@ -219,3 +219,38 @@ test('accepts an omitted now without producing NaN', () => {
     assert.ok(day.created >= 0 && day.merged >= 0)
   }
 })
+
+test('estimate workload sums only open tasks with a valid estimate', () => {
+  const r = buildProjectInsights([
+    view({ estimate: 1 }, 'review'),
+    view({ estimate: 3 }, 'broken'),
+    view({ estimate: '5' as any }, 'developing'),
+    view({}, 'review'),
+    view({ estimate: 4 as any }, 'review'),
+    view({ estimate: 8 }, 'merged'),
+    view({ estimate: 8 }, 'cleaned'),
+    view({ estimate: 8, archivedAt: NOW }, 'review'),
+  ], NOW)
+  // open = review x3 + broken + developing = 5; merged/cleaned/archived excluded.
+  assert.equal(r.open, 5)
+  assert.equal(r.openEstimatePoints, 9)
+  assert.equal(r.estimatedOpen, 3)
+  assert.equal(r.unestimatedOpen, 2, 'missing and invalid estimates both count as unestimated')
+  assert.equal(r.estimateCoveragePercent, 60)
+})
+
+test('estimate coverage is null with no open tasks and rounds to a whole percent', () => {
+  const none = buildProjectInsights([mergedTask(1), view({ estimate: 3 }, 'cleaned')], NOW)
+  assert.equal(none.open, 0)
+  assert.equal(none.openEstimatePoints, 0)
+  assert.equal(none.estimatedOpen, 0)
+  assert.equal(none.unestimatedOpen, 0)
+  assert.equal(none.estimateCoveragePercent, null)
+
+  const third = buildProjectInsights([
+    view({ estimate: 2 }, 'review'),
+    view({}, 'review'),
+    view({}, 'review'),
+  ], NOW)
+  assert.equal(third.estimateCoveragePercent, 33)
+})
