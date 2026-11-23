@@ -427,6 +427,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     return allViews
       .filter((tv) => tv.task.id !== selectedTask.task.id
         && !tv.task.archivedAt
+        && !tv.task.cleanedAt
         && isSameProject(selectedTask.task, tv.task))
       .slice()
       .sort((a, b) => compareTaskOrder(a.task, b.task))

@@ -1079,6 +1079,7 @@ export function lifecycleLabelKey(kind: LifecycleKind): string
 - 集成冲突合并时同时保留依赖与截止日期的字段链路：`Store.updateTaskMeta` 先校验全部字段再写入，`runtime` 错误映射、HTTP `task/meta` 与 `worktree_act` 同时接受 `dueAt` / `dependsOn`。
 - `stage.ts` 只读与编辑两种模式同时渲染截止日期行与前置任务行；`rail.ts` 同时渲染截止 chip 与「等待 N 项前置」chip。
 - 补全 README / CHANGELOG / `docs/frontend-design.md` / `docs/i18n-terminology.md`，版本升至 1.14.0（`cd094d3`）。
+- 独立复核后修正：模型工具 `due_at` 不再强制 `String`，并允许 `number`，与 HTTP 的毫秒时间戳口径一致；前置任务候选排除已清理任务；README 补充时间戳与 `status:` 快照语义。
 
 ### 10.3 验证结果
 
@@ -1091,7 +1092,8 @@ export function lifecycleLabelKey(kind: LifecycleKind): string
 ### 10.4 验收审批
 
 - 用户要求使用 `advisor` 审批。当前会话经 magpie 网关连接，官方 `advisor_20260301` 服务端工具未被网关转发，`advisor` 返回 `failed: unavailable`（本次再次确认）。
-- 按用户全局约定改用独立模型复核：`delegate_task` + `role: review` + provider `magpie` / model `mm/workbuddy/glm-5.3[1m]`，只读审查，不改代码；复核结论记录在 T3 子线程与最终交付说明中。
+- 按用户全局约定改用独立模型复核：`delegate_task` + `role: review` + provider `magpie` / model `mm/workbuddy/glm-5.3[1m]`，只读审查，不改代码。
+- 复核结论：**APPROVE**，0 个阻塞问题；5 条非阻塞建议中采纳 3 条（工具 `due_at` 数字透传、README `status:` 语义、前置候选排除已清理任务），其余 2 条（`depFailureText` 中文关键词耦合、引号内逗号仍按标签分隔）保留为已知边界，不影响交付。
 
 ### 10.5 PR
 

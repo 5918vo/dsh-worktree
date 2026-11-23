@@ -155,7 +155,7 @@ Git 状态与会话状态分开显示：`review` 只表示 worktree 有待验收
 - 清理弹窗支持「强制」（存在未提交改动时）和「同时删除分支 / 强制删除未合并分支」；合并后自动切回原分支失败时，Inspector 显示「切回原分支」恢复入口。
 - 左右两栏均可折叠；未选中任务或选中项目时右栏自动收起，中栏显示项目详情。
 - 点击项目分组头部查看项目详情，点击任务项选中任务；任务项两层显示标题 + 状态/统计，以及分支 + 最近提交时间。
-- 搜索按项目名、任务标题、分支和状态过滤；`/` 或 `Ctrl/Cmd+K` 聚焦搜索，`Esc` 清空。搜索框支持 `tag:前端`、`priority:high`、`status:review` 等结构化 token，多个标签取 AND，多个优先级 / 状态取 OR；未知或非法 token 回落为纯文本，空查询时的提示行说明语法。
+- 搜索按项目名、任务标题、分支和状态过滤；`/` 或 `Ctrl/Cmd+K` 聚焦搜索，`Esc` 清空。搜索框支持 `tag:前端`、`priority:high`、`status:review` 等结构化 token，多个标签取 AND，多个优先级 / 状态取 OR；未知或非法 token 回落为纯文本，空查询时的提示行说明语法；带空格的值用引号包裹，但没有快照的任务不会满足 `status:` 条件。
 - 任务行在状态、优先级与标签 chip 之外，还会显示截止日期（逾期 / 今天 / 3 天内）与「等待 N 项前置」chip；两者都是派生展示，不改变状态、排序或合并门禁。
 - 项目详情提供任务总数、进行中、待验收、已合并统计，并把待审批任务汇总为可跳转提示。
 - 任务「概览」标签集中展示任务摘要与验收操作，「实时会话」展示会话时间线，「代码改动」展示待验收 diff；技术信息与危险操作固定在右栏。
@@ -306,6 +306,8 @@ worktree_publish { repository, base_branch?, title, task, branch_name?, parent_i
 worktree_tasks   {}
 worktree_act     { id, action, force?, delete_branch?, tags?, priority?, notes?, due_at?, depends_on? }
 ```
+
+`due_at` 接受 `YYYY-MM-DD` 或毫秒时间戳，写入时统一归一到本地日历日零点；`worktree_act` 的 `meta` 动作传 `null` 或空串清除。
 
 `worktree_act.action` 取值：
 
