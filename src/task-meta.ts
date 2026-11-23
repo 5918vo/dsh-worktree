@@ -71,6 +71,98 @@ export function priorityRank(task: { priority?: string }): number {
   return priority === 'high' ? 2 : priority === 'low' ? 0 : 1
 }
 
+/** A task is "due soon" from one day ahead up to this many days ahead. */
+export const DUE_SOON_DAYS = 3
+
+export type DueParse = { ok: true; value: number | null } | { ok: false }
+
+/** Local calendar midnight of `value`; a non-finite input reads as 0. */
+export function startOfLocalDay(value: number): number {
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return 0
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+}
+
+/**
+ * Parse a due date into local calendar midnight.
+ *
+ * `null`/`undefined`/`''` clear the field; a positive finite number is
+ * normalized to local midnight; `YYYY-MM-DD` is read as a local calendar date
+ * and round-trip verified (so `2026-02-30` is rejected); anything else goes
+ * through `Date.parse` and must be a real date. Invalid input is never coerced
+ * to a value, so a bad edit cannot silently move a deadline.
+ */
+export function parseDueAt(value: unknown): DueParse {
+  if (value === null || value === undefined || value === '') return { ok: true, value: null }
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || value <= 0) return { ok: false }
+    const day = startOfLocalDay(value)
+    return day ? { ok: true, value: day } : { ok: false }
+  }
+  const text = String(value).trim()
+  if (!text) return { ok: true, value: null }
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text)
+  if (match) {
+    const year = Number(match[1])
+    const month = Number(match[2])
+    const day = Number(match[3])
+    const date = new Date(year, month - 1, day)
+    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+      return { ok: false }
+    }
+    return { ok: true, value: date.getTime() }
+  }
+  const parsed = Date.parse(text)
+  if (!Number.isFinite(parsed)) return { ok: false }
+  const day = startOfLocalDay(parsed)
+  return day ? { ok: true, value: day } : { ok: false }
+}
+
+/**
+ * Whole local calendar days from today to the due date.
+ *
+ * Negative means overdue, 0 means due today. Comparing UTC midnights of the
+ * local Y/M/D keeps the count right across DST switches.
+ */
+export function dueDayOffset(dueAt: number | null | undefined, now: number = Date.now()): number | null {
+  const due = Number(dueAt)
+  if (!due || !Number.isFinite(due)) return null
+  const dueDay = new Date(due)
+  if (!Number.isFinite(dueDay.getTime())) return null
+  const today = new Date(Number.isFinite(now) ? now : Date.now())
+  const a = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
+  const b = Date.UTC(dueDay.getFullYear(), dueDay.getMonth(), dueDay.getDate())
+  return Math.round((b - a) / 86400000)
+}
+
+export type DueKind = 'overdue' | 'today' | 'soon' | 'later'
+
+export interface DueState {
+  kind: DueKind
+  /** Overdue: days late. Soon: days remaining. Today/later: 0. */
+  days: number
+}
+
+/** Bucket a due date for chips, filters and reports; null when unset. */
+export function dueStateOf(dueAt: number | null | undefined, now: number = Date.now()): DueState | null {
+  const offset = dueDayOffset(dueAt, now)
+  if (offset === null) return null
+  if (offset < 0) return { kind: 'overdue', days: -offset }
+  if (offset === 0) return { kind: 'today', days: 0 }
+  if (offset <= DUE_SOON_DAYS) return { kind: 'soon', days: offset }
+  return { kind: 'later', days: 0 }
+}
+
+/** `YYYY-MM-DD` for a date input; '' when unset or invalid. */
+export function dueInputValue(dueAt: number | null | undefined): string {
+  const value = Number(dueAt)
+  if (!value || !Number.isFinite(value)) return ''
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return ''
+  const pad = (n: number) => (n < 10 ? '0' + n : String(n))
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
 /** One order for every surface: pinned, then priority, then newest first. */
 export function compareTaskOrder(a: any, b: any): number {
   const pinned = (Number(b && b.pinnedAt) || 0) - (Number(a && a.pinnedAt) || 0)

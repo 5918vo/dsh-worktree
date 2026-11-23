@@ -194,7 +194,7 @@ export class Runtime {
     return result.task
   }
 
-  /** Atomically update tags / priority / notes; unknown ids are 404s. */
+  /** Atomically update tags / priority / notes / dependencies; unknown ids are 404s. */
   updateTaskMeta(id: string, patch: TaskMetaPatch): WorktreeTask {
     const result = this.ctx.store.updateTaskMeta(id, patch)
     if (result.ok) return result.task
@@ -202,7 +202,13 @@ export class Runtime {
       : result.reason === 'tags-too-many' ? '标签最多 8 个'
         : result.reason === 'tags-too-long' ? '单个标签最多 24 个字符'
           : result.reason === 'priority-invalid' ? '优先级只能是 low、normal 或 high'
-            : '备注最多 2000 个字符'
+            : result.reason === 'due-invalid' ? '截止日期无效'
+              : result.reason === 'notes-too-long' ? '备注最多 2000 个字符'
+                : result.reason === 'deps-too-many' ? '前置任务最多 8 个'
+                  : result.reason === 'deps-self' ? '不能依赖自己'
+                    : result.reason === 'deps-missing' ? '前置任务不存在'
+                      : result.reason === 'deps-cross-project' ? '只能依赖同一项目的任务'
+                        : '不能形成循环依赖'
     throw new TaskError(message, result.reason === 'missing' ? 404 : 400)
   }
 

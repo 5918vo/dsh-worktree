@@ -379,6 +379,41 @@ test('filterProjectViews search matches tags and notes', () => {
   assert.equal(filterProjectViews(views, 'all', 'missing', categoriesOf, () => '').length, 0)
 })
 
+test('filterProjectViews applies structured search conditions', () => {
+  const categoriesOf = (tv: any) => ({ categories: new Set([tv.snapshot.status === 'merged' ? 'merged' : 'review']) } as any)
+  const views = [{
+    project: { id: 'p1', name: 'Repo', repoPath: '/repo' },
+    tasks: [
+      { task: task({ id: 't1', title: 'Alpha', tags: ['前端'], priority: 'high' }), snapshot: { status: 'review' } },
+      { task: task({ id: 't2', title: 'Beta', tags: ['后端'], priority: 'high' }), snapshot: { status: 'merged' } },
+      { task: task({ id: 't3', title: 'Gamma', tags: ['前端'], notes: 'urgent' }), snapshot: { status: 'developing' } },
+    ],
+  }] as any
+  const ids = (list: any[]) => list.length ? list[0].tasks.map((item: any) => item.task.id) : []
+
+  assert.deepEqual(ids(filterProjectViews(views, 'all', 'tag:前端', categoriesOf, () => '')), ['t1', 't3'])
+  assert.deepEqual(ids(filterProjectViews(views, 'all', 'TAG:前端 TAG:紧急', categoriesOf, () => '')), [])
+  assert.deepEqual(ids(filterProjectViews(views, 'all', 'priority:high', categoriesOf, () => '')), ['t1', 't2'])
+  assert.deepEqual(ids(filterProjectViews(views, 'all', 'status:merged', categoriesOf, () => '')), ['t2'])
+  assert.deepEqual(ids(filterProjectViews(views, 'all', 'tag:前端 priority:high', categoriesOf, () => '')), ['t1'])
+  assert.deepEqual(ids(filterProjectViews(views, 'all', 'tag:前端 status:review status:merged', categoriesOf, () => '')), ['t1'])
+
+  // Plain text is unchanged: a project-name hit still widens to every task.
+  assert.deepEqual(ids(filterProjectViews(views, 'all', 'repo', categoriesOf, () => '')), ['t1', 't2', 't3'])
+  // ...but the name hit must not bypass a structured condition.
+  assert.deepEqual(ids(filterProjectViews(views, 'all', 'repo tag:后端', categoriesOf, () => '')), ['t2'])
+  assert.deepEqual(ids(filterProjectViews(views, 'all', 'repo tag:missing', categoriesOf, () => '')), [])
+
+  // An invalid value degrades to plain text and matches nothing here.
+  assert.equal(filterProjectViews(views, 'all', 'priority:urgent', categoriesOf, () => '').length, 0)
+
+  // The tag dropdown and the attention filter still stack with the query.
+  assert.deepEqual(ids(filterProjectViews(views, 'all', 'tag:前端', categoriesOf, () => '', '前端')), ['t1', 't3'])
+  assert.equal(filterProjectViews(views, 'all', 'tag:前端', categoriesOf, () => '', '后端').length, 0)
+  assert.deepEqual(ids(filterProjectViews(views, 'review', 'tag:前端', categoriesOf, () => '')), ['t1', 't3'])
+  assert.equal(filterProjectViews(views, 'review', 'status:merged', categoriesOf, () => '').length, 0)
+})
+
 test('compareTaskOrder is the single order used by the board', () => {
   const older = task({ id: 'old', createdAt: 10, priority: 'high' })
   const newer = task({ id: 'new', createdAt: 20 })

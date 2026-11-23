@@ -9,6 +9,8 @@ import type { TaskDiff, TaskSnapshot, WorktreeTask } from '../models'
 import { pad2 } from './format'
 import { fill, mdBlock, mdCodeCell, mdInline, reportTimestamp } from './markdown'
 import { branchHeadSha, criteria, criteriaProgress } from './model'
+import { buildTaskLifecycle, lifecycleCycleDays, lifecycleLabelKey } from './task-lifecycle'
+import { dueInputValue, dueStateOf } from '../task-meta'
 
 export interface ReportInput {
   task: WorktreeTask
@@ -97,6 +99,16 @@ export function buildAcceptanceReport(input: ReportInput): string {
   lines.push(metaLine(t.taskPriority, mdInline(
     task.priority === 'high' ? t.priorityHigh : task.priority === 'low' ? t.priorityLow : t.priorityNormal,
   )))
+  // The deadline is dated in local calendar days and repeats the overdue count
+  // so a printed report carries the same warning as the board.
+  const dueValue = dueInputValue(task.dueAt)
+  const dueState = dueStateOf(task.dueAt, now)
+  const dueText = dueValue
+    ? dueState && dueState.kind === 'overdue'
+      ? dueValue + '（' + fill(t.reportDueOverdue, { n: String(dueState.days) }) + '）'
+      : dueValue
+    : t.reportDueNone
+  lines.push(metaLine(t.reportDue, dueText))
   const head = branchHeadSha(task, snapshot)
   lines.push(metaLine(t.reportHead, mdCodeCell(head || '—')))
   if (task.mergedCommit) lines.push(metaLine(t.reportMergedCommit, mdCodeCell(task.mergedCommit)))
@@ -124,6 +136,22 @@ export function buildAcceptanceReport(input: ReportInput): string {
 
   lines.push(`## ${t.reportNotes}`)
   lines.push(mdBlock(task.notes) || String(t.taskNoNotes))
+  lines.push('')
+
+  // Derived lifecycle: local time for every event, short SHA only on merge, and
+  // the publish → merge cycle when the task has been merged.
+  const lifecycle = buildTaskLifecycle(task)
+  lines.push(`## ${t.reportLifecycle}`)
+  if (lifecycle.length) {
+    for (const event of lifecycle) {
+      const label = String(t[lifecycleLabelKey(event.kind)])
+      lines.push(`- ${reportTimestamp(event.at)} · ${label}${event.commit ? ` (${event.commit})` : ''}`)
+    }
+    const days = lifecycleCycleDays(task)
+    if (days != null) lines.push('', String(t.lifecycleCycle).replace('{n}', days.toFixed(1)))
+  } else {
+    lines.push(String(t.lifecycleEmpty))
+  }
   lines.push('')
 
   const commits: Array<{ hash: string; subject: string }> = (worktree.commits || [])

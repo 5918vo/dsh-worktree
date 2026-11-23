@@ -4,11 +4,14 @@ import { relTime, taskStamp } from './format'
 import { railStatsText } from './model'
 import type { ProjectView, TaskView } from '../models'
 import { boardBranch, boardStat, boardStatTitle, boardStatus, boardStatusLabel, type BoardFilter, type BoardTheme } from './model'
+import { dueStateOf } from '../task-meta'
 import { pendingLabel, postMergeLabel } from './status'
 import { AttentionFilter } from './attention-filter'
 import { AttentionSummaryBar } from './attention-summary'
 import { quickActionKey, type QuickAction, type SessionHealth, type TaskAttention } from './task-attention'
 import { environmentWarnings, type EnvironmentInfo } from './environment'
+import { fill } from './markdown'
+import type { DependencyStatus } from '../task-deps'
 
 export type RailEmptyKind = '' | 'search' | 'tag' | 'filter' | 'no-projects' | 'no-tasks'
 
@@ -31,6 +34,8 @@ export interface RailProps {
   pendingOf: (task: any) => string
   healthOf: (task: any) => SessionHealth | null
   attentionOf: (view: TaskView) => TaskAttention
+  /** Prerequisite state of a task; omitted hides the "waiting on" chip. */
+  depsOf?: (task: any) => DependencyStatus
   counts: Record<string, number>
   attentionTotal: number
   attentionStale: boolean
@@ -102,9 +107,12 @@ export function Rail(props: RailProps) {
           value: props.query,
           placeholder: t.boardSearch,
           'aria-label': t.boardSearch,
+          'aria-description': t.searchSyntaxHint,
+          title: t.searchSyntaxHint,
           onInput: (e: any) => props.onQuery(e.target.value),
         }),
         h('span', { className: 'dshwd-search-kbd dshwd-mono' }, '/')),
+      props.query ? null : h('div', { className: 'dshwd-search-hint' }, t.searchSyntaxHint),
       props.tags && props.tags.length
         ? h('div', { className: 'dshwd-tag-filter-wrap' },
           h('select', {
@@ -257,6 +265,21 @@ function taskRow(
   const primary = attention.primaryAlert
   if (task.priority === 'high') chips.push(chip(t.priorityHigh, 'warn'))
   else if (task.priority === 'low') chips.push(chip(t.priorityLow, 'weak'))
+  // Advisory only: a blocked task keeps its status and sort order.
+  const deps = props.depsOf ? props.depsOf(task) : null
+  if (deps && deps.blocked) {
+    chips.push(chip(fill(t.taskDepsBlocked, { n: deps.open.length }), 'warn', deps.open.map((item) => item.title).join(', ')))
+  }
+  // Deadline chip: overdue is an error tone, today/soon a warning. Later dates
+  // stay out of the row so a far-off deadline does not add noise.
+  const due = dueStateOf(task.dueAt)
+  if (due && due.kind === 'overdue') {
+    chips.push(chip(String(t.taskDueOverdue).replace('{n}', String(due.days)), 'err', t.taskDueHint))
+  } else if (due && due.kind === 'today') {
+    chips.push(chip(t.taskDueToday, 'warn', t.taskDueHint))
+  } else if (due && due.kind === 'soon') {
+    chips.push(chip(String(t.taskDueSoon).replace('{n}', String(due.days)), 'warn', t.taskDueHint))
+  }
   // Two tags at most: the row stays one line; the full list lives in the title
   // and in "+N" so nothing is lost.
   const tags: string[] = Array.isArray(task.tags) ? task.tags : []

@@ -1,6 +1,6 @@
 {
   "name": "@5318vo/dsh-worktree",
-  "version": "1.13.0",
+  "version": "1.14.0",
   "description": "DeepSeek Worktree task plugin — publish git-worktree-backed tasks; each task is a real DSH session bound to its worktree.",
   "type": "module",
   "main": "./dist/index.js",

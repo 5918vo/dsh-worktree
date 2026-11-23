@@ -10,6 +10,7 @@ const counts = (over: Record<string, number> = {}) => ({
   broken: 0,
   recovery: 0,
   stalled: 0,
+  overdue: 0,
   total: 0,
   ...over,
 })
@@ -28,6 +29,14 @@ test('the title follows the most severe present category', () => {
   assert.equal(title({ broken: 2, pending: 1 }), fill(zh.attentionSummaryBroken, { n: '2' }))
   assert.equal(title({ pending: 3, review: 1 }), fill(zh.attentionSummaryPending, { n: '3' }))
   assert.equal(title({ review: 4 }), fill(zh.attentionSummaryReview, { n: '4' }))
+})
+
+test('only-overdue boards name the overdue tasks', () => {
+  const title = (over: Record<string, number>) => attentionSummaryTitle(zh, counts(over), false, '—')
+  assert.equal(title({ overdue: 2 }), fill(zh.attentionSummaryOverdue, { n: '2' }))
+  // Pending outranks overdue at the same severity, so it keeps the headline.
+  assert.equal(title({ pending: 1, overdue: 2 }), fill(zh.attentionSummaryPending, { n: '1' }))
+  assert.equal(title({ overdue: 2, review: 1 }), fill(zh.attentionSummaryOverdue, { n: '2' }))
 })
 
 test('a board where only stalled tasks remain says they are stalled', () => {

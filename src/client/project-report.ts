@@ -6,6 +6,7 @@
 
 import type { Project, TaskView } from '../models'
 import { compareTaskOrder } from '../task-meta'
+import { dueInputValue } from '../task-meta'
 import { pad2 } from './format'
 import { fill, mdBlock, mdCell, mdCodeCell, mdInline, reportTimestamp, safeSlug } from './markdown'
 import { branchHeadSha, criteria, criteriaProgress } from './model'
@@ -92,8 +93,8 @@ export function buildProjectReport(input: ProjectReportInput): string {
     lines.push(String(t.projectReportEmpty))
     return lines.join('\n') + '\n'
   }
-  lines.push(`| ${t.projectReportColNo} | ${t.projectReportColStatus} | ${t.projectReportColTask} | ${t.projectReportColBranch} | ${t.projectReportColProgress} | ${t.projectReportColPriority} | ${t.projectReportColTags} | ${t.projectReportColActivity} |`)
-  lines.push('| --- | --- | --- | --- | --- | --- | --- | --- |')
+  lines.push(`| ${t.projectReportColNo} | ${t.projectReportColStatus} | ${t.projectReportColTask} | ${t.projectReportColBranch} | ${t.projectReportColProgress} | ${t.projectReportColPriority} | ${t.projectReportColDue} | ${t.projectReportColTags} | ${t.projectReportColActivity} |`)
+  lines.push('| --- | --- | --- | --- | --- | --- | --- | --- | --- |')
   views.forEach((view, index) => {
     const { task, snapshot } = view
     const items = criteria(task, snapshot.status)
@@ -106,6 +107,7 @@ export function buildProjectReport(input: ProjectReportInput): string {
       mdCodeCell(task.branch || '—'),
       progress.total ? `${progress.checked}/${progress.total}` : '—',
       mdCell(priorityText(t, task.priority)),
+      mdCell(dueInputValue(task.dueAt) || '—'),
       mdCell(tags),
       activityAt(view) ? mdCell(reportTimestamp(activityAt(view))) : '—',
     ]
@@ -122,6 +124,7 @@ export function buildProjectReport(input: ProjectReportInput): string {
     lines.push(`- ${t.reportStatus}: ${mdInline(statusLabel(view) || '—')}${archived}`)
     lines.push(`- ${t.reportTaskBranch}: ${mdCodeCell(task.branch || '—')}`)
     lines.push(`- ${t.reportBaseBranch}: ${mdCodeCell(task.baseBranch || '—')}`)
+    lines.push(`- ${t.reportDue}: ${mdCell(dueInputValue(task.dueAt) || t.reportDueNone)}`)
     if (task.mergedCommit) lines.push(`- ${t.projectReportMergedCommit}: ${mdCodeCell(task.mergedCommit)}`)
     lines.push(`- ${t.projectReportHead}: ${mdCodeCell(branchHeadSha(task, snapshot) || '—')}`)
     lines.push('')

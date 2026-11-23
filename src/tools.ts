@@ -26,7 +26,7 @@ function clean(value: unknown): Json {
   }
 }
 
-function brief(v: { task: { id: string; title: string; repoPath: string; baseBranch: string; branch: string; worktreePath: string; sessionId: string | null; parentId?: string; tags?: string[]; priority?: string; notes?: string; acceptanceCriteria?: string[] }; snapshot: { status: string; worktree: { ahead: number; dirtyCount: number }; repo: { currentBranch: string | null }; postMergeAhead?: number } }) {
+function brief(v: { task: { id: string; title: string; repoPath: string; baseBranch: string; branch: string; worktreePath: string; sessionId: string | null; parentId?: string; tags?: string[]; priority?: string; notes?: string; dependsOn?: string[]; dueAt?: number; acceptanceCriteria?: string[] }; snapshot: { status: string; worktree: { ahead: number; dirtyCount: number }; repo: { currentBranch: string | null }; postMergeAhead?: number } }) {
   return {
     id: v.task.id,
     title: v.task.title,
@@ -39,6 +39,8 @@ function brief(v: { task: { id: string; title: string; repoPath: string; baseBra
     tags: Array.isArray(v.task.tags) ? v.task.tags : [],
     priority: v.task.priority || 'normal',
     notes: v.task.notes || '',
+    dependsOn: Array.isArray(v.task.dependsOn) ? v.task.dependsOn : [],
+    dueAt: Number(v.task.dueAt) || 0,
     acceptanceCriteria: Array.isArray(v.task.acceptanceCriteria) ? v.task.acceptanceCriteria : [],
     status: v.snapshot.status,
     ahead: v.snapshot.worktree.ahead,
@@ -74,6 +76,7 @@ export function registerTools(app: App): () => void {
           acceptance_criteria: { type: 'array', items: { type: 'string' }, description: 'Optional acceptance criteria, one checkable result per item.' },
           tags: { type: 'array', items: { type: 'string' }, description: 'Optional free-form tags (max 8, 24 chars each).' },
           priority: { type: 'string', enum: ['low', 'normal', 'high'], description: 'Optional display priority (default normal).' },
+          due_at: { type: ['string', 'number'], description: 'Optional deadline as YYYY-MM-DD or epoch milliseconds (normalized to a local calendar day; overdue tasks are flagged on the board).' },
         },
         required: ['title', 'task'],
       },
@@ -93,6 +96,7 @@ export function registerTools(app: App): () => void {
             acceptanceCriteria: Array.isArray(args.acceptance_criteria) ? args.acceptance_criteria.map(String) : undefined,
             tags: Array.isArray(args.tags) ? args.tags.map(String) : undefined,
             priority: args.priority !== undefined ? String(args.priority) : undefined,
+            dueAt: args.due_at !== undefined ? args.due_at : undefined,
           })
           return clean({
             ok: true,
@@ -163,6 +167,8 @@ export function registerTools(app: App): () => void {
           tags: { type: 'array', items: { type: 'string' }, description: 'For meta: replace the tag list (max 8, 24 chars each; [] clears).' },
           priority: { type: 'string', enum: ['low', 'normal', 'high'], description: 'For meta: set the priority; normal clears it.' },
           notes: { type: 'string', description: 'For meta: set acceptance/handover notes (max 2000 chars; empty clears).' },
+          depends_on: { type: 'array', items: { type: 'string' }, description: 'For meta: replace the prerequisite task ids (same project, max 8; [] clears).' },
+          due_at: { type: ['string', 'number', 'null'], description: 'For meta: set the deadline as YYYY-MM-DD or epoch milliseconds; empty or null clears it.' },
         },
         required: ['id', 'action'],
       },
@@ -182,6 +188,10 @@ export function registerTools(app: App): () => void {
             for (const key of ['tags', 'priority', 'notes']) {
               if (Object.prototype.hasOwnProperty.call(args, key) && args[key] !== undefined) patch[key] = args[key]
             }
+            if (Object.prototype.hasOwnProperty.call(args, 'depends_on') && args.depends_on !== undefined) {
+              patch.dependsOn = args.depends_on
+            }
+            if (Object.prototype.hasOwnProperty.call(args, 'due_at') && args.due_at !== undefined) patch.dueAt = args.due_at
             return clean({ ok: true, task: brief(await app.runtime.view(app.runtime.updateTaskMeta(id, patch))) })
           }
           if (action === 'merge-preflight') {

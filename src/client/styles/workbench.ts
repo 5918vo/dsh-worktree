@@ -68,6 +68,7 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-search::placeholder { color: var(--text-3); }
 .dshw-board .dshwd-search:focus { border-color: var(--line-strong); }
 .dshw-board .dshwd-search-kbd { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); font-size: 10px; color: var(--text-3); padding: 1px 4px; border: 1px solid var(--line); border-radius: 4px; }
+.dshw-board .dshwd-search-hint { font-size: 10.5px; line-height: 1.4; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 2px; }
 .dshw-board .dshwd-tag-filter-wrap { position: relative; }
 .dshw-board .dshwd-tag-filter { width: 100%; height: 28px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg-stage); color: var(--text-2); font-size: 11.5px; outline: none; }
 .dshw-board .dshwd-tag-filter:focus { border-color: var(--line-strong); }
@@ -187,6 +188,12 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-notes-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .dshw-board .dshwd-notes-input { width: 100%; }
 .dshw-board .dshwd-meta-notes .dshwd-btn { margin-top: 4px; }
+.dshw-board .dshwd-lifecycle-list { list-style: none; margin: 0; padding: 0; }
+.dshw-board .dshwd-lifecycle-item { position: relative; display: flex; align-items: baseline; gap: 8px; padding: 3px 0 3px 18px; border-left: 1px solid var(--line); font-size: 12px; color: var(--text-2); }
+.dshw-board .dshwd-lifecycle-dot { position: absolute; left: -4px; top: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); box-shadow: 0 0 0 2px var(--bg-stage); }
+.dshw-board .dshwd-lifecycle-label { color: var(--text-1); }
+.dshw-board .dshwd-lifecycle-sha { color: var(--text-3); font-size: 10.5px; }
+.dshw-board .dshwd-lifecycle-time { margin-left: auto; color: var(--text-3); font-size: 11px; font-variant-numeric: tabular-nums; }
 .dshw-board .dshwd-tabs { display: flex; gap: 22px; }
 .dshw-board .dshwd-tab { position: relative; padding: 8px 0 11px; border: none; background: transparent; color: var(--text-3); font-size: 13px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; transition: color .12s; }
 .dshw-board .dshwd-tab:hover { color: var(--text-2); }
@@ -369,6 +376,19 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-management .dshw-stage-body { flex: 1; min-height: 0; }
 .dshw-board .dshwd-management .dshw-measure { max-width: none; }
 .dshw-board .dshwd-management .dshw-inspector { position: static; align-self: stretch; overflow: auto; }
+
+/* ---------- project insights: 7-day throughput bars ------------------------- */
+.dshw-board .dshwd-insights { margin-top: 12px; }
+.dshw-board .dshwd-insights-days { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: 6px; align-items: end; padding: 4px 0 2px; }
+.dshw-board .dshwd-insights-day { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.dshw-board .dshwd-insights-day-bars { display: flex; align-items: flex-end; justify-content: center; gap: 3px; width: 100%; height: 48px; border-bottom: 1px solid var(--line); }
+.dshw-board .dshwd-insights-bar { width: 6px; min-height: 0; border-radius: 2px 2px 0 0; background: var(--accent); }
+.dshw-board .dshwd-insights-bar--merged { background: var(--ok); }
+.dshw-board .dshwd-insights-day-label { font-size: 10px; color: var(--text-3); white-space: nowrap; }
+.dshw-board .dshwd-insights-legend { display: flex; gap: 14px; margin-top: 8px; font-size: 11px; color: var(--text-3); }
+.dshw-board .dshwd-insights-legend > span { display: inline-flex; align-items: center; gap: 5px; }
+.dshw-board .dshwd-insights-swatch { width: 8px; height: 8px; border-radius: 2px; background: var(--accent); }
+.dshw-board .dshwd-insights-swatch--merged { background: var(--ok); }
 @container dshwboard (max-width: 980px) {
   .dshw-board .dshwd-app { grid-template-columns: 248px minmax(0,1fr) 0; }
   .dshw-board .dshwd-app.dshwd-hide-left { grid-template-columns: 0 minmax(0,1fr) 0; }

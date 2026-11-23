@@ -13,7 +13,7 @@ export function AttentionFilter(props: any) {
   const t = props.t
   const value: BoardFilter = props.value || 'all'
   const counts: Record<string, number> = props.counts || {}
-  const options: BoardFilter[] = ['all', 'pending', 'review', 'stalled']
+  const options: BoardFilter[] = ['all', 'pending', 'overdue', 'review', 'stalled']
   if (RECOVERY_UI_READY) options.push('recovery')
   options.push('broken')
 
@@ -113,7 +113,7 @@ export function AttentionFilter(props: any) {
           onClick: () => choose(option),
         },
           h(Icon, {
-            name: option === 'recovery' || option === 'broken' ? 'alert' : option === 'pending' || option === 'review' || option === 'stalled' ? 'clock' : 'layers',
+            name: option === 'recovery' || option === 'broken' ? 'alert' : option === 'pending' || option === 'overdue' || option === 'review' || option === 'stalled' ? 'clock' : 'layers',
             className: 'dshwd-filter-ico',
           }),
           h('span', { className: 'dshwd-filter-option-label' }, t[categoryKey(option)]),

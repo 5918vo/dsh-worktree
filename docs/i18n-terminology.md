@@ -33,6 +33,12 @@
 | 标签 | 标签 | tag | `taskTags`；行内 chip `#tag`，筛选 `taskTagFilter`，全部 `taskTagAll` |
 | 优先级 | 优先级 | priority | `taskPriority`；三档 `priorityHigh` / `priorityNormal` / `priorityLow`，普通为默认且不落盘 |
 | 备注 | 备注 | notes | `taskNotes`；计数 `n/2000`，报告章节 `reportNotes`，空值 `taskNoNotes` |
+| 截止日期 | 截止日期 | due date | `taskDue`；行内 `taskDueOverdue` / `taskDueToday` / `taskDueSoon`，报告 `reportDue`，无值 `reportDueNone`；输入与展示统一 `YYYY-MM-DD` |
+| 逾期 | 逾期 | overdue | `attentionOverdue`；汇总 `attentionSummaryOverdue`，分类键 `overdue`，与「停滞」是并列分类 |
+| 前置任务 | 前置任务 | dependencies | `taskDeps`；行内「等待 {n} 项前置」`taskDepsBlocked`，服务端错误 `taskDepsCycle` / `taskDepsMissing` / `taskDepsCrossProject` 等 |
+| 项目洞察 | 项目洞察 | project insights | `insightsTitle`；周期 `insightsCycleMedian`、吞吐 `insightsMerged7d`、验收核对率 `insightsAcceptance`、空态 `insightsEmpty` |
+| 任务时间线 | 任务时间线 | task timeline | `taskLifecycle`；事件 `lifecycleCreated` / `lifecyclePinned` / `lifecycleMerged` / `lifecycleCleaned` / `lifecycleArchived` / `lifecycleUpdated`，周期 `lifecycleCycle` |
+| 结构化搜索 | 结构化搜索 | structured search | `searchSyntaxHint`；语法 `tag:` / `priority:` / `status:`，解析器 `src/client/search-query.ts` |
 | 停滞 | 停滞 | stalled | `attentionStalled`；行内「停滞 {n} 天」`attentionStalledDays`，汇总 `attentionSummaryStalled` |
 | 项目验收报告 | 项目验收报告 | project acceptance report | `projectReport`；文件名 `project-<slug>-<YYYYMMDD>-<HHmm>.md`，与单任务 `acceptance report` 区分 |
 
@@ -43,6 +49,8 @@
 - 文件：中文「个文件」；英文 "{n} file(s)"。
 - 目录/任务：中文「个目录」「个任务」。
 - 标签 / 备注：长度限制用「个字符」，不写「位」；标签数量用「个」。
+- 日期：截止日期输入与报告统一 `YYYY-MM-DD`，按本地日历日解释；不写「MM/DD」或相对日期。
+- 天数：逾期、剩余、停滞与周期统一用「天」；英文用 day(s)，不写 d。
 
 ## 3. 占位符规则
 

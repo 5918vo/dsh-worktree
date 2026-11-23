@@ -4,11 +4,14 @@ import type { TaskDiff, TaskView } from '../models'
 import { QUICK_PROMPTS, quickPromptDisabledReason, quickPromptReasonKey, quickPromptText } from './quick-prompts'
 import { acceptanceHintFor, criteria, criteriaProgress, boardStatus, boardStatusLabel, commitRangeText, diffCount, diffHeadSha, diffLineKind, shortSha, type BoardAction, type BoardCta } from './model'
 import { pendingLabel } from './status'
+import { buildTaskLifecycle, lifecycleCycleDays, lifecycleLabelKey } from './task-lifecycle'
 import type { SessionHealth } from './task-attention'
 import { fallbackEntries, type TimelineEntry } from './timeline'
 import { entryTag, entryTitle, liveStatsText, modelLabel, modelLabelFull, pressurePercent, readLive, stepStatusLabel, tokenSummary } from './live-session'
 import { postMergeCount, reviewStaleCount } from './review-surfaces'
-import { NOTES_MAX_LENGTH, parseTagText, validateTags } from '../task-meta'
+import { NOTES_MAX_LENGTH, dueInputValue, dueStateOf, parseDueAt, parseTagText, validateTags } from '../task-meta'
+import { DEPENDENCY_LIMIT } from '../task-deps'
+import { fill } from './markdown'
 
 export type BoardTab = 'overview' | 'live' | 'diff'
 
@@ -38,10 +41,14 @@ export interface StageProps {
   onDownloadReport?: () => void
   /** A report action is in flight; both report buttons stay disabled. */
   reportBusy?: boolean
-  /** Persist tags / priority / notes; omitted keeps the info block read-only. */
-  onSaveMeta?: (patch: { tags?: string[]; priority?: string; notes?: string }) => Promise<void>
+  /** Persist tags / priority / notes / dependencies / deadline; omitted keeps the info block read-only. */
+  onSaveMeta?: (patch: { tags?: string[]; priority?: string; notes?: string; dependsOn?: string[]; dueAt?: number | null }) => Promise<void>
   /** A metadata write is in flight; the editors stay disabled. */
   metaBusy?: boolean
+  /** Current prerequisites with their state, in `dependsOn` order (computed by the board). */
+  dependencyItems?: Array<{ id: string; title: string; done: boolean; missing?: boolean }>
+  /** Same-project tasks offered as prerequisites (self and archived rows excluded). */
+  dependencyOptions?: Array<{ id: string; title: string; done: boolean }>
   entries: TimelineEntry[]
   entriesReady: boolean
   /** Raw session projections `values` for the selected session, when available. */
@@ -273,6 +280,7 @@ function Overview(props: StageProps) {
       h('div', { className: 'dshwd-block-label' }, t.taskDescription),
       h('div', { className: 'dshwd-prose' }, props.taskView.task.description || '—')),
     h(TaskMetaSection, props),
+    h(TaskLifecycleSection, props),
     h('section', { className: 'dshwd-block' },
       h('div', { className: 'dshwd-block-head' },
         h('div', { className: 'dshwd-block-label' }, items.length ? `${t.acceptanceCriteria} · ${progressText}` : t.acceptanceCriteria),
@@ -314,6 +322,36 @@ function Overview(props: StageProps) {
       hint ? h('div', { className: 'dshwd-hint', style: { marginTop: '6px' } }, hint) : null))
 }
 
+type DependencyRowItem = { id: string; title: string; done: boolean; missing?: boolean }
+
+/** Prerequisites for display; the board supplies titles and state, ids are the fallback. */
+function dependencyRowItems(props: StageProps): DependencyRowItem[] {
+  if (Array.isArray(props.dependencyItems)) return props.dependencyItems as DependencyRowItem[]
+  const ids: string[] = Array.isArray(props.taskView.task.dependsOn) ? props.taskView.task.dependsOn : []
+  return ids.map((id) => ({ id, title: id, done: false }))
+}
+
+/** "Still waiting on 2: a, b" for the tasks that are neither done nor deleted. */
+function dependencyWaitingHint(t: any, items: DependencyRowItem[]): string {
+  const open = items.filter((item) => !item.missing && !item.done)
+  if (!open.length) return ''
+  return fill(t.taskDepsWaitingHint, { n: open.length, titles: open.map((item) => item.title).join(', ') })
+}
+
+/**
+ * Map a rejected save to the localized rule text. The board already toasts the
+ * raw server message; matching on the words it uses keeps the editor's own
+ * error readable without a second error-code channel.
+ */
+function depFailureText(t: any, error: any): string {
+  const message = String((error && error.message) || error || '')
+  if (message.indexOf('最多') >= 0) return t.taskDepsTooMany
+  if (message.indexOf('自己') >= 0) return t.taskDepsSelf
+  if (message.indexOf('同一项目') >= 0) return t.taskDepsCrossProject
+  if (message.indexOf('循环') >= 0) return t.taskDepsCycle
+  return message || t.taskDepsHint
+}
+
 /**
  * Read-only task info. Deliberately hook-free so the shallow-render tests can
  * walk it; the editable variant is only created when a save callback exists.
@@ -324,6 +362,13 @@ function TaskMetaSection(props: StageProps) {
   const task = props.taskView.task
   const tags: string[] = Array.isArray(task.tags) ? task.tags : []
   const priority = task.priority === 'high' || task.priority === 'low' ? task.priority : 'normal'
+  const deps = dependencyRowItems(props)
+  const waiting = dependencyWaitingHint(t, deps)
+  const hasMissing = deps.some((item) => item.missing)
+  const allDone = deps.length > 0 && !hasMissing && !waiting
+  // Deadline: date plus a near-term chip; far-off dates keep it quiet.
+  const dueValue = dueInputValue(task.dueAt)
+  const dueState = dueStateOf(task.dueAt)
   return h('section', { className: 'dshwd-block dshwd-task-meta' },
     h('div', { className: 'dshwd-block-label' }, t.taskInfo),
     h('div', { className: 'dshwd-meta-grid' },
@@ -336,8 +381,67 @@ function TaskMetaSection(props: StageProps) {
         h('div', { className: 'dshwd-meta-label' }, t.taskPriority),
         h('div', { className: 'dshwd-meta-value' }, h('span', { className: 'dshwd-chip dshwd-chip-sm' }, priority === 'high' ? t.priorityHigh : priority === 'low' ? t.priorityLow : t.priorityNormal))),
       h('div', { className: 'dshwd-meta-row' },
+        h('div', { className: 'dshwd-meta-label' }, t.taskDue),
+        h('div', { className: 'dshwd-meta-value' }, dueValue
+          ? h('span', { className: 'dshwd-meta-due' },
+            h('span', { className: 'dshwd-mono' }, dueValue),
+            dueState && dueState.kind !== 'later'
+              ? h('span', {
+                className: 'dshwd-chip' + (dueState.kind === 'overdue' ? ' dshwd-err' : ' dshwd-warn'),
+                title: t.taskDueHint,
+              }, dueState.kind === 'overdue'
+                ? String(t.taskDueOverdue).replace('{n}', String(dueState.days))
+                : dueState.kind === 'today' ? t.taskDueToday : String(t.taskDueSoon).replace('{n}', String(dueState.days)))
+              : null)
+          : h('span', { className: 'dshwd-hint' }, t.taskDueEmpty))),
+      h('div', { className: 'dshwd-meta-row' },
         h('div', { className: 'dshwd-meta-label' }, t.taskNotes),
-        h('div', { className: 'dshwd-prose dshwd-notes' }, task.notes || t.taskNotesEmpty))))
+        h('div', { className: 'dshwd-prose dshwd-notes' }, task.notes || t.taskNotesEmpty)),
+      h('div', { className: 'dshwd-meta-row' },
+        h('div', { className: 'dshwd-meta-label' }, t.taskDeps),
+        h('div', { className: 'dshwd-meta-value' },
+          deps.length
+            ? h('div', { className: 'dshwd-meta-chips' }, deps.map((item) => h('span', {
+              key: item.id,
+              className: 'dshwd-chip dshwd-chip-sm dshwd-tag' + (item.done ? ' dshwd-weak' : ''),
+              title: item.missing ? t.taskDepsMissing : item.done ? t.taskDepsDone : t.taskDepsOpen,
+            }, (item.done ? '✓ ' : '') + item.title + (item.missing ? ' · ' + t.taskDepsMissing : ''))))
+            : h('span', { className: 'dshwd-hint' }, t.taskDepsEmpty),
+          waiting
+            ? h('div', { className: 'dshwd-hint' }, waiting)
+            : allDone
+              ? h('div', { className: 'dshwd-hint' }, t.taskDepsAllDone)
+              : null))))
+}
+
+/**
+ * Derived lifecycle timeline: publish, pin, merge, clean, archive and a
+ * "last updated" row only when it is clearly later than the rest.
+ * Read-only: no storage field, no request, no state machine change.
+ */
+function TaskLifecycleSection(props: StageProps) {
+  const { t } = props
+  const task = props.taskView.task
+  const events = buildTaskLifecycle(task)
+  const days = lifecycleCycleDays(task)
+  const cycle = days == null ? null : String(t.lifecycleCycle).replace('{n}', days.toFixed(1))
+  return h('section', { className: 'dshwd-block dshwd-lifecycle' },
+    h('div', { className: 'dshwd-block-head' },
+      h('div', { className: 'dshwd-block-label' }, t.taskLifecycle),
+      cycle ? h('span', { className: 'dshwd-chip dshwd-chip-sm' }, cycle) : null),
+    events.length
+      ? h('ul', { className: 'dshwd-lifecycle-list' }, events.map((event) => h('li', {
+        key: event.kind,
+        className: 'dshwd-lifecycle-item',
+      },
+      h('span', { className: 'dshwd-lifecycle-dot', 'aria-hidden': 'true' }),
+      h('span', { className: 'dshwd-lifecycle-label' }, t[lifecycleLabelKey(event.kind)]),
+      event.commit ? h('span', { className: 'dshwd-lifecycle-sha dshwd-mono' }, shortSha(event.commit)) : null,
+      h('span', {
+        className: 'dshwd-lifecycle-time',
+        title: new Date(event.at).toLocaleString(),
+      }, relTime(event.at, t)))))
+      : h('div', { className: 'dshwd-hint' }, t.lifecycleEmpty))
 }
 
 /**
@@ -357,12 +461,22 @@ function TaskMetaEditor(props: StageProps) {
   // Keep the select responsive while the save is in flight; a failed save
   // snaps it back to the stored value.
   const [priorityDraft, setPriorityDraft] = React.useState(priority)
+  const [dueDraft, setDueDraft] = React.useState(dueInputValue(task.dueAt))
+  const [dueError, setDueError] = React.useState('')
   const [editingTags, setEditingTags] = React.useState(false)
   const [tagText, setTagText] = React.useState('')
   const [tagError, setTagError] = React.useState('')
   const [notes, setNotes] = React.useState(task.notes || '')
   const [notesOpen, setNotesOpen] = React.useState(false)
   const [notesError, setNotesError] = React.useState('')
+  const [depError, setDepError] = React.useState('')
+  const [depSaving, setDepSaving] = React.useState(false)
+  const depItems = dependencyRowItems(props)
+  const depIds: string[] = Array.isArray(task.dependsOn) ? task.dependsOn : []
+  const depOptions = Array.isArray(props.dependencyOptions)
+    ? props.dependencyOptions.filter((option) => depIds.indexOf(option.id) < 0)
+    : []
+  const depWaiting = dependencyWaitingHint(t, depItems)
   const editingRef = React.useRef(false)
   editingRef.current = notesOpen
   // Refresh may replace the task while the user is typing; never overwrite the
@@ -374,10 +488,17 @@ function TaskMetaEditor(props: StageProps) {
     setEditingTags(false)
     setTagError('')
     setNotesError('')
+    setDepError('')
   }, [task.id])
   React.useEffect(() => {
     setPriorityDraft(priority)
   }, [task.id, task.priority])
+  // A refresh can replace the task while the editor is open; reset the date
+  // buffer only when the stored deadline actually changed.
+  React.useEffect(() => {
+    setDueDraft(dueInputValue(task.dueAt))
+    setDueError('')
+  }, [task.id, task.dueAt])
 
   const startEditTags = () => {
     setTagText(tags.join(', '))
@@ -414,6 +535,34 @@ function TaskMetaEditor(props: StageProps) {
     }
     setNotesOpen(false)
     setNotes('')
+  }
+  const saveDeps = async (next: string[]) => {
+    if (!save || depSaving) return
+    setDepError('')
+    setDepSaving(true)
+    try {
+      await save({ dependsOn: next })
+    } catch (error) {
+      // The board already surfaced the server message; show the rule locally.
+      setDepError(depFailureText(t, error))
+    } finally {
+      setDepSaving(false)
+    }
+  }
+
+  // Date edits save immediately like the priority select: a good date is
+  // written, a bad one only raises an inline error and never reaches the store.
+  const saveDue = (raw: string) => {
+    if (!save) return
+    const previous = dueDraft
+    setDueDraft(raw)
+    setDueError('')
+    const parsed = parseDueAt(raw)
+    if (!parsed.ok) {
+      setDueError(t.taskDueInvalid)
+      return
+    }
+    void save({ dueAt: parsed.value }).catch(() => setDueDraft(previous))
   }
 
   return h('section', { className: 'dshwd-block dshwd-task-meta' },
@@ -470,6 +619,28 @@ function TaskMetaEditor(props: StageProps) {
               h('option', { value: 'high' }, t.priorityHigh))
             : h('span', { className: 'dshwd-chip dshwd-chip-sm' }, priority === 'high' ? t.priorityHigh : priority === 'low' ? t.priorityLow : t.priorityNormal))),
       h('div', { className: 'dshwd-meta-row' },
+        h('div', { className: 'dshwd-meta-label' }, t.taskDue),
+        h('div', { className: 'dshwd-meta-value' },
+          h('div', { className: 'dshwd-meta-editor' },
+            h('input', {
+              type: 'date',
+              className: 'dshwd-input' + (dueError ? ' dshwd-invalid' : ''),
+              value: dueDraft,
+              disabled: busy,
+              'aria-label': t.taskDue,
+              'aria-invalid': dueError ? 'true' : 'false',
+              onChange: (e: any) => saveDue(e.target.value),
+            }),
+            h('div', { className: 'dshwd-meta-editor-actions' },
+              h('button', {
+                type: 'button',
+                className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini',
+                disabled: busy || !dueDraft,
+                onClick: () => saveDue(''),
+              }, t.taskDueClear)),
+            h('div', { className: 'dshwd-hint' }, t.taskDueHint),
+            dueError ? h('div', { className: 'dshwd-alert', role: 'alert' }, dueError) : null))),
+      h('div', { className: 'dshwd-meta-row' },
         h('div', { className: 'dshwd-meta-label' }, t.taskNotes),
         h('div', { className: 'dshwd-meta-value' },
           notesOpen
@@ -495,8 +666,43 @@ function TaskMetaEditor(props: StageProps) {
               h('div', { className: 'dshwd-prose dshwd-notes' }, task.notes || t.taskNotesEmpty),
               save
                 ? h('button', { type: 'button', className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini', disabled: busy, onClick: () => { setNotes(task.notes || ''); setNotesError(''); setNotesOpen(true) } }, t.edit)
-                : null))))
-  )
+                : null))),
+      h('div', { className: 'dshwd-meta-row' },
+        h('div', { className: 'dshwd-meta-label' }, t.taskDeps),
+        h('div', { className: 'dshwd-meta-value' },
+          h('div', { className: 'dshwd-meta-chips' }, depItems.length
+            ? depItems.map((item) => h('span', {
+              key: item.id,
+              className: 'dshwd-chip dshwd-chip-sm dshwd-tag' + (item.done ? ' dshwd-weak' : ''),
+              title: item.missing ? t.taskDepsMissing : item.done ? t.taskDepsDone : t.taskDepsOpen,
+            }, (item.done ? '✓ ' : '') + item.title + (item.missing ? ' · ' + t.taskDepsMissing : ''),
+              h('button', {
+                type: 'button',
+                className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini',
+                disabled: busy || depSaving,
+                title: t.taskDepsRemove,
+                'aria-label': t.taskDepsRemove + ' · ' + item.title,
+                // Stale ids are dropped from the list as they are removed.
+                onClick: () => void saveDeps(depIds.filter((id) => id !== item.id)),
+              }, '×')))
+            : h('span', { className: 'dshwd-hint' }, t.taskDepsEmpty)),
+          h('select', {
+            className: 'dshwd-select dshwd-meta-select',
+            value: '',
+            disabled: busy || depSaving || depIds.length >= DEPENDENCY_LIMIT || depOptions.length === 0,
+            'aria-label': t.taskDepsAdd,
+            title: depIds.length >= DEPENDENCY_LIMIT ? t.taskDepsTooMany : t.taskDepsHint,
+            onChange: (e: any) => {
+              const chosen = String(e.target.value || '')
+              if (!chosen) return
+              void saveDeps([...depIds, chosen])
+            },
+          },
+            h('option', { value: '' }, t.taskDepsAdd),
+            depOptions.map((option) => h('option', { key: option.id, value: option.id }, option.title + (option.done ? ' ✓' : '')))),
+          depWaiting ? h('div', { className: 'dshwd-hint' }, depWaiting) : null,
+          h('div', { className: 'dshwd-hint' }, t.taskDepsHint),
+          depError ? h('div', { className: 'dshwd-alert', role: 'alert' }, depError) : null))))
 }
 
 function Live(props: StageProps) {

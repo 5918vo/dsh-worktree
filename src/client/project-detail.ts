@@ -6,6 +6,8 @@ import { copyText, cx, downloadText, relTime } from './format'
 import { resolveStatus, pendingLabel } from './status'
 import { boardStatus, boardStatusLabel } from './model'
 import { buildProjectReport, projectReportFilename } from './project-report'
+import { buildProjectInsights } from './project-insights'
+import { fill } from './markdown'
 import { DEFAULT_WORKTREE_DIR } from '../worktree-layout'
 
 export function ProjectDetail(props: any) {
@@ -233,6 +235,54 @@ export function ProjectDetail(props: any) {
       .sort((a: any, b: any) => ((b.task.updatedAt || b.task.createdAt || 0) - (a.task.updatedAt || a.task.createdAt || 0)))
       .slice(0, 6)
 
+    // One clock read per render: the seven day buckets must share a boundary.
+    const insights = buildProjectInsights(v.tasks, Date.now())
+    const maxDaily = insights.daily.reduce((max: number, day: any) => Math.max(max, day.created, day.merged), 0)
+    const barHeight = (count: number) => maxDaily > 0 ? Math.round((count / maxDaily) * 100) + '%' : '0%'
+    const insightsCard = h(Card, null,
+      h(CardHead, { icon: 'grid', title: t.projectInsights }),
+      h('div', { className: 'dshw-stats' },
+        h(Stat, {
+          label: t.insightsCycle,
+          icon: 'clock',
+          tone: 'brand',
+          value: insights.cycleAverageDays == null ? t.insightsNoData : fill(t.insightsCycleValue, { n: insights.cycleAverageDays.toFixed(1) }),
+        }),
+        h(Stat, { label: t.insightsMerged7, icon: 'branch', tone: 'success', value: insights.mergedLast7 }),
+        h(Stat, {
+          label: t.insightsAcceptance,
+          icon: 'check',
+          tone: 'brand',
+          value: insights.acceptancePercent == null ? t.insightsNoData : fill(t.insightsAcceptanceValue, { n: insights.acceptancePercent }),
+        }),
+        h(Stat, {
+          label: t.insightsOldest,
+          icon: 'clock',
+          tone: 'warn',
+          value: insights.oldestOpenDays == null ? t.insightsNoData : fill(t.insightsOldestValue, { n: insights.oldestOpenDays }),
+        })),
+      insights.cycleMedianDays == null
+        ? null
+        : h('div', { className: 'dshw-hint' }, fill(t.insightsCycleMedian, { n: insights.cycleMedianDays.toFixed(1) })),
+      insights.total === 0
+        ? h('div', { className: 'dshw-hint' }, t.insightsEmpty)
+        : h('div', { className: 'dshwd-insights' },
+          h('div', { className: 'dshw-block-label' }, t.insightsDaily),
+          h('div', { className: 'dshwd-insights-days', role: 'group', 'aria-label': t.insightsDaily },
+            insights.daily.map((day: any) => {
+              const date = new Date(day.start)
+              const dateLabel = (date.getMonth() + 1) + '/' + date.getDate()
+              const tip = fill(t.insightsDailyTip, { date: dateLabel, created: day.created, merged: day.merged })
+              return h('div', { key: day.offset, className: 'dshwd-insights-day', role: 'img', title: tip, 'aria-label': tip },
+                h('div', { className: 'dshwd-insights-day-bars', 'aria-hidden': 'true' },
+                  h('span', { className: 'dshwd-insights-bar dshwd-insights-bar--created', style: { height: barHeight(day.created) } }),
+                  h('span', { className: 'dshwd-insights-bar dshwd-insights-bar--merged', style: { height: barHeight(day.merged) } })),
+                h('span', { className: 'dshwd-insights-day-label dshw-mono' }, dateLabel))
+            })),
+          h('div', { className: 'dshwd-insights-legend' },
+            h('span', null, h('i', { className: 'dshwd-insights-swatch dshwd-insights-swatch--created', 'aria-hidden': 'true' }), t.insightsCreated),
+            h('span', null, h('i', { className: 'dshwd-insights-swatch dshwd-insights-swatch--merged', 'aria-hidden': 'true' }), t.insightsMerged))))
+
     // The project report is generated locally from the views already on screen;
     // copying and downloading must never disagree, so both share one text.
     const projectReportText = () => buildProjectReport({
@@ -300,6 +350,7 @@ export function ProjectDetail(props: any) {
               h('span', { className: 'dshw-act-title' }, item.task.title),
               h('span', { className: 'dshw-act-time dshw-mono' }, pendingLabel(t, props.pendingMap[item.task.sessionId]))))))
           : null,
+        insightsCard,
         h(Card, null,
           h(CardHead, { icon: 'file', title: t.projectReport }),
           h('div', { className: 'dshw-hint', style: { marginBottom: '10px' } }, t.projectReportHint),
