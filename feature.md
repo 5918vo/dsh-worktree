@@ -8,7 +8,7 @@
 >
 > 分工：主线程负责方案、任务拆分、集成、验收、文档与 PR；5 个 `pi` 子 agent 分别负责 5 个功能的编码落地与测试。上一批次（1.14.0 截止日期 / 依赖 / 洞察 / 结构化搜索 / 时间线）的文档见 git 历史。
 >
-> 状态：已规划 / 实施中（验收记录见第 10 节）。
+> 状态：已实施 / 已验收（验收记录见第 10 节）。
 
 ## 0. 批次总览
 
@@ -699,7 +699,7 @@ export function saveSavedViews(views: SavedView[], storage?: Storage | null): { 
 - [ ] 截止日期、依赖、估算、工时、注意力筛选、标签筛选、归档开关互相兼容；组合结果正确。
 - [ ] 旧任务记录（无新字段）加载不报错，排序与状态不变。
 - [ ] `npm run check:locale` 通过；中英文 key 完全一致。
-- [ ] `npm run verify`（typecheck + locale + 测试 + 构建）通过，测试数量不少于当前基线的 **560** 项并有所增加（目标 600–640 项）。
+- [ ] `npm run verify`（typecheck + locale + 测试 + 构建）通过，测试数量不少于当前基线的 **560** 项并有所增加（目标 600–640 项；实际 643 项）。
 - [ ] README、CHANGELOG、docs/frontend-design.md、docs/i18n-terminology.md、package.json、package-lock.json 由主线程更新到 1.15.0。
 - [ ] 不引入新依赖；只新增 `task/timer` 路由；现有接口语义只做可选字段扩展。
 
@@ -781,29 +781,38 @@ export function saveSavedViews(views: SavedView[], storage?: Storage | null): { 
 
 ## 10. 验收记录
 
-- **状态**：已规划，等待 5 个子 agent 实施与主线程集成。
+- **状态**：已实施，主线程集成与验收通过。
 
 ### 10.1 实施来源
 
 | 功能 | 子 agent 分支 | 子 agent HEAD | 集成提交 |
 | --- | --- | --- | --- |
-| 工时计时 | 待回填 | 待回填 | 待回填 |
-| 规模估算与负载 | 待回填 | 待回填 | 待回填 |
-| 依赖关系图 | 待回填 | 待回填 | 待回填 |
-| 风险雷达 | 待回填 | 待回填 | 待回填 |
-| 保存的筛选视图 | 待回填 | 待回填 | 待回填 |
+| 工时计时 | `t3/task-work-timer` | `195c133d5f92d6fb6cf8c5f60535cb5e0fc8c77b` | `557c266fe755775c1e31df6c83cc9674de824f3e` |
+| 规模估算与负载 | `t3/task-estimate-load` | `f0031f53524a1c03af97f6d450cac5fb6c6ad178` | `5046cb3927eb97ebf154b8f68624badf627449f5` |
+| 依赖关系图 | `t3/dependency-graph` | `5e391e9de90af621cb2fc5dae6fe03774a678ee4` | `92fa563f5c96d61e6ecabdd68e6e8859ef55119c` |
+| 风险雷达 | `t3/project-risk-radar` | `b0fa9e18ac6e41e6f4da50c807daa9b70f438976` | `87326ad9d5243dd185512080192dc6a520929e34` |
+| 保存的筛选视图 | `t3/saved-filter-views` | `392afb0cd6084650846597657fca9337c7885523` | `71150e23e45d9f3f7a8d647f81f6958a534db239` |
+
+集成顺序按改动面从小到大（依赖图 → 估算 → 视图 → 风险 → 工时），每个子 agent 只交一个提交；主线程逐个 `cherry-pick`，冲突处保留双方字段与渲染分支。
 
 ### 10.2 主线程复核修正
 
-- 待回填：集成冲突处理、共享字段链路核对、locale 补齐、独立复核后的修正。
+- **共享模型**：`src/models.ts` 同时保留 `estimate` 与 `workMs` / `workStartedAt`；旧记录不迁移。
+- **Store**：`src/store.ts` 的 task-meta 导入同时保留 `parseEstimate` 与 `isWorkTiming` / `startWorkTimer` / `stopWorkTimer`；计时开始 / 停止都在 `withLock` 内完成，重复操作不写账本，关闭任务拒绝开始但允许停止。
+- **工具层**：`src/tools.ts` 的 briefing 同时返回 `estimate`、`workMs`、`workStartedAt`；`worktree_act` 同时接受 `estimate` 与 `timer_action`，`timer` 动作校验参数并映射 400 / 404。
+- **任务信息与左栏**：`stage.ts` 与 `rail.ts` 的导入合并估算、计时与保存视图依赖；任务信息保留「估算 → 截止 → 工时」顺序，左栏同时显示计时 chip、估算 chip 与保存视图下拉。
+- **报告**：单任务报告同时输出「规模估算」与「工时」行；项目报告任务表列顺序统一为 `序号 / 状态 / 任务 / 分支 / 验收 / 优先级 / 估算 / 截止 / 工时 / 标签 / 最近活动`，表头、分隔行、数据行与每任务详情同步调整。
+- **测试**：`test/http-flow.test.ts` 拼接估算与计时的 publish / meta / timer 用例；`test/client-project-report.test.ts` 的期望表头与行数据加入估算 / 工时两列，并修正前缀匹配顺序。
+- **文案**：locale 自动合并为 `zh=848` / `en=848`；`docs/i18n-terminology.md` 的键名与占位符按实际 locale 修正（`taskWorkEmpty` / `taskWorkTiming` / `taskEstimateEmpty` / `depGraphHasCycle` / `riskRadar` / `savedViewSelect` 等，移除不存在的 `{points}`）。
 
 ### 10.3 验证结果
 
-- 待回填：`npm run typecheck`、`npm run check:locale`、`npm test`、`npm run build`、`npm run verify` 的结果与测试数量。
-
-### 10.4 验收审批
-
-- 待回填：按用户全局约定，优先使用 `delegate_task` + `role: review` 的独立 reviewer 做只读复核；`advisor` 在 magpie 网关下的可用性单独记录。
+- `npm run typecheck`：通过。
+- `npm run check:locale`：通过，`zh=848 en=848`，客户端引用 618 个键。
+- `npm test`：643 项全部通过，0 失败；基线 560 项，净增 83 项。
+- `npm run build`：通过，`dist/index.js` 与 `dist/client.js`（648.2kb）生成。
+- `npm run verify`：通过（typecheck + locale + 643 项测试 + 构建）。
+- 集成提交后工作区无冲突标记，`git diff --check` 无空白错误。
 
 ### 10.5 PR
 
