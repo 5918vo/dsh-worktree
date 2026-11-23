@@ -1098,4 +1098,4 @@ export function lifecycleLabelKey(kind: LifecycleKind): string
 ### 10.5 PR
 
 - 分支：`t3/daily-5-feature-pipeline`
-- PR：待创建（创建后回填编号与链接）。
+- PR：https://github.com/5918vo/dsh-worktree/pull/25 （#25）
