@@ -2,7 +2,15 @@
 
 本文件记录 `@5318vo/dsh-worktree` 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [未发布] - 2026-11-23 · 多窗口与台账并发安全
+## [1.15.0] - 2026-11-23 · 执行节奏与风险可视化
+
+### 新增
+
+- 任务工时计时：任务记录新增可选 `workMs` / `workStartedAt`。任务详情可开始 / 停止计时，显示累计时长与「计时中」状态；左栏任务行显示计时中 chip；单任务报告新增「工时」行，项目报告任务表新增「工时」列。计时由服务端在账本锁内写入时间戳，重复开始 / 停止幂等，时钟回拨不产生负数；已合并 / 已清理 / 已归档任务不能开始新计时，但允许停止。
+- 任务规模估算与项目负载：任务记录新增可选 `estimate`（`1/2/3/5/8` 点）。发布高级区与任务详情都可设置 / 清除；左栏显示点数 chip；项目洞察新增进行中估算点数、已估算 / 未估算任务数与估算覆盖率；单任务报告与项目报告同步输出估算。估算不参与排序、不阻塞合并。
+- 依赖关系图：项目详情新增「依赖关系图」卡片，把前置依赖画成分层 DAG，区分未完成 / 已完成 / 缺失 / 循环节点；点击节点或按层列表可跳到任务。最多展示 60 个真实任务，缺失依赖生成缺失节点，异常循环数据有安全兜底，不请求 Git、不写记录。
+- 项目风险雷达：项目详情新增「风险雷达」卡片，按 Git 异常、逾期、临近截止、停滞、未完成前置、验收缺口给开放任务打分，显示高 / 中 / 低计数与最该处理的前 5 项及原因；纯派生、不改变任务状态。
+- 保存的筛选视图：左栏新增视图下拉，可把搜索文本、注意力筛选、标签筛选与「显示已归档」开关保存为命名视图（最多 20 个，名称最长 40 字符），一键恢复；同名保存更新原视图，手动修改后回到「自定义」。视图保存在浏览器 `localStorage`，损坏 / 超限 / 存储不可用时安全降级，不写任务台账。
 
 ### 修复
 
@@ -22,10 +30,20 @@
 - `TaskError` 移到 `src/errors.ts`（与 `StoreError` 同处），避免 `store.ts` 与 `runtime/types.ts` 的循环依赖。
 - 模型工具文档补 `worktree_projects`；README 新增「多窗口与并发安全」一节，说明锁、写失败、三态 Agent 状态、恢复路径与已知边界（同步 Store 最长阻塞事件循环 `lockWaitMs`）。
 - 并入 1.14.0 基线时，Store 新增的 `updateTaskMeta`（标签 / 优先级 / 备注 / 截止日期 / 前置依赖）走同一套安全路径：`withLock` 内 `refreshTasks()` 按隔离规则读取损坏文件、校验后 `saveTasks()`（临时文件 + rename，失败抛 `StoreError`）；它自己不额外调 `beat()`，心跳只在进入 `withLock` 时刷新，因此锁等待与心跳不会互相阻塞。
+- `WorktreeTask` 新增可选 `workMs?: number`、`workStartedAt?: number`、`estimate?: TaskEstimate`，旧记录无需迁移；新增 `src/task-timer.ts`（`elapsedWorkMs` / `startWorkTimer` / `stopWorkTimer` / `formatWorkDuration`）与 `src/task-meta.ts` 的 `TASK_ESTIMATES` / `parseEstimate`。
+- Store 新增 `startTaskTimer` / `stopTaskTimer`（`TimerResult`），`TaskMetaPatch` 扩展 `estimate` 并新增 `estimate-invalid` 原因；计时与元数据写入都在账本锁内完成。
+- 新增 HTTP 路由 `POST task/timer`（`{ id, action: 'start' | 'stop' }`）；`POST publish` 与 `POST task/meta` 接受 `estimate`；`worktree_publish` 新增 `estimate`，`worktree_act` 新增 `timer` 动作与 `timer_action` 参数，briefing 返回 `workMs` / `workStartedAt` / `estimate`。
+- 新增纯函数模块 `src/client/dependency-graph.ts`（`buildDependencyGraph`，`DEP_GRAPH_LIMIT = 60`）、`src/client/project-risk.ts`（`buildProjectRisk`，风险分上限 10）、`src/client/saved-views.ts`（视图校验 / 序列化，`SAVED_VIEW_LIMIT = 20`）、`src/client/view-storage.ts`（`SAVED_VIEWS_KEY = 'dshw-board:saved-views:v1'`）；`src/client/model.ts` 导出 `BOARD_FILTERS` / `isBoardFilter` 供视图校验共用。
+- `ProjectInsights` 新增 `openEstimatePoints` / `estimatedOpen` / `unestimatedOpen` / `estimateCoveragePercent`；Rail 新增保存视图下拉与计时 / 估算 chip，项目详情新增依赖关系图与风险雷达卡片。
 
 ### 测试
 
 - 新增 `store-write-failure`（真实文件系统故障注入、损坏隔离、HTTP 500 映射、半写保护）、`store-lock`（真实子进程持锁、超时 503、崩溃接管、token 释放、CPU 不再忙等）、`cross-instance-agent`（双 Store 心跳、registry miss、崩溃/恢复、租约接管、`session/reset`）、`delete-project`（运行中 Agent、未知状态、进行中 git 操作、并发仓库锁、部分失败）、`publish-failure`（发布失败不留记录/分支/空壳）与 `recents` token 用例；绑定用例重写为 claim/lease/cwd 校验/孤儿清理/双窗口冲突。
+- 新增 `task-timer` / `task-timer-store` / `task-estimate-store` / `client-dependency-graph` / `client-project-risk` / `client-saved-views` / `client-view-storage` 用例，并扩展 Store、HTTP、工具动作、任务元数据、发布草稿、项目洞察、单任务报告与项目报告测试；覆盖计时幂等与时钟回拨、估算校验与负载口径、依赖图分层 / 缺失 / 循环 / 截断、风险评分与分档、视图序列化 / 损坏存储 / 超限。`npm run verify` 全部通过。
+
+### 文档
+
+- `README.md`、`docs/frontend-design.md`、`docs/i18n-terminology.md` 与 `feature.md` 同步更新到 1.15.0；`locale/zh.json` 与 `locale/en.json` 新增工时、估算、依赖图、风险雷达与保存视图系列文案，`npm run check:locale` 通过。
 
 ## [1.14.0] - 2026-11-23
 
