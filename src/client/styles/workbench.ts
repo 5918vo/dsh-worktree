@@ -407,6 +407,49 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-insights-legend > span { display: inline-flex; align-items: center; gap: 5px; }
 .dshw-board .dshwd-insights-swatch { width: 8px; height: 8px; border-radius: 2px; background: var(--accent); }
 .dshw-board .dshwd-insights-swatch--merged { background: var(--ok); }
+
+/* ---------- dependency graph: layered DAG --------------------------------- */
+.dshw-board .dshwd-depgraph-legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px; color: var(--text-3); }
+.dshw-board .dshwd-depgraph-legend-item { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.dshw-board .dshwd-depgraph-swatch { width: 9px; height: 9px; border-radius: 2px; border: 1px solid var(--text-3); background: transparent; }
+.dshw-board .dshwd-depgraph-swatch--open { border-color: var(--accent); background: var(--accent-soft); }
+.dshw-board .dshwd-depgraph-swatch--done { border-color: var(--ok); background: var(--ok-soft); }
+.dshw-board .dshwd-depgraph-swatch--missing { border-style: dashed; border-color: var(--text-3); }
+.dshw-board .dshwd-depgraph-swatch--cycle { border-color: var(--err); background: var(--err-soft); }
+.dshw-board .dshwd-depgraph-scroll { overflow: auto; max-width: 100%; padding: 4px 2px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-rail); }
+.dshw-board .dshwd-depgraph-svg { display: block; max-width: none; }
+.dshw-board .dshwd-depgraph-edge { fill: none; stroke: var(--text-3); stroke-width: 1.4; opacity: .7; }
+.dshw-board .dshwd-depgraph-edge--missing { stroke-dasharray: 4 3; }
+.dshw-board .dshwd-depgraph-edge--cycle { stroke: var(--err); opacity: .9; }
+.dshw-board .dshwd-depgraph-arrow { fill: var(--text-3); }
+.dshw-board .dshwd-depgraph-arrow--missing { fill: var(--text-3); }
+.dshw-board .dshwd-depgraph-arrow--cycle { fill: var(--err); }
+.dshw-board .dshwd-depgraph-node { cursor: pointer; }
+.dshw-board .dshwd-depgraph-node--missing { cursor: default; }
+.dshw-board .dshwd-depgraph-rect { fill: var(--bg-elevated); stroke: var(--accent-line); stroke-width: 1; }
+.dshw-board .dshwd-depgraph-node:hover .dshwd-depgraph-rect { stroke: var(--accent); }
+.dshw-board .dshwd-depgraph-label { fill: var(--text-1); font-size: 12px; pointer-events: none; }
+.dshw-board .dshwd-depgraph-node--done .dshwd-depgraph-rect { stroke: var(--ok-line); fill: var(--bg-rail); }
+.dshw-board .dshwd-depgraph-node--done .dshwd-depgraph-label { fill: var(--text-2); }
+.dshw-board .dshwd-depgraph-node--archived .dshwd-depgraph-rect { stroke-dasharray: 2 3; }
+.dshw-board .dshwd-depgraph-node--archived .dshwd-depgraph-label { fill: var(--text-3); }
+.dshw-board .dshwd-depgraph-node--missing .dshwd-depgraph-rect { fill: transparent; stroke: var(--text-3); stroke-dasharray: 5 4; }
+.dshw-board .dshwd-depgraph-node--missing .dshwd-depgraph-label { fill: var(--text-3); font-style: italic; }
+.dshw-board .dshwd-depgraph-node--cycle .dshwd-depgraph-rect { stroke: var(--err); stroke-width: 1.6; }
+.dshw-board .dshwd-depgraph-node--cycle .dshwd-depgraph-label { fill: var(--err); }
+.dshw-board .dshwd-depgraph-warn { display: flex; align-items: center; gap: 7px; margin-top: 8px; padding: 7px 9px; border-radius: 7px; border: 1px solid var(--warn-line); background: var(--warn-soft); color: var(--warn); font-size: 12px; }
+.dshw-board .dshwd-depgraph-layers { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.dshw-board .dshwd-depgraph-layer { display: flex; flex-direction: column; gap: 5px; }
+.dshw-board .dshwd-depgraph-layer-title { font-size: 11px; font-weight: 600; color: var(--text-2); }
+.dshw-board .dshwd-depgraph-layer-items { display: flex; flex-wrap: wrap; gap: 6px; }
+.dshw-board .dshwd-depgraph-item { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg-elevated); color: var(--text-1); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.dshw-board button.dshwd-depgraph-item:hover { border-color: var(--accent-line); background: var(--bg-hover); }
+.dshw-board .dshwd-depgraph-item--done { color: var(--text-2); }
+.dshw-board .dshwd-depgraph-item--archived { color: var(--text-3); border-style: dashed; }
+.dshw-board .dshwd-depgraph-item--missing { cursor: default; color: var(--text-3); border-style: dashed; background: transparent; }
+.dshw-board .dshwd-depgraph-item--cycle { border-color: var(--err-line); color: var(--err); }
+.dshw-board .dshwd-depgraph-item-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dshw-board .dshwd-depgraph-item-status { flex: none; font-size: 10.5px; color: var(--text-3); }
 @container dshwboard (max-width: 980px) {
   .dshw-board .dshwd-app { grid-template-columns: 248px minmax(0,1fr) 0; }
   .dshw-board .dshwd-app.dshwd-hide-left { grid-template-columns: 0 minmax(0,1fr) 0; }
