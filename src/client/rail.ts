@@ -56,6 +56,9 @@ export interface RailProps {
   searchRef: any
   /** Host capabilities from `GET config`; absent while loading or after failure. */
   environment?: EnvironmentInfo | null
+  /** Narrow container: the rail is an overlay sheet with its own close control. */
+  narrow?: boolean
+  onClose?: () => void
 }
 
 export function Rail(props: RailProps) {
@@ -76,7 +79,21 @@ export function Rail(props: RailProps) {
     return () => document.removeEventListener('pointerdown', onPointer, true)
   }, [moreOpen])
 
-  return h('aside', { className: 'dshwd-rail' },
+  return h('aside', {
+    className: 'dshwd-rail',
+    'aria-label': t.boardRailLabel,
+    ...(props.narrow ? { role: 'dialog', 'aria-modal': 'true' } : null),
+  },
+    props.narrow && props.onClose
+      ? h('div', { className: 'dshwd-drawer-head' },
+        h('span', { className: 'dshwd-drawer-title' }, t.boardRailLabel),
+        h('button', {
+          className: 'dshwd-btn dshwd-btn-ghost dshwd-drawer-close',
+          title: t.close,
+          'aria-label': t.close,
+          onClick: props.onClose,
+        }, '×'))
+      : null,
     h('div', { className: 'dshwd-rail-top' },
       h('div', { className: 'dshwd-logo' },
         h('span', { className: 'dshwd-logo-mark' }, 'W'),
@@ -189,6 +206,7 @@ export function Rail(props: RailProps) {
         style: { height: '24px', fontSize: '11px' },
         // The switch only restyles this panel; the host chrome keeps its own theme.
         title: (props.theme === 'dark' ? t.boardThemeLight : t.boardThemeDark) + ' · ' + t.boardThemeScope,
+        'aria-label': (props.theme === 'dark' ? t.boardThemeLight : t.boardThemeDark) + ' · ' + t.boardThemeScope,
         onClick: props.onToggleTheme,
       }, props.theme === 'dark' ? t.boardThemeLight : t.boardThemeDark)))
 }

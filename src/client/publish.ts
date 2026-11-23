@@ -5,7 +5,17 @@ import { normalizeCriteria, parseCriteriaText } from '../criteria'
 import { parseDueAt, parseTagText, validateTags } from '../task-meta'
 import { applyPublishTemplate, branchChoices, initialPublishForm, publishDraftDirty, type PublishCheckInfo, type PublishDraft } from './publish-state'
 import { worktreePreviewRoot } from '../worktree-layout'
+import { useDialogFocus } from './dialog-focus'
 import type { ProjectView, TaskView, TaskTemplate } from '../models'
+
+/** Stable ids so a field error is announced as the field's description. */
+const FIELD_ERROR_ID: Record<string, string> = {
+  title: 'dshwd-publish-err-title',
+  description: 'dshwd-publish-err-description',
+  branch: 'dshwd-publish-err-branch',
+  tags: 'dshwd-publish-err-tags',
+  dueAt: 'dshwd-publish-err-due-at',
+}
 
 export interface PublishModalProps {
   t: any
@@ -82,10 +92,8 @@ export function PublishModal(props: PublishModalProps) {
   const titleRef = React.useRef(null)
   const rootRef = React.useRef(null)
   const keepRef = React.useRef(null)
-  const restoreFocus = React.useRef(null as any)
   // Capture the opener during render, before autoFocus moves focus into the
   // dialog; an effect would already see the focused input.
-  if (restoreFocus.current === null && typeof document !== 'undefined') restoreFocus.current = document.activeElement
   const submitRef = React.useRef(false)
   // Read through a ref: the parent passes a fresh onDraft closure each render,
   // and depending on it would re-emit (and re-render) in a loop.
@@ -95,13 +103,6 @@ export function PublishModal(props: PublishModalProps) {
   const branchInfo = useBranchInfo(project ? project.repoPath : '')
   const branches = branchInfo.data && Array.isArray(branchInfo.data.branches) ? branchInfo.data.branches : []
   const branchNames = branches.map((b: any) => (typeof b === 'string' ? b : b && b.name)).filter(Boolean)
-
-  React.useEffect(() => {
-    return () => {
-      const el: any = restoreFocus.current
-      if (el && typeof el.focus === 'function' && el.isConnected) el.focus()
-    }
-  }, [])
 
   React.useEffect(() => {
     getJson('acceptance-criteria')
@@ -215,39 +216,11 @@ export function PublishModal(props: PublishModalProps) {
     if (onDraftRef.current) onDraftRef.current(currentForm())
   }, [title, description, manual, picked, branch, tags, priority, dueAt])
 
-  React.useEffect(() => {
-    const onKey = (e: any) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        closeRef.current()
-        return
-      }
-      if (e.key !== 'Tab') return
-      const root: any = rootRef.current
-      if (!root) return
-      const nodes = Array.from(root.querySelectorAll('input, select, textarea, button, [tabindex]:not([tabindex="-1"])'))
-        .filter((el: any) => !el.disabled && el.getClientRects().length > 0)
-      if (!nodes.length) return
-      const first: any = nodes[0]
-      const last: any = nodes[nodes.length - 1]
-      // Focus can land on the backdrop (or outside the dialog after a rerender);
-      // pull it back before deciding whether it sits on the first/last node.
-      if (!root.contains(document.activeElement)) {
-        e.preventDefault()
-        ;(e.shiftKey ? last : first).focus()
-        return
-      }
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault()
-        last.focus()
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault()
-        first.focus()
-      }
-    }
-    document.addEventListener('keydown', onKey, true)
-    return () => document.removeEventListener('keydown', onKey, true)
-  }, [])
+  // Shared dialog behaviour: initial focus on the title field, a real Tab
+  // loop, Escape only when idle, and focus returned to the opener on unmount.
+  const busyRef = React.useRef(busy)
+  busyRef.current = busy
+  useDialogFocus({ rootRef, initialRef: titleRef, busyRef, onClose: () => closeRef.current() })
 
   const toggleCriterion = (item: string) => {
     setPicked((list: string[]) => (list.includes(item) ? list.filter((x: string) => x !== item) : list.concat(item)))
@@ -433,9 +406,10 @@ export function PublishModal(props: PublishModalProps) {
       disabled: busy,
       placeholder: t.boardTitlePlaceholder,
       'aria-invalid': fieldErrors.title ? 'true' : 'false',
+      'aria-describedby': fieldErrors.title ? FIELD_ERROR_ID.title : undefined,
       onChange: (e: any) => { setTitle(e.target.value); clearField('title') },
     }), true),
-    fieldErrors.title ? h('div', { className: 'dshwd-alert', role: 'alert' }, fieldErrors.title) : null,
+    fieldErrors.title ? h('div', { className: 'dshwd-alert', role: 'alert', id: FIELD_ERROR_ID.title }, fieldErrors.title) : null,
 
     templates.length
       ? field(t, t.template, h('select', {
@@ -456,9 +430,10 @@ export function PublishModal(props: PublishModalProps) {
       disabled: busy,
       placeholder: t.boardDescriptionPlaceholder,
       'aria-invalid': fieldErrors.description ? 'true' : 'false',
+      'aria-describedby': fieldErrors.description ? FIELD_ERROR_ID.description : undefined,
       onChange: (e: any) => { setDescription(e.target.value); clearField('description') },
     }), true),
-    fieldErrors.description ? h('div', { className: 'dshwd-alert', role: 'alert' }, fieldErrors.description) : null,
+    fieldErrors.description ? h('div', { className: 'dshwd-alert', role: 'alert', id: FIELD_ERROR_ID.description }, fieldErrors.description) : null,
 
     field(t, t.acceptanceCriteria,
       h('div', { className: 'dshwd-criteria-box' },
@@ -478,6 +453,7 @@ export function PublishModal(props: PublishModalProps) {
             h('button', {
               className: 'dshwd-criteria-remove',
               title: t.delete,
+              'aria-label': t.delete + ' · ' + item,
               disabled: busy,
               onClick: () => setPicked((list: string[]) => list.filter((x: string) => x !== item)),
             }, '×'))))
@@ -515,9 +491,10 @@ export function PublishModal(props: PublishModalProps) {
           disabled: busy,
           placeholder: branchPlaceholder,
           'aria-invalid': fieldErrors.branch ? 'true' : 'false',
+          'aria-describedby': fieldErrors.branch ? FIELD_ERROR_ID.branch : undefined,
           onChange: (e: any) => { setBranch(e.target.value); clearField('branch') },
         })),
-        fieldErrors.branch ? h('div', { className: 'dshwd-alert', role: 'alert' }, fieldErrors.branch) : null,
+        fieldErrors.branch ? h('div', { className: 'dshwd-alert', role: 'alert', id: FIELD_ERROR_ID.branch }, fieldErrors.branch) : null,
         field(t, t.model, models.length
           ? h('select', {
             className: 'dshwd-select',
@@ -534,10 +511,11 @@ export function PublishModal(props: PublishModalProps) {
           disabled: busy,
           placeholder: t.taskTagsPlaceholder,
           'aria-invalid': fieldErrors.tags ? 'true' : 'false',
+          'aria-describedby': fieldErrors.tags ? FIELD_ERROR_ID.tags : undefined,
           onChange: (e: any) => { setTags(e.target.value); clearField('tags') },
         })),
         h('div', { className: 'dshwd-hint' }, t.taskTagsHint),
-        fieldErrors.tags ? h('div', { className: 'dshwd-alert', role: 'alert' }, fieldErrors.tags) : null,
+        fieldErrors.tags ? h('div', { className: 'dshwd-alert', role: 'alert', id: FIELD_ERROR_ID.tags }, fieldErrors.tags) : null,
         field(t, t.taskPriority, h('select', {
           className: 'dshwd-select',
           value: priority,
@@ -554,9 +532,10 @@ export function PublishModal(props: PublishModalProps) {
           disabled: busy,
           'aria-label': t.taskDue,
           'aria-invalid': fieldErrors.dueAt ? 'true' : 'false',
+          'aria-describedby': fieldErrors.dueAt ? FIELD_ERROR_ID.dueAt : undefined,
           onChange: (e: any) => { setDueAt(e.target.value); clearField('dueAt') },
         })),
-        fieldErrors.dueAt ? h('div', { className: 'dshwd-alert', role: 'alert' }, fieldErrors.dueAt) : null)
+        fieldErrors.dueAt ? h('div', { className: 'dshwd-alert', role: 'alert', id: FIELD_ERROR_ID.dueAt }, fieldErrors.dueAt) : null)
       : null,
 
     parentTask
@@ -602,7 +581,13 @@ function modal(t: any, project: any, onSubmit: (() => void) | null, busy: boolea
         h('div', { className: 'dshwd-modal-title-group' },
           h('div', { className: 'dshwd-modal-title' }, t.publishTitle),
           h('span', { className: 'dshwd-modal-badge dshwd-mono' }, 'git worktree add')),
-        h('button', { className: 'dshwd-btn dshwd-btn-ghost', title: t.close, disabled: busy, onClick: close }, '×')),
+        h('button', {
+          className: 'dshwd-btn dshwd-btn-ghost',
+          title: t.close,
+          'aria-label': t.close,
+          disabled: busy,
+          onClick: close,
+        }, '×')),
       h('div', { className: 'dshwd-modal-body' }, children),
       h('div', { className: 'dshwd-modal-foot' },
         // With auto-start off nothing is launched, so neither the button nor the

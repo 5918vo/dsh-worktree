@@ -145,3 +145,36 @@ export function stepStatusLabel(status: string | undefined, t: any): string {
   if (status === 'running') return t.stepRunning
   return t.stepDone
 }
+
+/* ---- live log auto-scroll ------------------------------------------------- */
+
+/** Distance (px) from the bottom still treated as "following". */
+export const LIVE_FOLLOW_THRESHOLD = 32
+
+export interface ScrollMetrics {
+  scrollTop: number
+  scrollHeight: number
+  clientHeight: number
+}
+
+/**
+ * True when the viewport sits within `threshold` of the newest entry. A log
+ * shorter than its viewport counts as at the bottom, so the first entries
+ * follow without a scroll event having fired yet.
+ */
+export function nearBottom(metrics: ScrollMetrics, threshold = LIVE_FOLLOW_THRESHOLD): boolean {
+  if (!metrics) return true
+  const { scrollTop, scrollHeight, clientHeight } = metrics
+  if (![scrollTop, scrollHeight, clientHeight].every((n) => Number.isFinite(n))) return true
+  if (scrollHeight <= clientHeight) return true
+  const distance = scrollHeight - scrollTop - clientHeight
+  return distance <= Math.max(0, threshold)
+}
+
+/**
+ * Whether new entries should pull the log down. A session switch always
+ * returns to the newest entry; otherwise the user's reading position wins.
+ */
+export function shouldFollowLive(input: { sessionChanged: boolean; nearBottom: boolean }): boolean {
+  return !!input.sessionChanged || !!input.nearBottom
+}

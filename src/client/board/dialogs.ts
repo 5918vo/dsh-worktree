@@ -3,6 +3,9 @@
  */
 
 import { React, h } from '../ui'
+import { useDialogFocus } from '../dialog-focus'
+
+let dialogSeq = 0
 
 export interface ConfirmCheck {
   key: string
@@ -68,6 +71,15 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
     return init
   })
   const enabled = (c: ConfirmCheck) => !c.dependsOn || !!values[c.dependsOn]
+  const rootRef = React.useRef(null)
+  const cancelRef = React.useRef(null)
+  const busyRef = React.useRef(props.busy)
+  busyRef.current = props.busy
+  const idRef = React.useRef('')
+  if (!idRef.current) idRef.current = 'dshwd-confirm-' + (++dialogSeq)
+  // One shared trap: initial focus on Cancel (the safe choice), Tab stays here,
+  // Escape closes unless a write is in flight, and focus returns to the opener.
+  useDialogFocus({ rootRef, initialRef: cancelRef, busyRef, onClose: props.onCancel })
   const label = props.labelFor ? props.labelFor(values) : props.label
   const toggle = (c: ConfirmCheck) =>
     setValues((prev: Record<string, boolean>) => Object.assign({}, prev, { [c.key]: !prev[c.key] }))
@@ -78,10 +90,23 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
       if (e.target === e.currentTarget && !props.busy) props.onCancel()
     },
   },
-  h('div', { className: 'dshwd-modal dshwd-modal-sm', role: 'dialog', 'aria-modal': 'true', 'aria-label': props.title },
+  h('div', {
+    ref: rootRef,
+    className: 'dshwd-modal dshwd-modal-sm',
+    role: 'dialog',
+    'aria-modal': 'true',
+    'aria-labelledby': idRef.current,
+    tabIndex: -1,
+  },
     h('div', { className: 'dshwd-modal-head' },
-      h('div', { className: 'dshwd-modal-title' }, props.title),
-      h('button', { className: 'dshwd-btn dshwd-btn-ghost', onClick: props.onCancel, disabled: props.busy }, '×')),
+      h('div', { className: 'dshwd-modal-title', id: idRef.current }, props.title),
+      h('button', {
+        className: 'dshwd-btn dshwd-btn-ghost',
+        title: t.close,
+        'aria-label': t.close,
+        onClick: props.onCancel,
+        disabled: props.busy,
+      }, '×')),
     h('div', { className: 'dshwd-modal-body' },
       h('div', { className: 'dshwd-prose', style: { fontSize: '12.5px' } }, props.body),
       props.pre
@@ -111,7 +136,7 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
     h('div', { className: 'dshwd-modal-foot' },
       h('span', { className: 'dshwd-modal-foot-meta' }),
       h('div', { className: 'dshwd-modal-foot-actions' },
-        h('button', { className: 'dshwd-btn', disabled: props.busy, onClick: props.onCancel }, t.cancel),
+        h('button', { ref: cancelRef, className: 'dshwd-btn', disabled: props.busy, onClick: props.onCancel }, t.cancel),
         h('button', {
           className: 'dshwd-btn ' + (props.danger ? 'dshwd-btn-danger' : 'dshwd-btn-cta'),
           disabled: props.busy,
@@ -127,18 +152,36 @@ export interface StashDiffModalProps {
 
 export function StashDiffModal(props: StashDiffModalProps) {
   const { t, stashView, onClose } = props
+  const rootRef = React.useRef(null)
+  const closeRef = React.useRef(null)
+  const idRef = React.useRef('')
+  if (!idRef.current) idRef.current = 'dshwd-stash-' + (++dialogSeq)
+  useDialogFocus({ rootRef, initialRef: closeRef, onClose })
   return h('div', {
     className: 'dshwd-modal-backdrop',
     onMouseDown: (e: MouseEvent) => {
       if (e.target === e.currentTarget) onClose()
     },
   },
-  h('div', { className: 'dshwd-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': t.stashViewTitle },
+  h('div', {
+    ref: rootRef,
+    className: 'dshwd-modal',
+    role: 'dialog',
+    'aria-modal': 'true',
+    'aria-labelledby': idRef.current,
+    tabIndex: -1,
+  },
     h('div', { className: 'dshwd-modal-head' },
       h('div', { className: 'dshwd-modal-title-group' },
-        h('div', { className: 'dshwd-modal-title' }, t.stashViewTitle),
+        h('div', { className: 'dshwd-modal-title', id: idRef.current }, t.stashViewTitle),
         h('span', { className: 'dshwd-modal-badge dshwd-mono' }, String(stashView.sha || '').slice(0, 8) || 'stash')),
-      h('button', { className: 'dshwd-btn dshwd-btn-ghost', title: t.close, onClick: onClose }, '×')),
+      h('button', {
+        ref: closeRef,
+        className: 'dshwd-btn dshwd-btn-ghost',
+        title: t.close,
+        'aria-label': t.close,
+        onClick: onClose,
+      }, '×')),
     h('div', { className: 'dshwd-modal-body' },
       stashView.loading
         ? h('div', { className: 'dshwd-hint' }, t.loading)

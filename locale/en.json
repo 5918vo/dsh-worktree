@@ -508,6 +508,8 @@
   "boardBlockersTitle": "Blockers",
   "boardCleanupConfirm": "This removes the task's worktree directory; you can also delete the branch. Uncommitted changes require the Force option.",
   "boardClearSearch": "Press Esc to clear search",
+  "boardRailLabel": "Task list",
+  "boardTabs": "View tabs",
   "boardCollapseLeft": "Collapse left rail",
   "boardCollapseRight": "Collapse inspector",
   "boardCopyPath": "Click to copy path",
