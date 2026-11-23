@@ -72,6 +72,15 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-search:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .dshw-board .dshwd-search-kbd { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); font-size: 10px; color: var(--text-3); padding: 1px 4px; border: 1px solid var(--line); border-radius: 4px; }
 .dshw-board .dshwd-search-hint { font-size: 10.5px; line-height: 1.4; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 2px; }
+.dshw-board .dshwd-view-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.dshw-board .dshwd-view-pick { position: relative; flex: 1 1 auto; min-width: 0; }
+.dshw-board .dshwd-view-select { width: 100%; height: 28px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg-stage); color: var(--text-2); font-size: 11.5px; outline: none; text-overflow: ellipsis; }
+.dshw-board .dshwd-view-select:focus { border-color: var(--accent-line); background: var(--bg-elevated); }
+.dshw-board .dshwd-view-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dshw-board .dshwd-view-btn { flex: none; height: 27px; padding: 0 7px; font-size: 11px; }
+.dshw-board .dshwd-view-delete { flex: none; width: 27px; height: 27px; padding: 0; color: var(--text-3); }
+.dshw-board .dshwd-view-delete:hover:not(:disabled) { color: var(--err); }
+.dshw-board .dshwd-view-delete .dshwd-ico { width: 13px; height: 13px; }
 .dshw-board .dshwd-tag-filter-wrap { position: relative; }
 .dshw-board .dshwd-tag-filter { width: 100%; height: 28px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg-stage); color: var(--text-2); font-size: 11.5px; outline: none; }
 .dshw-board .dshwd-tag-filter:focus { border-color: var(--accent-line); }

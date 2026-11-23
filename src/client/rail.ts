@@ -5,6 +5,8 @@ import { railStatsText } from './model'
 import type { ProjectView, TaskView } from '../models'
 import { boardBranch, boardStat, boardStatTitle, boardStatus, boardStatusLabel, type BoardFilter, type BoardTheme } from './model'
 import { dueStateOf, parseEstimate } from '../task-meta'
+import { useDialogFocus } from './dialog-focus'
+import type { SavedView } from './saved-views'
 import { pendingLabel, postMergeLabel } from './status'
 import { AttentionFilter } from './attention-filter'
 import { AttentionSummaryBar } from './attention-summary'
@@ -43,6 +45,13 @@ export interface RailProps {
   emptyKind: RailEmptyKind
   /** False until the first project fetch lands; the foot shows placeholders. */
   loaded?: boolean
+  /** Saved filter views, oldest first; empty still shows the "custom" option. */
+  savedViews?: SavedView[]
+  /** Id of the saved view matching the current filters; '' means custom. */
+  activeViewId?: string
+  onApplyView?: (view: SavedView) => void
+  onSaveView?: (name: string) => { ok: true } | { ok: false; error: string }
+  onDeleteView?: (id: string) => void
   onQuery: (value: string) => void
   onFilter: (filter: BoardFilter) => void
   onToggleArchived: () => void
@@ -67,6 +76,9 @@ export function Rail(props: RailProps) {
   const totalRepos = props.views.length
   const [moreOpen, setMoreOpen] = React.useState('')
   const moreBtnRef = React.useRef(null as any)
+  const [viewOpen, setViewOpen] = React.useState(false)
+  const activeViewId = props.activeViewId || ''
+  const savedViews = props.savedViews || []
 
   React.useEffect(() => {
     if (!moreOpen) return undefined
@@ -79,7 +91,8 @@ export function Rail(props: RailProps) {
     return () => document.removeEventListener('pointerdown', onPointer, true)
   }, [moreOpen])
 
-  return h('aside', {
+  return h(React.Fragment, null,
+    h('aside', {
     className: 'dshwd-rail',
     'aria-label': t.boardRailLabel,
     ...(props.narrow ? { role: 'dialog', 'aria-modal': 'true' } : null),
@@ -130,6 +143,36 @@ export function Rail(props: RailProps) {
         }),
         h('span', { className: 'dshwd-search-kbd dshwd-mono' }, '/')),
       props.query ? null : h('div', { className: 'dshwd-search-hint' }, t.searchSyntaxHint),
+      h('div', { className: 'dshwd-view-row' },
+        h('div', { className: 'dshwd-view-pick' },
+          h('select', {
+            className: 'dshwd-view-select',
+            value: activeViewId,
+            'aria-label': t.savedViewSelect,
+            title: t.savedViewSelect,
+            onChange: (e: any) => {
+              const view = savedViews.find((item) => item.id === e.target.value)
+              if (view && props.onApplyView) props.onApplyView(view)
+            },
+          },
+            h('option', { value: '' }, t.savedViewCustom),
+            savedViews.map((view) => h('option', { key: view.id, value: view.id }, view.name)))),
+        h('button', {
+          type: 'button',
+          className: 'dshwd-btn dshwd-btn-ghost dshwd-view-btn',
+          title: t.savedViewSave,
+          'aria-label': t.savedViewSave,
+          onClick: () => setViewOpen(true),
+        }, t.savedViewSave),
+        activeViewId
+          ? h('button', {
+            type: 'button',
+            className: 'dshwd-btn dshwd-btn-ghost dshwd-view-delete',
+            title: t.savedViewDelete,
+            'aria-label': t.savedViewDelete,
+            onClick: () => { if (props.onDeleteView) props.onDeleteView(activeViewId) },
+          }, h(Icon, { name: 'trash' }))
+          : null),
       props.tags && props.tags.length
         ? h('div', { className: 'dshwd-tag-filter-wrap' },
           h('select', {
@@ -208,7 +251,105 @@ export function Rail(props: RailProps) {
         title: (props.theme === 'dark' ? t.boardThemeLight : t.boardThemeDark) + ' · ' + t.boardThemeScope,
         'aria-label': (props.theme === 'dark' ? t.boardThemeLight : t.boardThemeDark) + ' · ' + t.boardThemeScope,
         onClick: props.onToggleTheme,
-      }, props.theme === 'dark' ? t.boardThemeLight : t.boardThemeDark)))
+      }, props.theme === 'dark' ? t.boardThemeLight : t.boardThemeDark))),
+    viewOpen
+      ? h(SaveViewDialog, {
+        t,
+        onSave: (name: string) => (props.onSaveView
+          ? props.onSaveView(name)
+          : { ok: false, error: String(t.savedViewSaveFailed) }),
+        onClose: () => setViewOpen(false),
+      })
+      : null)
+}
+
+interface SaveViewDialogProps {
+  t: Record<string, any>
+  onSave: (name: string) => { ok: true } | { ok: false; error: string }
+  onClose: () => void
+}
+
+/** Lightweight shell shared with the board's confirm dialogs (board-scoped CSS). */
+function SaveViewDialog(props: SaveViewDialogProps) {
+  const { t } = props
+  const [name, setName] = React.useState('')
+  const [error, setError] = React.useState('')
+  const [busy, setBusy] = React.useState(false)
+  const rootRef = React.useRef(null as any)
+  const inputRef = React.useRef(null as any)
+  const busyRef = React.useRef(false)
+  busyRef.current = busy
+  // Initial focus, Tab trap, Escape and focus restore to the opener.
+  useDialogFocus({ rootRef, initialRef: inputRef, busyRef, onClose: props.onClose })
+  const inputId = 'dshwd-view-name'
+  const errorId = 'dshwd-view-name-error'
+
+  const submit = () => {
+    if (busy) return
+    setBusy(true)
+    setError('')
+    let result: { ok: true } | { ok: false; error: string }
+    try {
+      result = props.onSave(name)
+    } finally {
+      setBusy(false)
+    }
+    if (result.ok) props.onClose()
+    else setError(result.error)
+  }
+
+  return h('div', {
+    className: 'dshwd-modal-backdrop',
+    onMouseDown: (e: any) => {
+      if (e.target === e.currentTarget && !busy) props.onClose()
+    },
+  },
+    h('div', {
+      ref: rootRef,
+      className: 'dshwd-modal dshwd-modal-sm',
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-labelledby': inputId + '-title',
+      tabIndex: -1,
+    },
+      h('div', { className: 'dshwd-modal-head' },
+        h('div', { className: 'dshwd-modal-title', id: inputId + '-title' }, t.savedViewDialogTitle),
+        h('button', {
+          type: 'button',
+          className: 'dshwd-btn dshwd-btn-ghost',
+          title: t.close,
+          'aria-label': t.close,
+          disabled: busy,
+          onClick: props.onClose,
+        }, '×')),
+      h('div', { className: 'dshwd-modal-body' },
+        h('label', { className: 'dshwd-field' },
+          h('span', { className: 'dshwd-label' },
+            h('span', { className: 'dshwd-label-text' }, t.savedViewNameLabel)),
+          h('input', {
+            ref: inputRef,
+            id: inputId,
+            className: 'dshwd-input' + (error ? ' dshwd-invalid' : ''),
+            value: name,
+            placeholder: t.savedViewNamePlaceholder,
+            'aria-invalid': error ? 'true' : 'false',
+            'aria-describedby': error ? errorId : undefined,
+            onInput: (e: any) => setName(e.target.value),
+            onKeyDown: (e: any) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                submit()
+              }
+            },
+          })),
+        h('div', { className: 'dshwd-hint' }, t.savedViewDialogHint),
+        error ? h('div', { className: 'dshwd-alert', role: 'alert', id: errorId }, error) : null),
+      h('div', { className: 'dshwd-modal-foot' },
+        h('span', { className: 'dshwd-modal-foot-meta' }),
+        h('div', { className: 'dshwd-modal-foot-actions' },
+          h('button', { type: 'button', className: 'dshwd-btn', disabled: busy, onClick: props.onClose }, t.cancel),
+          h('button', { type: 'button', className: 'dshwd-btn dshwd-btn-cta', disabled: busy, onClick: submit },
+            busy ? t.savedViewSaving : t.savedViewSaveAction)))))
 }
 
 /** The bar reports every category with a count, even when the list is filtered. */
