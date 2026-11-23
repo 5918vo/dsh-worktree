@@ -16,6 +16,8 @@ import { dirname, join } from 'node:path'
 import { homedir, hostname } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { normalizeCriteria } from './criteria.js'
+import { normalizeDependencyIds, validateDependencyIds, type DependencyIssue } from './task-deps.js'
+import { NOTES_MAX_LENGTH, normalizePriority, normalizeTags, parseDueAt, validateTags } from './task-meta.js'
 import { StoreError } from './errors.js'
 
 // Re-exported for callers that catch store failures without importing errors.js.
@@ -69,6 +71,50 @@ export type PinResult =
 export type TemplateResult =
   | { ok: true; item: TaskTemplate; templates: TaskTemplate[] }
   | { ok: false; reason: 'missing' }
+
+/** Presentation fields updated together by the meta endpoint. */
+export type TaskMetaPatch = {
+  tags?: unknown
+  priority?: unknown
+  notes?: unknown
+  dependsOn?: unknown
+  dueAt?: unknown
+}
+
+/** Outcome of an atomic metadata update; callers map reasons to 404 / 400. */
+export type TaskMetaResult =
+  | { ok: true; task: WorktreeTask }
+  | {
+    ok: false
+    reason:
+      | 'missing'
+      | 'tags-too-many'
+      | 'tags-too-long'
+      | 'priority-invalid'
+      | 'due-invalid'
+      | 'notes-too-long'
+      | 'deps-too-many'
+      | 'deps-self'
+      | 'deps-missing'
+      | 'deps-cross-project'
+      | 'deps-cycle'
+  }
+
+/** Map a dependency validation issue to the store-level failure reason. */
+function dependencyReason(issue: DependencyIssue):
+  | 'deps-too-many'
+  | 'deps-self'
+  | 'deps-missing'
+  | 'deps-cross-project'
+  | 'deps-cycle' {
+  switch (issue) {
+    case 'too-many': return 'deps-too-many'
+    case 'self': return 'deps-self'
+    case 'cross-project': return 'deps-cross-project'
+    case 'cycle': return 'deps-cycle'
+    default: return 'deps-missing'
+  }
+}
 
 /**
  * One global task store for every DSH process on this machine.
@@ -1094,6 +1140,77 @@ export class Store {
         if (!task.pinnedAt) task.pinnedAt = Date.now()
       } else {
         delete task.pinnedAt
+      }
+      task.updatedAt = Date.now()
+      this.saveTasks()
+      return { ok: true, task }
+    })
+  }
+
+  /**
+   * Update tags / priority / notes / dependencies under the store lock.
+   *
+   * One critical section for all fields: refresh, validate, then save, so two
+   * DSH processes editing different fields cannot overwrite each other. Keys
+   * absent from the patch — or present with `undefined`, as an HTTP body may
+   * deliver — are left untouched; only an explicit empty value clears.
+   */
+  updateTaskMeta(taskId: string, patch: TaskMetaPatch): TaskMetaResult {
+    return this.withLock(() => {
+      this.refreshTasks()
+      const task = this.tasks.get(taskId)
+      if (!task) return { ok: false, reason: 'missing' }
+      const has = (key: keyof TaskMetaPatch) =>
+        Object.prototype.hasOwnProperty.call(patch, key) && patch[key] !== undefined
+
+      // Normalize and validate everything before touching the record, so a
+      // rejected field cannot leave a half-applied in-memory mutation.
+      const tags = has('tags') ? normalizeTags(patch.tags) : null
+      if (tags) {
+        const check = validateTags(tags)
+        if (!check.ok) return { ok: false, reason: check.error === 'too-many' ? 'tags-too-many' : 'tags-too-long' }
+      }
+      const priority = has('priority') ? normalizePriority(patch.priority) : null
+      if (has('priority') && !priority) return { ok: false, reason: 'priority-invalid' }
+      const hasDue = has('dueAt')
+      const due = hasDue ? parseDueAt(patch.dueAt) : null
+      if (due && !due.ok) return { ok: false, reason: 'due-invalid' }
+      const notes = has('notes') ? String(patch.notes == null ? '' : patch.notes).trim() : null
+      if (notes !== null && notes.length > NOTES_MAX_LENGTH) return { ok: false, reason: 'notes-too-long' }
+      const dependsOn = has('dependsOn') ? normalizeDependencyIds(patch.dependsOn) : null
+      if (dependsOn && dependsOn.length) {
+        const check = validateDependencyIds({
+          taskId: task.id,
+          projectId: task.projectId,
+          repoPath: task.repoPath,
+          ids: dependsOn,
+          tasks: [...this.tasks.values()],
+        })
+        if (!check.ok) return { ok: false, reason: dependencyReason(check.error) }
+      }
+      if (!tags && !priority && !hasDue && notes === null && dependsOn === null) return { ok: true, task }
+
+      if (tags) {
+        if (tags.length) task.tags = tags
+        else delete task.tags
+      }
+      if (priority) {
+        if (priority === 'normal') delete task.priority
+        else task.priority = priority
+      }
+      // `due` may legitimately be null (clear), so track it separately from
+      // the truthiness-based fields above.
+      if (hasDue && due && due.ok) {
+        if (due.value === null) delete task.dueAt
+        else task.dueAt = due.value
+      }
+      if (notes !== null) {
+        if (notes) task.notes = notes
+        else delete task.notes
+      }
+      if (dependsOn !== null) {
+        if (dependsOn.length) task.dependsOn = dependsOn
+        else delete task.dependsOn
       }
       task.updatedAt = Date.now()
       this.saveTasks()

@@ -2,7 +2,7 @@
 
 本文件记录 `@5318vo/dsh-worktree` 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [1.13.0] - 2026-11-23
+## [未发布] - 2026-11-23 · 多窗口与台账并发安全
 
 ### 修复
 
@@ -21,10 +21,60 @@
 - `Store` 新增 `claimTask` / `releaseBindLease` / `clearSessionBinding` / `lookupSessionRun` / `listLiveInstances` / `instance` / `warnings` / `beat`，`bindSession` 接受 `{ lease }`；`StoreError` 单独成模块并从 `store.ts` 重新导出，仍是 `TaskError` 子类，因此现有 HTTP/工具错误映射自动生效。
 - `TaskError` 移到 `src/errors.ts`（与 `StoreError` 同处），避免 `store.ts` 与 `runtime/types.ts` 的循环依赖。
 - 模型工具文档补 `worktree_projects`；README 新增「多窗口与并发安全」一节，说明锁、写失败、三态 Agent 状态、恢复路径与已知边界（同步 Store 最长阻塞事件循环 `lockWaitMs`）。
+- 并入 1.14.0 基线时，Store 新增的 `updateTaskMeta`（标签 / 优先级 / 备注 / 截止日期 / 前置依赖）走同一套安全路径：`withLock` 内 `refreshTasks()` 按隔离规则读取损坏文件、校验后 `saveTasks()`（临时文件 + rename，失败抛 `StoreError`）；它自己不额外调 `beat()`，心跳只在进入 `withLock` 时刷新，因此锁等待与心跳不会互相阻塞。
 
 ### 测试
 
 - 新增 `store-write-failure`（真实文件系统故障注入、损坏隔离、HTTP 500 映射、半写保护）、`store-lock`（真实子进程持锁、超时 503、崩溃接管、token 释放、CPU 不再忙等）、`cross-instance-agent`（双 Store 心跳、registry miss、崩溃/恢复、租约接管、`session/reset`）、`delete-project`（运行中 Agent、未知状态、进行中 git 操作、并发仓库锁、部分失败）、`publish-failure`（发布失败不留记录/分支/空壳）与 `recents` token 用例；绑定用例重写为 claim/lease/cwd 校验/孤儿清理/双窗口冲突。
+
+## [1.14.0] - 2026-11-23
+
+### 新增
+
+- 任务截止日期：任务记录新增可选 `dueAt`（本地日历日零点毫秒）。发布弹窗高级区与任务详情都可设置 / 清除日期，非法日期在提交前拦截；任务行显示「逾期 N 天 / 今天到期 / N 天后到期」，新增「逾期」注意力分类与筛选、专属汇总文案；验收报告与项目报告同步输出截止日期，逾期时附天数。
+- 前置任务依赖：任务记录新增可选 `dependsOn`（最多 8 个同项目任务）。任务详情可添加 / 移除前置，服务端在同一把账本锁内校验数量、自依赖、任务是否存在、跨项目与循环依赖；未完成前置在任务行显示「等待 N 项前置」，前置合并或清理后自动解除。依赖是建议性提示，不阻止合并 / 清理，也不参与排序。
+- 项目洞察：项目详情新增「项目洞察」卡片，由已有任务时间戳派生平均 / 中位周期、近 7 天新建与合并、验收核对率、最久未完成天数，以及最近 7 天新建 / 合并双柱图；无样本时显示空态，不额外请求 Git、不写任务记录。
+- 结构化搜索：左栏搜索支持 `tag:` / `tags:`、`priority:` / `prio:`、`status:` 结构化条件，键名大小写不敏感，含空格的值用双引号；多个标签取 AND，多个优先级 / 状态取 OR，不同类别取 AND。未知或非法值回落为纯文本，空查询时显示语法提示。
+- 任务时间线：任务概览与验收报告把发布、置顶、合并（附短 SHA）、清理、归档与最近更新串成升序时间线，已合并任务显示「发布 → 合并 N 天」周期；异常时间戳忽略，纯派生不写记录。
+
+### 接口
+
+- `WorktreeTask` 新增可选 `dueAt?: number` 与 `dependsOn?: string[]`，旧记录无需迁移；`ProjectView` / `TaskView` 结构不变。
+- 新增纯函数模块 `src/task-deps.ts`（`normalizeDependencyIds` / `validateDependencyIds` / `dependencyStatus` / `isDependencyDone` / `isSameProject`，`DEPENDENCY_LIMIT = 8`）、`src/client/search-query.ts`（`parseSearchQuery` / `matchesStructuredQuery` / `hasStructuredFilters`）、`src/client/project-insights.ts`（`buildProjectInsights`，7 天窗口）、`src/client/task-lifecycle.ts`（`buildTaskLifecycle` / `lifecycleCycleDays`），以及 `src/task-meta.ts` 的日期工具（`parseDueAt` / `startOfLocalDay` / `dueDayOffset` / `dueStateOf` / `dueInputValue`，`DUE_SOON_DAYS = 3`）。
+- Store 的 `updateTaskMeta` 扩展 `dueAt` 与 `dependsOn`：任何字段校验失败都在写入前返回，新增 `due-invalid` / `deps-too-many` / `deps-self` / `deps-missing` / `deps-cross-project` / `deps-cycle` 原因；`dueAt: null` 与 `dependsOn: []` 才是清空。
+- `POST task/meta` 接受 `dueAt?` 与 `dependsOn?`；`POST publish` 接受 `dueAt`（`YYYY-MM-DD` 或毫秒时间戳，归一到本地日历日零点，非法值 400）；发布时不接受 `dependsOn`，创建后在详情维护。
+- `worktree_publish` 新增 `due_at`，`worktree_act` 新增 `due_at` 与 `depends_on`，任务 briefing 返回 `dueAt`。
+- `filterProjectViews` 内部解析结构化查询，项目名 / 仓库路径仍可触发整项目命中；Rail 新增 `depsOf`，Stage 新增 `dependencyItems` / `dependencyOptions` 与 `onSaveMeta.dueAt`。
+
+### 测试
+
+- 新增 `task-deps` / `client-search-query` / `client-project-insights` / `client-task-lifecycle` 用例，并扩展 Store、HTTP、工具动作、任务注意力、发布草稿、单任务报告与项目报告测试；覆盖日期解析与本地日历边界、逾期分类、依赖校验与循环检测、搜索语法与非法 token、洞察周期 / 吞吐 / 核对率、时间线排序与周期。`npm run verify` 全部通过。
+
+### 文档
+
+- `README.md`、`docs/frontend-design.md`、`docs/i18n-terminology.md` 与 `feature.md` 同步更新；`locale/zh.json` 与 `locale/en.json` 新增截止日期、依赖、洞察、搜索语法与任务时间线系列文案，`npm run check:locale` 通过。
+
+## [1.13.0] - 2026-11-22
+
+### 新增
+
+- 任务标签：任务记录新增可选 `tags`。发布弹窗高级区可填写标签（中英文逗号分隔、自动去 `#`、忽略大小写去重，最多 8 个、每个 24 字符），任务详情新增「任务信息」区可随时编辑；左栏新增按标签筛选（仅在存在标签时出现），任务行显示最多 2 个标签 chip 与 `+N` 剩余数，搜索同时命中标签。
+- 任务优先级：新增可选 `priority`（`low` / `normal` / `high`，`normal` 不落盘）。发布与详情都可选择，列表统一按「置顶 → 优先级 → 创建时间倒序」排序；高优先级显示告警色 chip，低优先级显示弱化 chip。
+- 任务备注：新增可选 `notes`（最长 2000 字符，空串即清除）。任务详情提供带字数计数的备注编辑区，搜索命中备注，单任务验收报告新增「备注」章节，`worktree_act` 新增 `meta` 动作。
+- 项目验收报告：项目详情新增报告卡片，一键复制或下载 Markdown。报告包含项目元数据、按状态统计、任务表（状态 / 分支 / 验收进度 / 优先级 / 标签 / 最近活动）与逐任务块（状态、分支、合并提交、验收标准、备注），文件名 `project-<slug>-<YYYYMMDD>-<HHmm>.md`。
+- 停滞任务检测：按状态阈值（待开始 / 待验收 / 验收中 3 天，进行中 7 天）识别长时间无活动的任务，最近一次提交也算活动。停滞任务进入「停滞」注意力分类与筛选，Rail 行显示「停滞 N 天」，汇总条在只剩停滞任务时使用专属文案；已合并 / 已清理 / 异常 / 已归档的任务不参与判定。
+
+### 接口
+
+- `WorktreeTask` 新增可选 `tags?: string[]`、`priority?: TaskPriority`、`notes?: string`，旧记录无需迁移，读取时按「无标签 / 普通 / 无备注」处理。
+- 新增纯函数模块 `src/task-meta.ts`（`parseTagText` / `normalizeTags` / `validateTags` / `normalizePriority` / `priorityRank` / `compareTaskOrder`）与 `src/client/staleness.ts`（`lastActivityAt` / `stalledDays`），宿主、客户端与测试共用同一套规则。
+- Store 新增原子方法 `updateTaskMeta(taskId, patch)`：在同一把账本锁内 refresh、校验、写入；键存在但值为 `undefined` 视为未提供，只有显式 `[]` / `normal` / `''` 才会清空。
+- 新增 `POST /dsh-worktree/api/task/meta`（`{ id, tags?, priority?, notes? }`，404 任务不存在；400 标签 / 优先级 / 备注校验失败），`worktree_publish` 接受 `tags` 与 `priority`，`worktree_act` 新增 `meta` 动作。
+- 报告生成拆分为纯函数模块 `src/client/markdown.ts`（转义、占位符、时间戳、slug）与 `src/client/project-report.ts`；`downloadText` 统一了浏览器下载行为。
+
+### 测试
+
+- 新增 `task-meta` / `client-staleness` / `client-project-report` / `client-attention-summary` 用例，并扩展 Store、HTTP、Runtime、发布草稿、客户端模型、报告与工具动作测试；覆盖标签解析与上限、备注清空、元数据部分更新、优先级排序、报告转义与文件名、停滞阈值与边界、注意力计数去重。
 
 ## [1.12.0] - 2026-11-22
 

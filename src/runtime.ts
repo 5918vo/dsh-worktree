@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { normalizeCriteria } from './criteria.js'
 import * as gitx from './gitx.js'
 import { MergePreflight, MergePreview, Project, ProjectView, TaskDiff, TaskSnapshot, TaskStatus, TaskTemplate, TaskView, WorktreeConfig, WorktreeTask } from './models.js'
-import { Store } from './store.js'
+import { Store, TaskMetaPatch } from './store.js'
 import { taskDiff } from './runtime/diff.js'
 import { archiveTask, bindTask, cleanupTask, deleteTask, setCriterionChecked as setCriterionCheckedTask, unarchiveTask, unbindTaskBySession } from './runtime/lifecycle.js'
 import { mergePreflight, mergePreview, mergeTask, reconcilePendingOps, restoreAfterMerge } from './runtime/merge.js'
@@ -193,6 +193,24 @@ export class Runtime {
     const result = this.ctx.store.setTaskPinned(id, pinned)
     if (!result.ok) throw new TaskError(`任务不存在：${id}`, 404)
     return result.task
+  }
+
+  /** Atomically update tags / priority / notes / dependencies; unknown ids are 404s. */
+  updateTaskMeta(id: string, patch: TaskMetaPatch): WorktreeTask {
+    const result = this.ctx.store.updateTaskMeta(id, patch)
+    if (result.ok) return result.task
+    const message = result.reason === 'missing' ? `任务不存在：${id}`
+      : result.reason === 'tags-too-many' ? '标签最多 8 个'
+        : result.reason === 'tags-too-long' ? '单个标签最多 24 个字符'
+          : result.reason === 'priority-invalid' ? '优先级只能是 low、normal 或 high'
+            : result.reason === 'due-invalid' ? '截止日期无效'
+              : result.reason === 'notes-too-long' ? '备注最多 2000 个字符'
+                : result.reason === 'deps-too-many' ? '前置任务最多 8 个'
+                  : result.reason === 'deps-self' ? '不能依赖自己'
+                    : result.reason === 'deps-missing' ? '前置任务不存在'
+                      : result.reason === 'deps-cross-project' ? '只能依赖同一项目的任务'
+                        : '不能形成循环依赖'
+    throw new TaskError(message, result.reason === 'missing' ? 404 : 400)
   }
 
   // ---- tasks, snapshots & diffs ----

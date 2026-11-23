@@ -11,6 +11,32 @@ import { CATEGORY_ORDER, categoryKey, severityOf } from './task-attention'
  * appears (without stealing focus). aria-live announces only when the category
  * set or severity actually changes, not on every count tick.
  */
+/**
+ * Title text for one summary bar. Pure so the severity ladder is unit-testable:
+ * stale wins, then the most severe present category, and a board where only
+ * stalled tasks remain says so instead of claiming there is nothing.
+ */
+export function attentionSummaryTitle(
+  t: any,
+  counts: Record<string, number>,
+  stale: boolean,
+  time: string,
+): string {
+  const present = CATEGORY_ORDER.filter((category) => (counts[category] || 0) > 0)
+  const severity = present.length ? severityOf(present[0]) : 0
+  if (stale) return String(t.attentionStale).replace('{time}', time)
+  if (severity >= 4) return String(t.attentionSummaryRecovery).replace('{n}', String(counts.recovery || 0))
+  if (severity >= 3) return String(t.attentionSummaryBroken).replace('{n}', String(counts.broken || 0))
+  if (severity >= 2) {
+    // overdue shares severity 2 with pending; only when there is no pending
+    // task does the bar name the overdue ones.
+    if (Number(counts.pending || 0) > 0) return String(t.attentionSummaryPending).replace('{n}', String(counts.pending || 0))
+    return String(t.attentionSummaryOverdue).replace('{n}', String(counts.overdue || 0))
+  }
+  if (Number(counts.review || 0) > 0) return String(t.attentionSummaryReview).replace('{n}', String(counts.review || 0))
+  return String(t.attentionSummaryStalled).replace('{n}', String(counts.stalled || 0))
+}
+
 export function AttentionSummaryBar(props: any) {
   const t = props.t
   const counts: Record<string, number> = props.counts || {}
@@ -20,15 +46,7 @@ export function AttentionSummaryBar(props: any) {
   const severity = present.length ? severityOf(present[0]) : 0
   const signature = present.join('|') + '#' + severity + '#' + total
   const time = props.lastOkAt ? formatTime(props.lastOkAt) : '—'
-  const title = stale
-    ? String(t.attentionStale).replace('{time}', time)
-    : severity >= 4
-      ? String(t.attentionSummaryRecovery).replace('{n}', String(counts.recovery || 0))
-      : severity >= 3
-        ? String(t.attentionSummaryBroken).replace('{n}', String(counts.broken || 0))
-        : severity >= 2
-          ? String(t.attentionSummaryPending).replace('{n}', String(counts.pending || 0))
-          : String(t.attentionSummaryReview).replace('{n}', String(counts.review || 0))
+  const title = attentionSummaryTitle(t, counts, stale, time)
 
   const [collapsed, setCollapsed] = React.useState(false)
   const [announce, setAnnounce] = React.useState('')

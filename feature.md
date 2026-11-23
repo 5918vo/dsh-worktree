@@ -1,988 +1,1101 @@
-# 每日功能批次 · 2026-11-22 · v1.11.0
+# 每日功能批次 · 2026-11-23 · v1.14.0
 
-> 批次主题：**验收收口与日常效率**
+> 批次主题：**任务规划、检索、度量与追溯**（让任务在「发布之后」也能被安排时间、说明依赖、按条件找到、用数据回看、按时间复盘）
 >
-> 交付方式：一个 PR（`t3/daily-feature-batch-planning` → `master`），5 个功能同批验收。
+> 交付方式：一个 PR（`t3/daily-5-feature-pipeline` → `master`），5 个功能同批验收。
 >
-> 分工：主线程负责方案、任务拆分、验收与 PR；`pi` 负责编码落地。上一批次（1.10.0 验收清单逐项勾选）的文档见 git 历史（`021f8ce`）。
+> 分工：主线程负责方案、任务拆分、集成、验收、文档与 PR；5 个 `pi` 子 agent 分别负责 5 个功能的编码落地与测试。上一批次（1.13.0 标签 / 优先级 / 备注 / 项目报告 / 停滞检测）的文档见 git 历史。
+>
+> 状态：已规划 / 实施中（验收记录见第 10 节）。
 
 ## 0. 批次总览
 
 | # | 功能 | 一句话价值 | 主要落点 |
 | --- | --- | --- | --- |
-| 1 | 项目级合并门禁 | 验收标准没核对完，可以按项目配置禁止合并 | 模型 / 项目设置 / 合并预检 / 工作台 |
-| 2 | 验收报告导出 | 一键生成可复制的 Markdown 验收报告，留痕可追溯 | 客户端纯函数 / 任务概览 / 剪贴板与下载 |
-| 3 | 发布模板 | 常用任务的标题、描述、验收标准一键填入 | Store / HTTP / 设置页 / 发布弹窗 |
-| 4 | 任务置顶 | 重要任务固定在项目分组顶部 | 模型 / Store / HTTP / 左栏 |
-| 5 | 会话快捷指令 | 在工作台直接给任务会话发追问指令 | 客户端纯函数 / 实时会话 / 指令输入 |
+| 1 | 任务截止日期 | 给任务一个「什么时候要」，逾期自动进入注意力视图 | 模型 / Store / HTTP / 发布弹窗 / 任务信息 / 左栏 / 注意力 / 报告 |
+| 2 | 前置任务依赖 | 标明「先做哪个」，未完成的前置任务在行内与详情中可见 | 模型 / Store / HTTP / 任务信息 / 左栏 / 工具 |
+| 3 | 项目洞察 | 用已有时间戳算出周期、吞吐与验收核对率 | 纯函数 / 项目详情 / 文案 |
+| 4 | 结构化搜索 | 用 `tag:` / `priority:` / `status:` 精确找任务，纯文本搜索不变 | 纯函数 / 左栏模型 / 搜索框 / 文案 |
+| 5 | 任务生命周期时间线 | 把发布、置顶、合并、清理、归档、最近更新串成一条可复盘的时间线 | 纯函数 / 概览 / 验收报告 / 文案 |
 
 设计原则：
 
-- **不改变既有状态机**：任务状态仍由 Git 与会话绑定推导，本批次只增加策略、派生展示和操作入口。
-- **写操作走 Store 锁**：模板、置顶、门禁配置都通过 Store 的跨进程读改写，两个 DSH 实例不会互相覆盖。
-- **默认不打扰**：合并门禁默认关闭；没有验收标准的任务不受门禁影响；发布模板为空时不显示模板选择。
-- **可回滚**：新增字段全部可选，旧任务记录、旧项目记录无需迁移；移除路由与 UI 后旧记录仍可读。
+- **全部字段可选，旧台账零迁移**：`dueAt`、`dependsOn` 都是可选字段；没有这些字段的旧任务按「无截止日期 / 无前置任务」处理。
+- **元数据统一走一个原子入口**：截止日期与前置依赖继续复用 `Store.updateTaskMeta` 与 `POST task/meta`，在跨进程账本锁内读改写，两个 DSH 实例不会互相覆盖。
+- **不改变任务状态机**：新功能只增加展示字段、派生视图和编辑入口，不改变 `statusOf` 的任何分支，也不改变 Git / 会话行为。
+- **默认不打扰**：没有截止日期不显示 chip，没有前置任务不显示依赖行，没有结构化 token 时搜索行为与 1.13.0 完全一致。
+- **不引入依赖、不加新路由**：不新增 npm 包，不新增 HTTP 路由；只扩展 `task/meta` 与 `publish` 的可选字段。
+- **文档即验收**：每个功能都必须有功能说明、动机、预期效果、收益、实现方案、验收标准和测试要点。
 
 ---
 
-## 1. 项目级合并门禁（`mergeGate`）
+## 1. 任务截止日期（`dueAt`）
 
 ### 1.1 功能说明
 
-项目设置新增「合并门禁」选项：
+任务新增可选截止日期。语义是**本地日历日**，存储为当天本地零点的毫秒时间戳。入口与展示：
 
-- `off`（默认）：保持现状，验收标准只提示、不阻止合并。
-- `criteria`：任务存在验收标准且仍有未核对项时，禁止通过工作台合并；全部核对后自动放行。
-
-门禁只作用于「合并」动作，不影响「切到主仓库验收」「返回原分支」「清理」「归档」等其他操作。已合并任务再次合并补丁时不受门禁限制（`task.mergedAt` 已存在）。
+1. **发布任务**：高级选项新增「截止日期」`<input type="date">`；发布成功写入任务。
+2. **任务详情**：「任务信息」分区新增「截止日期」行，可设置、修改、清除；写入后左栏立即刷新。
+3. **左栏任务行**：逾期显示「逾期 N 天」（err 色），今天到期显示「今天到期」（warn 色），未来 1–3 天显示「N 天后到期」（warn 色），更远不显示 chip。
+4. **注意力视图**：逾期任务进入新的「逾期」分类与筛选，并计入顶部汇总条的计数；**不产生重复的 alert chip**（行内 chip 已直接显示）。
+5. **验收报告**：单任务报告与项目验收报告都输出截止日期；逾期时附带「逾期 N 天」。
+6. **模型工具**：`worktree_publish` 接受 `due_at`（`YYYY-MM-DD`），`worktree_act` 的 `meta` 动作接受 `due_at`（`null` / 空串清除）。
 
 ### 1.2 为什么做
 
-1.10.0 把验收标准变成了可逐项勾选的清单，但合并确认里只提示「还有 N 项未核对」，仍然可以直接合并。对于希望把验收标准当作准入条件的团队，提示不够；对于不需要门禁的用户，强制拦截又会改变既有行为。做成项目级开关可以同时满足两类用户。
+现有看板能回答「任务在哪个状态、有没有会话、有没有提交」，但回答不了「这批任务里哪个最晚必须交付」。标签和优先级表达的是分类与轻重，不是时间；停滞检测只能事后发现「很久没动」，不能提前提醒「明天到期」。截止日期是最小、最通用、最容易被用户理解的时间维度，并且可以完全复用现有元数据写入链路，不需要后台任务或通知系统。
 
 ### 1.3 预期效果
 
-- 开启门禁的项目：合并按钮在清单未完成时禁用，按钮 `title` 与 Stage 顶部阻塞列表说明原因；即使绕过 UI 调用接口，后端返回 `412 criteria-incomplete`。
-- 关闭门禁的项目：行为与 1.10.0 完全一致。
-- 没有验收标准的任务：无论开关如何都不受影响。
+- 今天 2026-11-23，任务截止 2026-11-20：行内显示「逾期 3 天」，左栏筛选「逾期」计数 +1，顶部汇总条显示「N 个任务逾期」。
+- 任务截止 2026-11-23：行内显示「今天到期」，不计入逾期。
+- 任务截止 2026-11-25：行内显示「2 天后到期」，不计入逾期。
+- 任务截止 2026-12-10：不显示截止 chip，但详情与报告仍能查到日期。
+- 没有 `dueAt` 的任务：行为与 1.13.0 完全一致，不出现任何占位 chip。
+- 清除截止日期后 `dueAt` 键被删除（不是写 `null`），刷新页面仍为空。
+- 非法值（`2026-02-30`、`not-a-date`、负数）返回 400，且不写入记录。
 
 ### 1.4 收益
 
-- **对用户**：把「验收标准」从提醒升级为可选的准入规则，减少漏验收。
-- **对团队**：项目级配置比任务级配置更容易统一，不需要每个任务单独设置。
-- **对插件**：补上验收闭环的「门禁」一环，为后续更多策略（如必须通过测试、必须有人复核）留下同一套 blocker 机制。
-- **风险可控**：默认关闭；后端只是新增一个 blocker code，不改变合并流程本身。
+- **对用户**：发布时就能约定交付日，左栏直接看到「今天到期 / 已逾期」，不用逐个点开。
+- **对团队**：验收报告带截止日期，交接时能说明时间承诺；逾期任务进入注意力筛选，批次收尾前可以先处理逾期项。
+- **对插件**：注意力模型从「会话 / 合并 / 停滞」扩展到「计划时间」，为后续到期提醒、日历视图留下纯函数基础。
+- **风险可控**：纯展示字段 + 派生视图，不参与状态推导；不设置截止日期时零行为变化。
 
 ### 1.5 实现方案
 
-#### 数据模型（`src/models.ts`）
+#### 1.5.1 共享纯函数（`src/task-meta.ts`）
+
+新增以下导出，全部不依赖 DOM / Node API：
 
 ```ts
-export interface Project {
-  // ...
-  /** 合并门禁：off（默认）或 criteria（存在未核对验收标准时禁止合并）。 */
-  mergeGate?: 'off' | 'criteria'
-}
-```
+export const DUE_SOON_DAYS = 3
 
-#### 项目更新（`src/runtime/projects.ts`、`src/runtime.ts`、`src/http.ts`）
+export type DueParse = { ok: true; value: number | null } | { ok: false }
 
-- `Runtime.updateProject` 的 patch 类型增加 `mergeGate?: 'off' | 'criteria'`。
-- 校验：只接受 `'off'` / `'criteria'`，其他值抛 `TaskError('合并门禁取值无效', 400)`。
-- `POST projects/update` 透传 `body.mergeGate`。
+/** 本地日历日的零点（毫秒）。非有限数返回 0。 */
+export function startOfLocalDay(value: number): number
 
-#### 合并预检（`src/runtime/merge.ts`）
+/**
+ * 解析截止日期。
+ * - null / undefined / '' -> { ok: true, value: null }（表示清除）
+ * - number：有限且 > 0 -> 归一到本地零点；否则 ok: false
+ * - 'YYYY-MM-DD'：按本地日历解析并回读校验（2026-02-30 必须失败）
+ * - 其他字符串：Date.parse 后归一到本地零点；NaN -> ok: false
+ */
+export function parseDueAt(value: unknown): DueParse
 
-在 `buildMergePreflight` 中、任务基础校验之后增加：
+/** dueAt 与 now 的日历日差（due - today）。非法输入返回 null。 */
+export function dueDayOffset(dueAt: number | null | undefined, now?: number): number | null
 
-```ts
-const project = task.projectId ? ctx.store.getProject(task.projectId) : undefined
-if (!task.mergedAt && project?.mergeGate === 'criteria') {
-  const standard = normalizeCriteria(task.acceptanceCriteria)
-  const marked = new Set(task.checkedCriteria || [])
-  const missing = standard.filter((item) => !marked.has(item)).length
-  if (missing > 0) {
-    push('criteria-incomplete', `还有 ${missing} 项验收标准未核对；请先在概览中逐项核对，或关闭该项目的合并门禁`)
-  }
-}
-```
-
-- `missing === 0`（含没有标准）时不产生 blocker。
-- `mergeTask` 会在锁内重跑预检，`criteria-incomplete` 属于 hard blocker，自然返回 `412`；不需要在合并流程里重复判断。
-- `worktree_act` 的 `merge` 路径复用同一预检，工具调用同样被拦截。
-
-#### 客户端门禁派生（`src/client/model.ts`）
-
-新增纯函数，供按钮禁用、阻塞列表与合并确认共用：
-
-```ts
-export function mergeGateMissing(project: any, task: WorktreeTask, status: TaskStatus): number {
-  if (!project || project.mergeGate !== 'criteria') return 0
-  if (status === 'merged' || status === 'cleaned') return 0
-  return criteriaProgress(criteria(task, status)).missing
-}
-```
-
-#### 操作门禁（`src/client/action-gate.ts`、`src/client/board.ts`）
-
-- `ActionGateInput` 增加 `mergeGateMissing?: number`。
-- 在 merge 分支中，若 `mergeGateMissing > 0`，向 `merge` 追加 `fill(t.mergeGateBlocked, 'n', ...)`。
-- `board.ts` 用 `projectOfTask?.project`、选中任务与快照状态计算并传入。
-
-#### 合并确认（`src/client/board/use-board-actions.ts`）
-
-`runMerge` 在发预检请求前先检查门禁；有未核对项时直接 Toast 提示并返回，避免无意义的 Git 预检：
-
-```ts
-const gateMissing = mergeGateMissing(projectOfTask?.project, task, snap.status)
-if (gateMissing > 0) {
-  say(String(t.mergeGateBlocked).replace('{n}', String(gateMissing)), true)
-  return
-}
-```
-
-#### 项目设置（`src/client/project-detail.ts`）
-
-- 新增 `mergeGate` 状态，初值 `project.mergeGate === 'criteria'`。
-- 设置页增加一行复选框/开关：「验收标准未全部核对时禁止合并」。
-- 保存时提交 `mergeGate: mergeGateOn ? 'criteria' : 'off'`。
-- 说明文案：门禁只影响合并，不影响验收；无验收标准的任务不受影响。
-
-#### 文案（`locale/zh.json`、`locale/en.json`）
-
-- `mergeGate`：合并门禁
-- `mergeGateHint`：开启后，任务仍有未核对的验收标准时会禁止合并；没有验收标准的任务不受影响。
-- `mergeGateCriteria`：验收标准未全部核对时禁止合并
-- `mergeGateBlocked`：还有 {n} 项验收标准未核对，项目已开启合并门禁
-
-### 1.6 验收标准
-
-- [x] 项目设置可开启/关闭合并门禁，刷新后保持。
-- [x] 开启门禁 + 有未核对标准：合并按钮禁用，Stage 顶部与按钮 `title` 说明原因。
-- [x] 全部核对后：按钮恢复可用，合并成功。
-- [x] 任务没有验收标准：门禁不阻止合并。
-- [x] 直接调用 `task/merge`：返回 `412` 且 `code` 为 `criteria-incomplete`。
-- [x] 已合并任务的「再次合并」不受门禁影响。
-- [x] 关闭门禁的项目行为与 1.10.0 一致。
-
----
-
-## 2. 验收报告导出（Markdown）
-
-> **实现说明（合并后）**：本功能已由 PR #21（`6798a66`）先行落地，最终实现见附录 A。入口位于「验收标准」分区标题右侧，文件名为 `acceptance-<id8>-<YYYYMMDD>-<HHmm>.md`，文件状态与 diff 失败原因均本地化；本节 2.1 与 2.5 为原始方案，保留用于对照。
-
-### 2.1 功能说明
-
-任务概览新增「验收报告」区块，提供两个动作：
-
-- **复制 Markdown**：把当前任务的验收信息生成 Markdown 并写入剪贴板。
-- **下载 .md**：下载为 `acceptance-<id8>-<YYYYMMDD>-<HHmm>.md`。
-
-报告包含：任务标题与 ID、状态、任务分支与基线、worktree 路径、更新时间、合并信息、验收标准逐项勾选、相对基线的提交、改动文件统计（不含完整 patch）、未提交改动与待处理暂存数量。
-
-### 2.2 为什么做
-
-验收结果目前只存在于看板里：验收标准、提交、改动文件、合并信息分散在概览、代码改动、右栏三个区域。用户要把验收结论发给同事、贴进 PR 或留档时，只能手工拼。报告导出把「当时按什么标准验收、验收了什么、改了什么」一次带走，补上可追溯性。
-
-### 2.3 预期效果
-
-- 任意状态的任务都能生成报告；已合并/已清理任务按「全部核对」语义输出。
-- 报告中的文件统计与「代码改动」标签一致；diff 不可用时明确写出原因，不伪造数据。
-- 复制失败与下载行为有明确反馈。
-
-### 2.4 收益
-
-- **对用户**：验收结论可直接进入 PR 描述、周报或交付文档，减少手工整理。
-- **对团队/评审者**：报告自带标准与勾选结果，能区分「标准是什么」和「核对到哪一步」。
-- **对插件**：验收闭环产生可导出的产物，为后续「验收报告归档」「按报告生成发布说明」留下基础。
-- **成本低**：只读现有任务记录、快照与 diff，不新增 Git 命令、不改状态。
-
-### 2.5 实现方案
-
-#### 纯函数模块（`src/client/report.ts`）
-
-```ts
-export interface ReportInput {
-  task: WorktreeTask
-  snapshot: TaskSnapshot
-  diff?: TaskDiff | null
-  t: Record<string, any>
-  generatedAt?: number
+export type DueKind = 'overdue' | 'today' | 'soon' | 'later'
+export interface DueState {
+  kind: DueKind
+  /** 逾期时为逾期天数（正数）；未到期时为距今天数。 */
+  days: number
 }
 
-export function buildAcceptanceReport(input: ReportInput): string
-export function reportFileName(task: WorktreeTask, now?: number): string
-```
+/** 派生展示状态；没有截止日期或非法值返回 null。 */
+export function dueStateOf(dueAt: number | null | undefined, now?: number): DueState | null
 
-报告结构（Markdown）：
-
-```md
-# 验收报告：<标题>
-
-- 任务 ID：`<id>`
-- 状态：<本地化状态>
-- 任务分支：`<branch>` → 基线 ` <baseBranch> `
-- Worktree：`<worktreePath>`
-- 更新时间：<ISO 时间>
-- 合并：<时间 / 合并提交 / 合并分支尖端>（仅已合并任务）
-- 验收标准：n/total 已核对
-
-## 验收标准
-
-- [x] 已核对项
-- [x] 未核对项
-
-## 提交（相对基线）
-
-- `abc1234` 提交说明
-
-## 改动文件
-
-| 文件 | 状态 | 新增 | 删除 |
-| --- | --- | --- | --- |
-| `src/a.ts` | modified | 12 | 3 |
-
-合计：+12 -3
-
-## 备注
-
-- worktree 未提交改动：0
-- 待处理暂存：0
-
-> 本报告由 Worktree 看板生成；状态来自 Git 与任务记录。
+/** `<input type="date">` 的值：本地 YYYY-MM-DD；空值返回 ''。 */
+export function dueInputValue(dueAt: number | null | undefined): string
 ```
 
 规则：
 
-- 验收标准使用 `criteria(task, snapshot.status)`，与概览完全同源；已合并/已清理显示全部勾选。
-- 提交使用 `snapshot.worktree.commits`（最近 20 条）；没有时写「无提交记录」。
-- 文件表使用 `diff.files`，只输出路径、状态、增删行数；`diff.truncated` 时追加提示。
-- `diff` 为空或带 `reason` 时写「改动统计不可用：<reason>」，不生成空表。
-- 文件路径中的 `|` 转义为 `\|`。
-- 所有文案走 `t`，`locale/zh.json` 与 `locale/en.json` 同时补齐。
+- 日历日差用「本地年月日 -> `Date.UTC` -> 除以 86400000」计算，避免夏令时导致的 23/25 小时误差。
+- `dueStateOf`：offset `< 0` -> `overdue`，`days = -offset`；`0` -> `today`；`1..DUE_SOON_DAYS` -> `soon`；其余 -> `later`。
+- `dueInputValue` 必须补零；非法值返回 `''`。
+- 不修改 `compareTaskOrder`：截止日期不改变排序。
 
-#### 下载与复制（`src/client/format.ts`、`src/client/stage.ts`、`src/client/board.ts`）
-
-- `format.ts` 新增 `downloadTextFile(name, text)`：Blob + 临时 `<a download>`，完成后回收 object URL。
-- `board.ts` 用 `React.useMemo` 生成 `reportText` 与 `reportFileName`，传给 Stage。
-- Stage 概览新增报告区块：两个按钮分别调用 `copyText` 与 `downloadTextFile`；结果通过现有 `say` Toast 反馈。
-- 新增 Stage props：`reportText?: string`、`reportFileName?: string`、`onCopyReport?: () => void`、`onDownloadReport?: () => void`。
-
-#### 文案
-
-`acceptanceReport`、`copyReport`、`downloadReport`、`reportCopied`、`reportCopyFailed`、`reportDownloaded`、`reportTitle`、`reportTaskId`、`reportStatus`、`reportBranch`、`reportWorktree`、`reportUpdated`、`reportMerged`、`reportCriteria`、`reportCriteriaProgress`、`reportCommits`、`reportFiles`、`reportFile`、`reportTotals`、`reportNotes`、`reportUncommitted`、`reportPendingStashes`、`reportNoCriteria`、`reportNoCommits`、`reportNoFiles`、`reportDiffUnavailable`、`reportTruncated`、`reportFooter`。
-
-### 2.6 验收标准
-
-- [x] 有验收标准的任务：报告逐项输出 `[x]` / `[ ]`，进度数字正确。
-- [x] 已合并 / 已清理任务：报告按全部核对输出。
-- [x] 无验收标准：报告写「无验收标准」，不出现空列表。
-- [x] 有提交与 diff：报告包含提交列表、文件统计与合计。
-- [x] diff 不可用：报告写明原因，不伪造文件表。
-- [x] 复制成功 / 失败都有 Toast；下载文件名符合 `acceptance-<id8>-<YYYYMMDD>-<HHmm>.md`。
-- [x] 中英文 locale 均包含全部报告文案。
-
----
-
-## 3. 发布模板（`TaskTemplate`）
-
-### 3.1 功能说明
-
-新增全局「发布模板」：保存常用的标题、描述与验收标准；发布任务时从模板下拉选择，一键填入表单，再按需修改。
-
-- 设置页可新建、编辑、删除模板。
-- 发布弹窗顶部显示模板选择；选择后填充标题、描述和验收标准。
-- 模板不绑定项目或基线，避免复制到其他项目时把分支带错。
-
-### 3.2 为什么做
-
-很多任务是重复类型：修 bug、补文档、加测试、发版检查。每次发布都要重新写标题、描述和验收标准，既慢又容易漏项。现有验收标准库只能复用「标准」，不能复用「整张发布表单」。
-
-### 3.3 预期效果
-
-- 选择模板后，标题、描述、验收标准一次填好；仍可自由修改。
-- 模板中的标准如果在标准库中，显示为可勾选项；不在库中的自动进入手动补充区，不丢内容。
-- 删除模板不影响已经发布的任务。
-
-### 3.4 收益
-
-- **对用户**：常规任务从「每次重写」变成「选模板 + 改两处」。
-- **对团队**：把任务描述与验收标准沉淀为可复用资产，减少口径差异。
-- **对插件**：与验收标准库形成「模板 → 发布 → 验收」的连续能力。
-- **风险低**：模板只影响发布弹窗的初始值，不改变发布接口的校验与执行。
-
-### 3.5 实现方案
-
-#### 模型（`src/models.ts`）
-
-```ts
-export interface TaskTemplate {
-  id: string
-  name: string
-  title: string
-  description: string
-  criteria: string[]
-  createdAt: number
-  updatedAt?: number
-}
-```
-
-#### Store（`src/store.ts`）
-
-- 新文件 `templates.json`，保存模板数组。
-- `load()` / `flush()` / `dispose()` 同步刷新。
-- 新方法（均在 `withLock` 内 refresh → 修改 → save）：
-
-```ts
-export type TemplateResult =
-  | { ok: true; item: TaskTemplate; templates: TaskTemplate[] }
-  | { ok: false; reason: 'missing' }
-
-listTemplates(): TaskTemplate[]
-saveTemplate(input: { id?: string; name: string; title?: string; description?: string; criteria?: string[] }): TemplateResult
-deleteTemplate(id: string): TaskTemplate[]
-```
-
-- `name` 为空时由 Runtime 拒绝；Store 只保存已规范化数据。
-- `criteria` 使用 `normalizeCriteria`。
-- 列表按 `createdAt` 倒序（新建的在前）。
-- 更新时保留原 `createdAt`，写入 `updatedAt`。
-
-#### Runtime（`src/runtime.ts`）
-
-```ts
-listTaskTemplates(): TaskTemplate[]
-saveTaskTemplate(input: { id?: string; name: string; title?: string; description?: string; criteria?: string[] }): TaskTemplate[]
-deleteTaskTemplate(id: string): TaskTemplate[]
-```
-
-- `name.trim()` 为空 → `TaskError('模板名称不能为空')`。
-- 带 `id` 但模板不存在 → `TaskError('模板不存在：<id>', 404)`。
-- 其余字段 `String(...)` 兜底，`criteria` 走 `normalizeCriteria`。
-
-#### HTTP（`src/http.ts`）
-
-```text
-GET  templates
-POST templates/save    { id?, name, title?, description?, criteria? }
-POST templates/delete  { id }
-```
-
-- `GET` 与 `acceptance-criteria` 一样是本地只读查询，不要求 token。
-- 两个 `POST` 要求 token，返回 `{ templates }`。
-- `TaskError` 映射原有状态码。
-
-#### 设置页（`src/client/settings-page.ts`）
-
-- 新增「发布模板」Card：
-  - 列表：模板名称、标题、编辑与删除按钮。
-  - 编辑区：名称、标题、描述、验收标准（每行一条）。
-  - 保存 / 取消；保存成功后刷新列表并清空编辑态。
-  - 删除后刷新列表；删除前使用现有确认弹窗（或与验收标准库一致的低风险直接删除 + Toast，二选一，优先复用现有 Modal）。
-- 复用现有 `Card`、`CardHead`、`TextInput`、`Btn`、`IconBtn` 与 `dshw-criteria-*` 样式，不新增第二套视觉。
-
-#### 发布弹窗（`src/client/publish.ts`、`src/client/publish-state.ts`）
-
-- 新增纯函数：
-
-```ts
-export function applyPublishTemplate(
-  template: TaskTemplate,
-  library: string[],
-): { title: string; description: string; picked: string[]; manual: string }
-```
-
-  - `picked = template.criteria.filter((item) => library.includes(item))`
-  - `manual = template.criteria.filter((item) => !library.includes(item)).join('\n')`
-  - `title` / `description` 原样返回。
-
-- 弹窗挂载时并行请求 `acceptance-criteria` 与 `templates`。
-- 顶部新增模板选择（无模板时不渲染选择，只显示「可在设置页创建模板」的提示）。
-- 选择模板后调用 `applyPublishTemplate`，写入标题、描述、`picked`、`manual`。
-- 模板选择不改变项目、基线、自定义分支、模型与「发布后启动」开关。
-- 用户修改任一字段后，模板选择仍保留（只表示来源，不反向覆盖）。
-
-#### 文案
-
-`templates`、`template`、`templateHint`、`templateEmpty`、`templateName`、`templateTitle`、`templateDescription`、`templateCriteria`、`templateSave`、`templateSaved`、`templateDelete`、`templateDeleted`、`templateEdit`、`templateNew`、`templateCancel`、`templateDeleteConfirm`、`templateNameRequired`。
-
-### 3.6 验收标准
-
-- [x] 设置页可新建、编辑、删除模板；刷新后保持。
-- [x] 模板名称为空时保存被拒绝并提示。
-- [x] 发布弹窗选择模板后标题、描述、验收标准被填充。
-- [x] 模板标准不在标准库时进入手动补充区，发布后仍作为验收标准保存。
-- [x] 切换项目/基线不会被模板改写。
-- [x] 两个 Store 实例交替保存模板时结果都保留（锁内读改写）。
-- [x] 无 token 调用 `templates/save` 返回 403。
-
----
-
-## 4. 任务置顶（`pinnedAt`）
-
-### 4.1 功能说明
-
-任务行新增「置顶 / 取消置顶」动作。置顶任务在所属项目分组内始终排在最前，并显示置顶标记。
-
-### 4.2 为什么做
-
-看板按创建时间倒序排列。正在盯的、等待评审的、需要每天跟进的任务，一旦有新任务发布就会被挤下去。用户需要一个不改变任务状态、也不改变 Git 状态的轻量排序手段。
-
-### 4.3 预期效果
-
-- 置顶任务在项目分组顶部，按置顶时间倒序；未置顶任务仍按创建时间倒序。
-- 刷新、重启、换端口打开后保持。
-- 取消置顶后回到正常排序。
-
-### 4.4 收益
-
-- **对用户**：把注意力固定在当前最重要的任务上，减少滚动和搜索。
-- **对插件**：置顶是纯展示元数据，不影响状态推导与生命周期，风险低。
-- **对工具链路**：`worktree_act` 支持 pin/unpin，Agent 也能整理看板。
-
-### 4.5 实现方案
-
-#### 模型（`src/models.ts`）
+#### 1.5.2 数据模型（`src/models.ts`）
 
 ```ts
 export interface WorktreeTask {
   // ...
-  /** 置顶时间；存在时任务在项目分组内置顶。 */
-  pinnedAt?: number
+  /** 可选截止日期：本地日历日零点的毫秒时间戳。 */
+  dueAt?: number
 }
 ```
 
-#### Store（`src/store.ts`）
+#### 1.5.3 Store（`src/store.ts`）
 
-```ts
-export type PinResult =
-  | { ok: true; task: WorktreeTask }
-  | { ok: false; reason: 'missing' }
+- `TaskMetaPatch` 增加 `dueAt?: unknown`。
+- `TaskMetaResult` 的失败原因增加 `'due-invalid'`。
+- `updateTaskMeta` 内：
+  - `has('dueAt')` 时调用 `parseDueAt(patch.dueAt)`；`ok: false` 返回 `{ ok: false, reason: 'due-invalid' }`。
+  - `value === null` 时 `delete task.dueAt`，否则 `task.dueAt = value`。
+  - 与现有字段一致：只有实际处理了字段才更新 `updatedAt` 并 `saveTasks()`。
+  - 校验失败时不能留下半写入状态（沿用现有「先全部归一化 / 校验，再写记录」的结构）。
 
-setTaskPinned(taskId: string, pinned: boolean): PinResult
-```
+#### 1.5.4 Runtime / HTTP / 工具
 
-- `withLock` → `refreshTasks()` → 任务不存在返回 `missing`。
-- `pinned` 为真且 `pinnedAt` 为空时写入 `Date.now()`；为假时删除字段。
-- 写入 `updatedAt`，`saveTasks()`。
+- `src/runtime.ts` 的 `updateTaskMeta` 错误映射增加：
+  - `due-invalid` -> `截止日期无效`，HTTP 400。
+- `src/http.ts` 的 `act('meta')` 增加：
+  ```ts
+  if (Object.prototype.hasOwnProperty.call(body, 'dueAt')) patch.dueAt = body.dueAt
+  ```
+- `src/tools.ts`：
+  - `worktree_publish` 参数增加 `due_at`（string，`YYYY-MM-DD`），透传到 `runtime.publish`。
+  - `worktree_act` 参数增加 `due_at`（string 或 null），`meta` 动作映射为 `patch.dueAt`。
+  - `brief()` 输出增加 `dueAt: Number(v.task.dueAt) || 0`（没有时为 0）。
 
-#### Runtime / HTTP / 工具
+#### 1.5.5 Runtime 发布（`src/runtime/types.ts`、`src/runtime/projects.ts`）
 
-- `Runtime.setTaskPinned(id, pinned)` 映射 `missing` → `TaskError('任务不存在：<id>', 404)`。
-- `POST task/pin` 走现有 `act(...)`，请求体 `{ id, pinned }`，返回最新 `view`。
-- `worktree_act` 的 `action` 枚举增加 `pin` / `unpin`，分别调用 `setTaskPinned(id, true/false)`。
+- `PublishInput` 增加 `dueAt?: number | string | null`。
+- `publishTask` 内用 `parseDueAt` 校验；非法时抛出 `TaskError('截止日期无效', 400)`（与现有校验风格一致）；合法且非空时写入 `task.dueAt`。
 
-#### 排序
+#### 1.5.6 发布弹窗（`src/client/publish-state.ts`、`src/client/publish.ts`）
 
-- `src/runtime/projects.ts` 的 `projectViews` 排序改为：
-  `(pinnedAt 倒序) → (createdAt 倒序)`。
-- `src/client/board-data.ts` 的 `upsertPublishedTask` 使用同一规则，避免发布后短暂回到旧顺序。
+- `PublishDraft` 增加 `dueAt: string`（`<input type="date">` 的值，`''` 表示未设置）。
+- `initialPublishForm`：`dueAt: String(d.dueAt || '')`；`publishDraftDirty` 比较该字段。
+- `publish.ts`：
+  - 读取 `form0.dueAt`，增加 `const [dueAt, setDueAt] = React.useState(form0.dueAt)`。
+  - 高级区在标签 / 优先级之后增加「截止日期」日期输入；`aria-label` 使用 `t.taskDue`。
+  - `currentForm()` 带上 `dueAt`。
+  - 提交前用 `parseDueAt` 校验；失败时 `fieldErrors.dueAt = t.taskDueInvalid`，并在输入框下用 `role="alert"` 展示。
+  - 请求体只在 `dueAt` 非空时带 `dueAt`（传规范化后的数字或原始 `YYYY-MM-DD` 均可，服务端会归一）。
+  - `advanced` 初始展开条件增加 `!!form0.dueAt`；`applyPublishTemplate` 不带截止日期（模板不覆盖时间承诺）。
+  - 恢复草稿时 `initialPublishForm` 已覆盖；切换项目 / 基线不重置日期。
 
-#### 左栏（`src/client/rail.ts`、`src/client/board.ts`、`src/client/icons.ts`）
+#### 1.5.7 任务信息（`src/client/stage.ts`）
 
-- `ICONS` 增加 `pin` 图标。
-- 任务行操作区增加置顶按钮：`aria-pressed`、`title` 为「置顶 / 取消置顶」，置顶时使用强调色。
-- 置顶任务在标题前显示一个小型置顶标记（可用同一图标 + `aria-hidden`），未置顶不显示。
-- `RailProps` 增加 `onPinTask: (taskId: string, pinned: boolean) => void`。
-- `board.ts` 传入 `actions.runPin`。
+- `StageProps.onSaveMeta` 的 patch 类型增加 `dueAt?: number | null`。
+- **只读模式**（无 `onSaveMeta`）：新增一行「截止日期」，显示 `dueInputValue(task.dueAt)` 与状态 chip（逾期 / 今天 / N 天后）；未设置显示 `t.taskDueEmpty`。
+- **编辑模式**：
+  - 新增一行「截止日期」：`<input type="date">` + 「清除」按钮。
+  - 本地状态 `dueDraft`、`dueError`；切换任务时从 `task.dueAt` 重置。
+  - 选择日期后立即保存：`parseDueAt(value)` 成功则 `save({ dueAt: parsed.value })`；失败则内联报错且不保存。
+  - 清除时 `save({ dueAt: null })`。
+  - 保存中禁用输入；保存失败时恢复原值（与优先级下拉一致）。
+  - 空值不写 `undefined` 键。
+- 布局沿用现有 `dshwd-meta-row` / `dshwd-meta-label` / `dshwd-meta-value`，不加新 CSS。
 
-#### 操作（`src/client/board/use-board-actions.ts`）
+#### 1.5.8 左栏与注意力（`src/client/rail.ts`、`src/client/task-attention.ts`、`src/client/attention-filter.ts`、`src/client/attention-summary.ts`、`src/client/board.ts`）
 
-```ts
-async function runPin(taskId: string, pinned: boolean) {
-  if (busy) return
-  setBusy('pin')
-  try {
-    await post('task/pin', { id: taskId, pinned })
-    say(pinned ? t.taskPinned : t.taskUnpinned)
-  } catch (e: any) {
-    say(String((e && e.message) || t.failed), true)
-  } finally {
-    setBusy('')
-    void refresh()
+- `rail.ts` 任务行在状态 / 优先级 chip 之后增加截止 chip：
+  - `overdue`：`t.taskDueOverdue`（`{n}` = 天数），`err` tone；
+  - `today`：`t.taskDueToday`，`warn` tone；
+  - `soon`：`t.taskDueSoon`（`{n}`），`warn` tone；
+  - `later` / 无值：不显示。
+  - chip 的 `title` 使用 `t.taskDueHint`。
+  - 不要在 `alertText` 里再加一遍，避免和通用 alert chip 重复。
+- `task-attention.ts`：
+  - `AttentionCategory` 增加 `'overdue'`；
+  - `AttentionInput` 增加 `overdueDays?: number | null`；
+  - `deriveTaskAttention`：`Math.floor(Number(input.overdueDays) || 0) > 0` 时 `categories.add('overdue')`；**不新增 AlertKind**，不 push alert；
+  - `SEVERITY` 增加 `overdue: 2`；
+  - `CATEGORY_ORDER` 调整为 `['recovery', 'broken', 'pending', 'overdue', 'review', 'stalled']`；
+  - `categoryKey` 增加 `overdue: 'attentionOverdue'`；
+  - `summarizeAttention` 的 counts 初始化增加 `overdue: 0`；
+  - `computeFilterCounts` 的 counts 增加 `overdue`，`hurting` 列表加入 `'overdue'`（计入 `total`）。
+- `attention-filter.ts`：`options` 在 `'pending'` 之后插入 `'overdue'`；图标用 `clock`；不使用 danger 样式。
+- `attention-summary.ts`：`severity >= 2` 分支改为：
+  ```ts
+  if (severity >= 2) {
+    if (Number(counts.pending || 0) > 0) return pending 文案
+    return String(t.attentionSummaryOverdue).replace('{n}', String(counts.overdue || 0))
   }
-}
-```
+  ```
+  这样「只有逾期」时不会误用「待处理」文案。
+- `board.ts`：构建 `attentionMap` 时传入：
+  ```ts
+  const due = dueStateOf(tv.task.dueAt)
+  overdueDays: due && due.kind === 'overdue' ? due.days : 0
+  ```
+  逾期任务仍然可以被停滞分类同时命中；两类计数都应正确（去重只影响 `total`）。
 
-#### 文案
+#### 1.5.9 验收报告（`src/client/report.ts`、`src/client/project-report.ts`）
 
-`pinTask`、`unpinTask`、`taskPinned`、`taskUnpinned`、`pinned`。
+- 单任务报告元数据区增加：
+  - `- 截止日期: YYYY-MM-DD`；无值输出 `t.reportDueNone`；
+  - 逾期时追加 `（t.reportDueOverdue，{n}）`。
+- 项目报告任务表增加「截止」列（放在「优先级」之后），值为 `YYYY-MM-DD` 或 `—`；逐任务块增加 `- 截止日期: ...`。
+- 报告不因为截止日期为空而少输出章节；保持现有「固定顺序、缺失给降级文案」原则。
 
-### 4.6 验收标准
+#### 1.5.10 文案（`locale/zh.json`、`locale/en.json`）
 
-- [x] 置顶后任务移动到项目分组顶部，取消后回到创建时间顺序。
-- [x] 刷新页面、重新打开工作台后保持。
-- [x] 多个置顶任务按置顶时间倒序。
-- [x] `task/pin` 无 token 返回 403，未知任务返回 404。
-- [x] `worktree_act` 的 `pin` / `unpin` 可用。
-- [x] 置顶不影响任务状态、合并、清理与 diff。
+至少新增（中英文 key 集合必须一致）：
+
+| key | 中文 | English |
+| --- | --- | --- |
+| `taskDue` | 截止日期 | Due date |
+| `taskDueEmpty` | 未设置截止日期 | No due date |
+| `taskDueClear` | 清除 | Clear |
+| `taskDueInvalid` | 截止日期无效 | Invalid due date |
+| `taskDueHint` | 按本地日历日计算；逾期任务会进入「逾期」筛选。 | Calculated in local calendar days; overdue tasks appear in the Overdue filter. |
+| `taskDueOverdue` | 逾期 {n} 天 | Overdue by {n}d |
+| `taskDueToday` | 今天到期 | Due today |
+| `taskDueSoon` | {n} 天后到期 | Due in {n}d |
+| `attentionOverdue` | 逾期 | Overdue |
+| `attentionSummaryOverdue` | {n} 个任务逾期 | {n} overdue |
+| `reportDue` | 截止日期 | Due date |
+| `reportDueNone` | 未设置 | Not set |
+| `reportDueOverdue` | 逾期 {n} 天 | Overdue by {n}d |
+| `projectReportColDue` | 截止 | Due |
+
+### 1.6 验收标准
+
+- [ ] 发布弹窗高级区可设置截止日期；发布后任务详情与左栏立即可见。
+- [ ] 任务详情可设置、修改、清除截止日期；刷新页面、重启 DSH 后保持。
+- [ ] 逾期 1 天 / 3 天、今天到期、未来 1–3 天、未来更远、无截止日期，六种情况的 chip 文案与颜色符合 1.3。
+- [ ] 「逾期」筛选项出现且计数正确；选中后只显示逾期任务；汇总条在只有逾期任务时显示逾期文案。
+- [ ] 逾期任务同时停滞时，两个筛选都命中，`total` 不重复计数。
+- [ ] 非法日期返回 400；清除后 `dueAt` 键被删除。
+- [ ] 单任务报告与项目报告都包含截止日期，输出可读且不破坏 Markdown 表格。
+- [ ] 截止日期不改变排序、不改变任务状态、不改变合并门禁。
+- [ ] 中英文 key 完全一致，`npm run check:locale` 通过。
+
+### 1.7 测试要点
+
+- `test/task-meta.test.ts`（扩展）：`parseDueAt` 的 null / 空串 / 数字 / `YYYY-MM-DD` / 非法日期 / 非法字符串；`dueDayOffset` 跨月、跨年、夏令时边界；`dueStateOf` 五种状态；`dueInputValue` 补零。
+- `test/store.test.ts`（扩展）：设置、覆盖、清除 `dueAt`；非法值不写入；与其他 meta 字段部分更新互不覆盖。
+- `test/http-flow.test.ts`（扩展）：`task/meta` 设置 / 清除 / 非法 400；`publish` 带 `dueAt`。
+- `test/client-publish-state.test.ts`（扩展）：`dueAt` 初始值、脏检查。
+- `test/client-task-attention.test.ts`（扩展）：`overdueDays` 产生分类；计数去重；`categoryKey`。
+- `test/client-attention-summary`（如存在，扩展）：只有逾期时的标题。
+- `test/client-report.test.ts` / `test/client-project-report.test.ts`（扩展）：有值 / 无值 / 逾期三种输出。
+- 新文件优先：如现有测试结构不便扩展，可新增 `test/client-due.test.ts`，但不要复制已有断言。
 
 ---
 
-## 5. 会话快捷指令（Quick Prompts）
+## 2. 前置任务依赖（`dependsOn`）
+
+### 2.1 功能说明
+
+任务可以声明「必须先完成的前置任务」。语义是**建议性依赖**，只做展示与提示，不阻止合并、不改变状态机。入口与展示：
+
+1. **任务详情**：「任务信息」分区新增「前置任务」行：
+   - 无依赖：显示「无前置任务」；
+   - 有依赖：显示前置任务的标题 chip，已完成（已合并 / 已清理）显示完成标记；
+   - 编辑模式：可添加同项目任务作为前置，也可逐个移除；
+   - 存在未完成前置时，行内提示「等待 N 项前置」。
+2. **左栏任务行**：存在未完成前置时显示「等待 N 项前置」chip（warn 色），`title` 列出前置任务标题。
+3. **模型工具**：`worktree_act` 的 `meta` 动作接受 `depends_on`（字符串数组，`[]` 清除）；`brief()` 输出 `dependsOn`。
+4. 本批次**不做**依赖关系图、不做合并阻断、不做自动会话提醒；依赖变化只写任务记录。
+
+### 2.2 为什么做
+
+一个批次里的任务经常有先后关系：先改接口，再做页面；先修基础问题，再补体验。现在这种关系只存在于聊天记录或标题里，看板无法表达。用户只能靠记忆判断「这个任务现在能不能验收」，批次一多就容易先合并后置任务，最后返工。把依赖写成结构化字段后，至少能在左栏与详情里明确「还在等谁」，为后续做依赖图、合并门禁和自动提醒留下数据基础。
+
+### 2.3 预期效果
+
+- 任务 B 依赖任务 A，A 仍在进行中：B 行内显示「等待 1 项前置」，详情显示 A 的标题与未完成标记。
+- A 合并后：B 的 chip 消失，详情显示 A 已完成。
+- A 被清理（`cleanedAt`）也视为完成，避免依赖永久阻塞。
+- A 被删除：B 的依赖显示为「已删除」，不再计入「等待 N 项」；不报错、不影响 B 的其他字段。
+- 尝试把自己设为前置、依赖其他项目任务、依赖不存在的任务、形成循环依赖、超过 8 个前置：返回 400，且不写入。
+- 未设置依赖的任务：行为与 1.13.0 完全一致。
+
+### 2.4 收益
+
+- **对用户**：一眼看出任务为什么还不能开始或验收，减少「先做后置任务」的返工。
+- **对团队**：交接时依赖关系是结构化上下文，不再依赖记忆。
+- **对插件**：补上「任务之间」的维度，后续可以扩展依赖图、合并前检查、自动排队。
+- **风险可控**：纯展示字段，不阻断任何 Git 操作；校验集中在 Store 锁内，旧记录零迁移。
+
+### 2.5 实现方案
+
+#### 2.5.1 共享纯函数（`src/task-deps.ts`，新增）
+
+宿主端、客户端与测试共用，不依赖 DOM / Node API：
+
+```ts
+export const DEPENDENCY_LIMIT = 8
+
+export type DependencyIssue =
+  | 'too-many'
+  | 'invalid'
+  | 'self'
+  | 'missing'
+  | 'cross-project'
+  | 'cycle'
+
+/** 接受数组或逗号 / 空白分隔字符串；去空、去重，保留首次顺序。 */
+export function normalizeDependencyIds(values: unknown): string[]
+
+/** 前置任务视为完成：已有 mergedAt 或 cleanedAt。 */
+export function isDependencyDone(task: any): boolean
+
+export interface DependencyValidationInput {
+  taskId: string
+  projectId?: string
+  repoPath?: string
+  ids: string[]
+  tasks: Array<{
+    id: string
+    projectId?: string
+    repoPath?: string
+    dependsOn?: string[]
+    mergedAt?: number
+    cleanedAt?: number
+    archivedAt?: number
+  }>
+}
+
+/**
+ * 校验一组依赖 id。
+ * - 数量超过 DEPENDENCY_LIMIT -> too-many
+ * - 包含自己 -> self
+ * - 任一 id 不存在 -> missing
+ * - 任一前置与当前任务不同项目 -> cross-project
+ * - 加入后形成环 -> cycle
+ */
+export function validateDependencyIds(
+  input: DependencyValidationInput,
+): { ok: true } | { ok: false; error: DependencyIssue }
+
+export interface DependencyOpenItem {
+  id: string
+  title: string
+  done: boolean
+}
+
+export interface DependencyStatus {
+  /** 记录中存在的依赖总数（不含缺失 id）。 */
+  total: number
+  done: number
+  /** 尚未完成的前置任务。 */
+  open: DependencyOpenItem[]
+  /** 记录中存在、但任务已不存在的 id。 */
+  missing: string[]
+  /** open.length > 0。缺失 id 不算阻塞。 */
+  blocked: boolean
+}
+
+/**
+ * 根据任务记录查找表派生展示状态。lookup 的值至少包含 id / title /
+ * mergedAt / cleanedAt。缺失 id 放进 missing，不阻塞。
+ */
+export function dependencyStatus(task: any, lookup: Map<string, any>): DependencyStatus
+```
+
+规则：
+
+- `normalizeDependencyIds` 对非数组非字符串返回 `[]`；字符串按 `/[,\s]+/` 切分；每项 `trim()`；空项丢弃；去重。
+- 项目一致性：两边 `projectId` 都非空时比较 `projectId`；否则两边 `repoPath` 都非空时比较 `repoPath`；都缺失时放行（兼容旧记录）。
+- 环检测：用 `tasks` 构建 `id -> dependsOn` 邻接表，把当前任务的边替换为 `ids`，从 `taskId` 做 DFS；遇到已访问节点即视为有环。
+- `dependencyStatus` 中 `total` 只统计 lookup 里存在的依赖；`missing` 只展示、不阻塞。
+- 同一个 id 重复出现只算一次。
+
+#### 2.5.2 数据模型（`src/models.ts`）
+
+```ts
+export interface WorktreeTask {
+  // ...
+  /** 可选前置任务 id 列表（同一项目，最多 8 个）。 */
+  dependsOn?: string[]
+}
+```
+
+#### 2.5.3 Store（`src/store.ts`）
+
+- `TaskMetaPatch` 增加 `dependsOn?: unknown`。
+- `TaskMetaResult` 的失败原因增加：
+  `'deps-too-many' | 'deps-self' | 'deps-missing' | 'deps-cross-project' | 'deps-cycle'`。
+- `updateTaskMeta` 内：
+  - `has('dependsOn')` 时 `normalizeDependencyIds`；
+  - `[]` -> `delete task.dependsOn`；
+  - 非空 -> 调用 `validateDependencyIds`（传入当前任务、`this.tasks` 全量记录、拟写入的 ids）；失败映射到对应 reason；
+  - 校验全部通过后才写记录、更新 `updatedAt`、`saveTasks()`。
+- 依赖任务被删除时不做全表清理：其他任务的 `dependsOn` 保留旧 id，运行时按 missing 展示。文档中注明这是有意的宽容策略。
+
+#### 2.5.4 Runtime / HTTP / 工具
+
+- `src/runtime.ts` 的 `updateTaskMeta` 错误映射增加：
+  - `deps-too-many` -> `前置任务最多 8 个`
+  - `deps-self` -> `不能依赖自己`
+  - `deps-missing` -> `前置任务不存在`
+  - `deps-cross-project` -> `只能依赖同一项目的任务`
+  - `deps-cycle` -> `不能形成循环依赖`
+  全部 HTTP 400。
+- `src/http.ts` 的 `act('meta')` 增加：
+  ```ts
+  if (Object.prototype.hasOwnProperty.call(body, 'dependsOn')) patch.dependsOn = body.dependsOn
+  ```
+- `src/tools.ts`：
+  - `worktree_act` 参数增加 `depends_on`（array of string），`meta` 动作映射为 `patch.dependsOn`；
+  - `brief()` 输出 `dependsOn: Array.isArray(v.task.dependsOn) ? v.task.dependsOn : []`。
+- 发布接口本批次不接受 `dependsOn`：依赖在任务创建后通过详情设置。
+
+#### 2.5.5 任务信息（`src/client/stage.ts`）
+
+- `StageProps.onSaveMeta` 的 patch 类型增加 `dependsOn?: string[]`。
+- 新增两个只读 prop（由 board 计算，测试可省略）：
+  ```ts
+  /** 当前任务的前置任务（含完成状态），按 dependsOn 顺序。 */
+  dependencyItems?: Array<{ id: string; title: string; done: boolean; missing?: boolean }>
+  /** 可添加为前置的同项目任务（排除自己与已归档）。 */
+  dependencyOptions?: Array<{ id: string; title: string; done: boolean }>
+  ```
+- 只读模式：新增「前置任务」行；无依赖显示 `t.taskDepsEmpty`；有依赖显示标题 chip（完成加 `✓`，缺失显示 `t.taskDepsMissing`）；存在未完成项时行内显示 `t.taskDepsWaitingHint`（`{n}` 与 `{titles}`）。
+- 编辑模式：
+  - 已选依赖 chip 右侧提供移除按钮（`aria-label` 带任务标题）；
+  - 「添加前置任务」`<select>`：默认空 option，选项为 `dependencyOptions` 中尚未选择的任务；选择后立即 `save({ dependsOn: [...ids, chosen] })`；成功后清空 select；
+  - 移除时 `save({ dependsOn: ids.filter(id => id !== removed) })`；
+  - 保存中禁用；保存失败时保持原值（下一次轮询会回填）。
+- 不新增图标 / CSS；复用 `dshwd-chip`、`dshwd-meta-*`、`dshwd-select`。
+
+#### 2.5.6 左栏（`src/client/rail.ts`、`src/client/board.ts`）
+
+- `RailProps` 增加可选：
+  ```ts
+  depsOf?: (task: any) => DependencyStatus
+  ```
+- 任务行在截止 chip 之后（或优先级之后）：
+  - `status.blocked` 时显示 `chip(fill(t.taskDepsBlocked, { n: status.open.length }), 'warn', titles)`；
+  - `titles` = `status.open.map(item => item.title).join(', ')`；
+  - 没有 `depsOf` 或没有未完成项时不显示。
+- `board.ts`：
+  - 构建 `const taskLookup = new Map(allViews.map(tv => [tv.task.id, tv.task]))`；
+  - `const depsOf = React.useCallback((task: any) => dependencyStatus(task, taskLookup), [taskLookup])`；
+  - 传给 `Rail`；并给 `Stage` 计算：
+    - `dependencyItems`：当前任务 `dependsOn` 的逐项查找（缺失项 `missing: true`）；
+    - `dependencyOptions`：同一项目、不同 id、未归档的任务，按 `compareTaskOrder` 排序。
+
+#### 2.5.7 文案（`locale/zh.json`、`locale/en.json`）
+
+至少新增：
+
+| key | 中文 | English |
+| --- | --- | --- |
+| `taskDeps` | 前置任务 | Depends on |
+| `taskDepsEmpty` | 无前置任务 | No dependencies |
+| `taskDepsAdd` | 添加前置任务 | Add dependency |
+| `taskDepsRemove` | 移除前置任务 | Remove dependency |
+| `taskDepsBlocked` | 等待 {n} 项前置 | Waiting on {n} |
+| `taskDepsDone` | 已完成 | Done |
+| `taskDepsOpen` | 未完成 | Open |
+| `taskDepsMissing` | 已删除 | Missing |
+| `taskDepsHint` | 只能依赖同一项目的任务；前置全部合并或清理后解除等待。 | Only tasks in the same project; a dependency clears when it is merged or cleaned. |
+| `taskDepsWaitingHint` | 还有 {n} 项未完成：{titles} | Still waiting on {n}: {titles} |
+| `taskDepsAllDone` | 前置任务已全部完成 | All dependencies are done |
+| `taskDepsTooMany` | 前置任务最多 8 个 | At most 8 dependencies |
+| `taskDepsSelf` | 不能依赖自己 | A task cannot depend on itself |
+| `taskDepsCycle` | 不能形成循环依赖 | Circular dependencies are not allowed |
+| `taskDepsCrossProject` | 只能依赖同一项目的任务 | Dependencies must share the project |
+
+### 2.6 验收标准
+
+- [ ] 任务详情可添加 / 移除前置任务；刷新、重启后保持。
+- [ ] 前置任务进行中时，详情与左栏都显示等待提示；前置合并或清理后提示消失。
+- [ ] 前置任务被删除时显示「已删除」，且不阻塞。
+- [ ] 自己 / 缺失 id / 跨项目 / 环路 / 超过 8 个全部返回 400，记录不变。
+- [ ] 未设置依赖时详情与左栏行为与 1.13.0 一致。
+- [ ] 依赖不改变排序、状态、合并门禁与 Git 操作。
+- [ ] 中英文 key 一致，`check:locale` 通过。
+
+### 2.7 测试要点
+
+- 新增 `test/task-deps.test.ts`：
+  - normalize：数组 / 字符串 / 混合 / 去重 / 空值；
+  - validate：正常、too-many、self、missing、cross-project（projectId 与 repoPath 两条路径）、直接环、间接环、合法链；
+  - `isDependencyDone`：mergedAt / cleanedAt / 进行中；
+  - `dependencyStatus`：完成数、open、missing、blocked、顺序。
+- `test/store.test.ts`（扩展）：设置 / 清空 / 非法依赖 / 两个 Store 实例并发更新不同字段不互相覆盖。
+- `test/http-flow.test.ts`（扩展）：`task/meta` 的 `dependsOn` 成功与各类 400。
+- `test/tools-act.test.ts`（扩展）：`worktree_act` 的 `depends_on` 透传与 brief 输出。
+
+---
+
+## 3. 项目洞察（`project-insights`）
+
+### 3.1 功能说明
+
+项目详情新增「项目洞察」卡片，用**已有时间戳**计算并展示：
+
+- 平均 / 中位周期：`mergedAt - createdAt` 的天数（仅已合并任务）。
+- 近 7 天新建数与合并数。
+- 验收核对率：所有带验收标准的任务中，已核对条数 / 总条数。
+- 最久未完成任务：从创建到现在的天数。
+- 最近 7 天的每日新建 / 合并柱状条（纯 CSS，不引入图表库）。
+- 统计口径只看任务记录与快照，不额外请求 Git，不写任何状态。
+
+### 3.2 为什么做
+
+看板能显示「现在有多少任务」，但无法回答「这个项目最近交付效率如何」「验收清单真的在核对吗」「有没有任务拖了很久」。项目验收报告是导出物，不适合日常扫一眼。用已有字段做纯函数统计，不需要新增存储或后台任务，就能把项目健康度变成常驻卡片。
+
+### 3.3 预期效果
+
+- 一个有 5 个已合并任务的项目：显示平均周期、中位周期（有样本时）、近 7 天新建 / 合并数。
+- 没有已合并任务：周期显示 `—`，不显示 `0 天`。
+- 没有验收标准：验收核对率显示 `—`。
+- 没有未完成任务：最久未完成显示 `—`。
+- 空项目：卡片显示降级文案，不报错。
+- 已归档任务计入历史合并统计，但不计入「未完成」。
+- 未来时间戳、缺失时间戳、`mergedAt < createdAt` 的异常记录被忽略，不产生负周期。
+
+### 3.4 收益
+
+- **对用户**：不用导出报告就能看到项目节奏与积压。
+- **对团队**：验收核对率暴露「有标准但没人勾」的流程问题。
+- **对插件**：建立纯函数统计层，后续可以做跨项目总览、周报和趋势图。
+- **风险可控**：纯派生、无存储、无网络、无新依赖。
+
+### 3.5 实现方案
+
+#### 3.5.1 新增纯函数 `src/client/project-insights.ts`
+
+```ts
+import type { TaskView } from '../models'
+
+export const INSIGHTS_DAYS = 7
+
+export interface InsightDay {
+  /** 相对今天的天数：-6 .. 0，0 表示今天。 */
+  offset: number
+  /** 当地零点时间戳，用于 tooltip。 */
+  start: number
+  created: number
+  merged: number
+}
+
+export interface ProjectInsights {
+  total: number
+  open: number
+  merged: number
+  archived: number
+  createdLast7: number
+  mergedLast7: number
+  /** 参与周期统计的已合并任务数。 */
+  cycleSamples: number
+  cycleMedianDays: number | null
+  cycleAverageDays: number | null
+  acceptanceChecked: number
+  acceptanceTotal: number
+  /** 0..100 的整数；没有标准时为 null。 */
+  acceptancePercent: number | null
+  oldestOpenDays: number | null
+  statusCounts: Record<string, number>
+  /** 最近 7 个本地日历日，按时间升序。 */
+  daily: InsightDay[]
+}
+
+export function buildProjectInsights(views: TaskView[], now?: number): ProjectInsights
+```
+
+规则：
+
+- `total` = `views.length`（含归档）。
+- `archived` = 有 `archivedAt` 的任务数。
+- `merged` = `snapshot.status === 'merged'` 或存在 `task.mergedAt`。
+- `open` = 未归档、且状态不是 `merged` / `cleaned` 的任务数（`broken` 也算未完成）。
+- 周期样本：`mergedAt` 与 `createdAt` 都是有限正数且 `mergedAt >= createdAt`；天数为毫秒差 / 86400000，保留 1 位小数；中位数按排序后取中间（偶数个取平均）。
+- 近 7 天：以 `now` 的本地日历日为准，构造 `offset = -6..0` 的 7 个桶；`createdAt` 落在桶内的计入 `created`，`mergedAt` 落在桶内的计入 `merged`。桶边界用本地零点，避免时区漂移。
+- 验收核对：对每个任务调用现有 `criteria(task, snapshot.status)` 与 `criteriaProgress(items)`，累加 `checked` 与 `total`；`acceptancePercent = total ? Math.round(checked / total * 100) : null`。
+- `oldestOpenDays`：`open` 任务中 `now - createdAt` 的最大天数（向下取整）；没有 open 返回 null。
+- 所有非法 / 未来时间戳按 0 或忽略处理，不抛异常。
+- 不导入 `task-meta.ts` 的截止日期函数，保持该功能独立。
+
+#### 3.5.2 项目详情卡片（`src/client/project-detail.ts`）
+
+- 在现有统计卡片之后、项目验收报告卡片之前插入：
+  ```ts
+  h(Card, null,
+    h(CardHead, { icon: 'grid', title: t.projectInsights }),
+    ...统计与每日柱状条)
+  ```
+- 统计使用现有 `Stat` 原语，四项：
+  - `t.insightsCycle`：有样本时 `t.insightsCycleValue`（`{n}` 保留 1 位小数），否则 `t.insightsNoData`；
+  - `t.insightsMerged7`：数字；
+  - `t.insightsAcceptance`：百分比或 `t.insightsNoData`；
+  - `t.insightsOldest`：天数或 `t.insightsNoData`。
+- 每日柱状条：
+  - 容器 `dshwd-insights-days`，7 个 `dshwd-insights-day`；
+  - 每格两根细柱（新建 / 合并），高度按 7 天内最大值归一；全 0 时高度为 0（不显示假数据）；
+  - 每格 `title` 使用 `t.insightsDailyTip`（`{date}` / `{created}` / `{merged}`），`aria-label` 同文案；
+  - 日期用本地 `M/D` 格式，`dshw-mono`；
+  - 图例使用 `t.insightsCreated` / `t.insightsMerged`。
+- 空项目：仍渲染卡片，统计为 0 / `—`，每日柱状条为空；不隐藏卡片（与报告卡片保持一致）。
+- 计算使用 `buildProjectInsights(v.tasks, Date.now())`；`Date.now()` 只在渲染时取一次，避免同一次渲染内桶边界漂移。
+- 新增少量 CSS 到 `src/client/styles/workbench.ts`，只使用现有 CSS 变量（`--line`、`--accent`、`--ok`、`--text-3` 等）。
+
+#### 3.5.3 文案
+
+| key | 中文 | English |
+| --- | --- | --- |
+| `projectInsights` | 项目洞察 | Project insights |
+| `insightsCycle` | 平均周期 | Avg cycle |
+| `insightsCycleValue` | {n} 天 | {n} days |
+| `insightsNoData` | — | — |
+| `insightsMerged7` | 近 7 天合并 | Merged in 7d |
+| `insightsCreated` | 新建 | Created |
+| `insightsMerged` | 合并 | Merged |
+| `insightsAcceptance` | 验收核对率 | Criteria checked |
+| `insightsOldest` | 最久未完成 | Oldest open |
+| `insightsOldestValue` | {n} 天 | {n} days |
+| `insightsAcceptanceValue` | {n}% | {n}% |
+| `insightsDaily` | 最近 7 天 | Last 7 days |
+| `insightsDailyTip` | {date}：新建 {created} · 合并 {merged} | {date}: created {created} · merged {merged} |
+| `insightsEmpty` | 还没有任务数据 | No task data yet |
+
+### 3.6 验收标准
+
+- [ ] 卡片在项目详情中显示，四项统计与 7 天柱状条均可读。
+- [ ] 空项目、无合并任务、无验收标准、无未完成任务都有降级文案，不出现 NaN / Infinity / 负值。
+- [ ] 周期统计只包含有效已合并任务；中位数偶数样本正确。
+- [ ] 近 7 天桶边界按本地日历日，今天的数据计入最后一桶。
+- [ ] 归档任务计入历史合并与吞吐，不计入未完成。
+- [ ] 不发起任何网络请求，不新增依赖，不写任务记录。
+- [ ] 中英文 key 一致，`check:locale` 通过。
+
+### 3.7 测试要点
+
+- 新增 `test/client-project-insights.test.ts`：
+  - 空项目；单任务；多任务；
+  - 周期平均 / 中位数（奇数、偶数）、异常 `mergedAt < createdAt`；
+  - 近 7 天边界（今天、6 天前、7 天前排除）；
+  - 验收核对率（无标准、部分、全部）；
+  - 最久未完成（含归档排除）；
+  - 未来时间戳与缺失字段。
+- `test/client-project-report.test.ts` 不需要改（本功能不碰报告）。
+
+---
+
+## 4. 结构化搜索（`search-query`）
+
+### 4.1 功能说明
+
+左栏搜索框在保留纯文本模糊搜索的基础上，支持结构化 token：
+
+```text
+tag:前端                    # 必须包含标签「前端」（大小写不敏感）
+tag:"需要设计"              # 引号包住含空格的值
+priority:high               # low / normal / high，可重复，多个取 OR
+status:review               # ready / developing / review / reviewing / merged / cleaned / broken，可重复，多个取 OR
+登录 修复 tag:紧急          # 纯文本 + 结构化条件同时生效
+```
+
+- 多个 `tag:` 之间取 **AND**（必须同时包含）；多个 `priority:` / `status:` 之间取 **OR**。
+- 不同类别之间取 **AND**。
+- 纯文本仍然匹配项目名、任务标题、分支、标签、备注与待处理状态。
+- 未知 key（如 `foo:bar`）按纯文本处理，不报错。
+- 已知 key 但值非法（如 `priority:urgent`）按纯文本处理，并在解析结果中标记，便于测试；不弹错误。
+- 搜索框下方增加一行弱提示，说明支持的语法；空查询时不显示额外结果变化。
+
+### 4.2 为什么做
+
+标签、优先级、状态都已经存在，但用户只能通过下拉逐个筛选，不能组合表达「待验收的高优先级前端任务」。纯文本搜索又无法区分「标签里包含 high」和「优先级是 high」。加一层很薄的查询语法，不新增 UI 控件、不新增存储，就能把已有字段变成可组合的查询条件，并为保存视图、命令面板留下解析基础。
+
+### 4.3 预期效果
+
+- 输入 `tag:前端 priority:high`：只显示同时带「前端」标签且优先级为高的任务；项目名匹配不会绕过条件。
+- 输入 `tag:"需要设计"`：标签值带空格也能精确匹配。
+- 输入 `tag:前端 tag:紧急`：只显示同时带两个标签的任务。
+- 输入 `status:merged`：只显示已合并任务（即使当前注意力筛选是「全部」）。
+- 输入 `登录`：行为与 1.13.0 的纯文本搜索完全一致。
+- 输入 `priority:urgent`：没有任务匹配（按纯文本），清空搜索后恢复。
+- 标签下拉与注意力筛选仍然叠加生效。
+
+### 4.4 收益
+
+- **对用户**：用一行查询组合已有字段，不用在多个下拉之间来回切换。
+- **对团队**：查询语法可以写进文档、交接说明和未来保存视图。
+- **对插件**：搜索从「字符串包含」升级为「可扩展查询 AST」，后续可以加 `due:`、`blocked:`、`is:` 等。
+- **风险可控**：纯客户端纯函数，未使用 token 时行为不变。
+
+### 4.5 实现方案
+
+#### 4.5.1 新增纯函数 `src/client/search-query.ts`
+
+```ts
+import type { TaskPriority } from '../task-meta'
+
+export type SearchStatus =
+  | 'ready' | 'developing' | 'review' | 'reviewing' | 'merged' | 'cleaned' | 'broken'
+
+export interface ParsedSearchQuery {
+  /** 去掉结构化 token 后剩余的纯文本（多段用单个空格连接）。 */
+  text: string
+  /** 需要全部命中的标签（小写比较）。 */
+  tags: string[]
+  priorities: TaskPriority[]
+  statuses: SearchStatus[]
+  /** 已知 key 但值非法的原始 token；仍会作为纯文本参与匹配。 */
+  invalid: string[]
+}
+
+/** 空值 / 非字符串返回全空的查询。 */
+export function parseSearchQuery(raw: unknown): ParsedSearchQuery
+
+/** 是否包含任何有效结构化条件。 */
+export function hasStructuredFilters(query: ParsedSearchQuery): boolean
+
+/**
+ * 任务是否命中查询。
+ * - text 非空时，调用方传入的 extraFields 参与大小写不敏感包含匹配；
+ * - 标签按小写精确比较，多个标签 AND；
+ * - 优先级、状态多个值 OR；
+ * - invalid token 已并入 text，不单独处理。
+ */
+export function matchesStructuredQuery(
+  query: ParsedSearchQuery,
+  task: any,
+  snapshot: any,
+  extraFields?: Array<string | null | undefined>,
+): boolean
+```
+
+解析规则：
+
+- 扫描输入，支持双引号值：`tag:"foo bar"`；未闭合引号时把剩余内容当作值。
+- 支持的 key（大小写不敏感）：`tag` / `tags`、`priority` / `prio`、`status`。
+- `tag:` 值用现有 `parseTagText` 归一化（去 `#`、折叠空白）；空值丢弃。
+- `priority:` 只接受 `low` / `normal` / `high`；非法进 `invalid` 并保留原文到 `text`。
+- `status:` 只接受上述 7 个状态；非法同上。
+- 纯文本按空白切分后重新用单个空格连接；引号只用于结构化值，不作为文本保留。
+- 解析器必须容错：`undefined`、数字、超长字符串都不能抛异常。
+
+匹配规则：
+
+- 标签：任务 `task.tags` 按小写集合判断，`query.tags` 的每一项都必须存在。
+- 优先级：`task.priority || 'normal'`，命中任一即可。
+- 状态：`snapshot.status` 命中任一即可；`snapshot` 缺失时状态条件不命中（但纯文本仍可命中）。
+- 纯文本：沿用 `matchesSearch` 的大小写不敏感包含匹配，字段为调用方传入的 `extraFields`；调用方负责把 title / branch / tags / notes / pending 文本传进来。
+- 空查询返回 true。
+
+#### 4.5.2 左栏过滤（`src/client/model.ts`）
+
+`filterProjectViews` 改为：
+
+1. `const parsed = parseSearchQuery(query)`；
+2. `const text = parsed.text`；
+3. `keepEmpty` 条件保持 `filter === 'all' && !text && !parsed.tags.length && !parsed.priorities.length && !parsed.statuses.length && !wantedTag`（invalid token 已在 text 中，因此非空查询不会保留空项目）；
+4. `projectHit` 只在 `text` 非空时计算；
+5. 每个任务依次检查：标签下拉、注意力筛选、`matchesStructuredQuery(parsed, task, snapshot, [title, branch, tags, notes, pendingText])`；
+6. 纯文本命中规则：如果 `text` 为空直接通过；否则 `projectHit || matchesSearch(text, fields)`；
+7. 原有 `matchesSearch` 保持不变，供其他调用方复用。
+
+注意：`filterProjectViews` 的签名不变，避免改动大量调用方；解析在函数内部完成。
+
+#### 4.5.3 搜索框（`src/client/rail.ts`、`src/client/styles/workbench.ts`）
+
+- 输入框增加 `title={t.searchSyntaxHint}` 与 `aria-description={t.searchSyntaxHint}`（若宿主不支持 `aria-description` 也不报错）。
+- 搜索框下方增加一行弱提示：
+  ```ts
+  h('div', { className: 'dshwd-search-hint' }, t.searchSyntaxHint)
+  ```
+  只在 `props.query` 为空时显示，避免占用有查询时的视觉空间；点击提示不改变输入。
+- 新增 `.dshwd-search-hint` 样式：小字号、`var(--text-3)`、省略号（长文案不撑破 272px 左栏）。
+- 不新增按钮、不新增弹层。
+
+#### 4.5.4 文案
+
+| key | 中文 | English |
+| --- | --- | --- |
+| `searchSyntaxHint` | 支持 tag:前端 priority:high status:review；含空格用引号，如 tag:"需要设计"。 | Try tag:frontend priority:high status:review; quote values with spaces, e.g. tag:"needs design". |
+
+`boardSearch` 保持原文案不变，避免破坏现有测试。
+
+### 4.6 验收标准
+
+- [ ] 纯文本搜索行为与 1.13.0 完全一致。
+- [ ] `tag:` 单个 / 多个（AND）、引号空格值、大小写不敏感均正确。
+- [ ] `priority:` / `status:` 多值 OR，非法值不崩溃。
+- [ ] 结构化条件与标签下拉、注意力筛选叠加生效。
+- [ ] 只含结构化条件时，项目名匹配不会把所有任务放行。
+- [ ] 未知 key 按纯文本处理；空查询显示全部。
+- [ ] 搜索提示在空查询时可见、窄栏不溢出；中英文 key 一致。
+
+### 4.7 测试要点
+
+- 新增 `test/client-search-query.test.ts`：
+  - 解析：空值、纯文本、单 token、多 token、引号、未闭合引号、大小写 key、非法值、未知 key、重复 token；
+  - 匹配：标签 AND、优先级 OR、状态 OR、组合 AND、缺失 snapshot、缺失 tags。
+- `test/client-model.test.ts`（扩展）：
+  - `filterProjectViews` 的结构化过滤；
+  - 项目名命中但结构化条件不满足时不放行；
+  - 空查询 / 纯文本 / 标签下拉 / 注意力组合。
+- 现有 `boardNoMatches` 空态相关断言不应改变。
+
+---
+
+## 5. 任务生命周期时间线（`task-lifecycle`）
 
 ### 5.1 功能说明
 
-任务「实时会话」标签新增指令输入区：
+把任务记录里已有的时间戳整理成一条按时间升序的生命周期：
 
-- 四个快捷指令：继续完成、修复验证、总结进度、整理提交。
-- 点击快捷指令把文本填入输入框，可编辑后再发送；也可直接输入任意指令。
-- 发送走宿主 `session.prompt`（queue 模式），不新建会话、不改变任务绑定。
+- 发布（`createdAt`）
+- 置顶（`pinnedAt`）
+- 合并到基线（`mergedAt`，附带合并提交短 SHA）
+- 清理 worktree（`cleanedAt`）
+- 归档（`archivedAt`）
+- 最近更新（`updatedAt`，只在明显晚于其他事件时出现，避免每次轮询都多一条「刚刚」）
+
+展示位置：
+
+1. **任务概览**：在「任务信息」之后新增「任务时间线」分区，纵向列表显示事件名、相对时间与可选提交号。
+2. **验收报告**：单任务报告新增「任务时间线」章节；每条事件输出本地时间（`YYYY-MM-DD HH:mm`）。
+3. **周期说明**：如果任务已合并，时间线顶部或底部显示「发布 → 合并 N 天」。
+4. 纯派生视图，不新增存储字段、不改变状态机、不发送任何请求。
 
 ### 5.2 为什么做
 
-看板目前能看会话时间线，但发现问题时只能「打开原生会话」再输入。用户在验收时最常说的是「继续」「把失败的测试修一下」「总结一下」，这些动作在看板里就能完成，没必要跳转。
+任务记录里已经有发布、置顶、合并、清理、归档、更新时间，但界面上只有零散的「最近活动」和报告里的几个字段。验收或交接时，用户需要回答「这个任务放了多久」「什么时候合并的」「合并之后有没有再动过」。把这些时间戳按顺序排成一条线，成本极低，却能把「任务的一生」直接讲清楚，也为后续活动日志（记录每次状态变更）留下展示层基础。
 
 ### 5.3 预期效果
 
-- 有会话的任务可直接发送指令；会话运行中时指令排队，并明确提示。
-- 会话等待审批 / 回答时禁止发送，提示先去原生会话处理。
-- 没有绑定会话时显示原有「启动会话」入口，不显示指令区。
-- 发送成功有 Toast，输入框清空；失败保留文本并提示。
+- 刚发布的任务：只有「发布」与「最近更新」（若更新时间明显更晚）。
+- 置顶后：出现「置顶」；合并后出现「合并到基线」与短 SHA；清理后出现「清理 worktree」。
+- 时间线严格按时间升序；同一时间戳按固定事件顺序排列，不闪烁。
+- 已合并任务显示周期「发布 → 合并 N 天」。
+- 缺失 / 非法时间戳不产生空行；没有事件时显示降级文案（理论上 `createdAt` 总会存在）。
+- 报告中的时间线使用本地时间，与界面一致。
 
 ### 5.4 收益
 
-- **对用户**：在看板内完成「看进度 → 追问 → 继续验收」的闭环，减少页面切换。
-- **对插件**：看板从只读仪表盘变成可操作的控制面，提升日活与留存。
-- **对团队**：快捷指令把常用跟进话术标准化，减少反复输入。
-- **风险低**：复用现有会话 prompt 通道，不新增写 Git 的操作。
+- **对用户**：一眼看懂任务从发布到合并 / 清理的节奏。
+- **对团队**：报告自带时间线，评审者不用再翻提交记录推断。
+- **对插件**：建立统一的生命周期事件模型，后续可以扩展为完整活动日志。
+- **风险可控**：纯派生、无存储、无网络、无新依赖。
 
 ### 5.5 实现方案
 
-#### 纯函数模块（`src/client/quick-prompts.ts`）
+#### 5.5.1 新增纯函数 `src/client/task-lifecycle.ts`
+
+注意：不要修改现有的 `src/client/timeline.ts`（实时会话时间线），新模块单独命名。
 
 ```ts
-export type QuickPromptKey = 'continue' | 'tests' | 'summary' | 'commit'
+export type LifecycleKind =
+  | 'created' | 'pinned' | 'merged' | 'cleaned' | 'archived' | 'updated'
 
-export interface QuickPrompt {
-  key: QuickPromptKey
-  /** locale key for the chip label */
-  label: string
+export interface LifecycleEvent {
+  kind: LifecycleKind
+  at: number
+  /** 合并事件附带的提交短 SHA（7 位）；其他事件没有。 */
+  commit?: string
 }
 
-export const QUICK_PROMPTS: QuickPrompt[]
+/** 按时间升序返回事件；非法 / 缺失时间戳被忽略。 */
+export function buildTaskLifecycle(task: any): LifecycleEvent[]
 
-/** Build the instruction text; `{title}` is filled with the task title. */
-export function quickPromptText(key: QuickPromptKey, task: { title: string }): string
+/** 发布到合并的天数（保留 1 位小数）；没有有效合并时间返回 null。 */
+export function lifecycleCycleDays(task: any): number | null
 
-export type QuickPromptBlock = '' | 'no-session' | 'pending' | 'busy'
-
-export function quickPromptDisabledReason(input: {
-  hasSession: boolean
-  pendingKind?: string
-  busy?: boolean
-}): QuickPromptBlock
-
-export function quickPromptReasonKey(reason: QuickPromptBlock): string
+/** 事件对应的 locale key。 */
+export function lifecycleLabelKey(kind: LifecycleKind): string
 ```
 
-指令文本：
+规则：
 
-- `continue`：`请继续完成「{title}」的剩余工作；开始前先检查当前 diff 与验收标准，完成后按阶段提交。`
-- `tests`：`请运行项目的验证命令，修复失败项并重新验证；不要修改与失败无关的代码。`
-- `summary`：`请总结当前进展：已完成的改动、未完成项、风险与下一步；不要修改代码。`
-- `commit`：`请检查工作区改动，按逻辑分组提交，写清楚每个提交的目的；不要合并或推送分支。`
+- 固定时间戳来源：`createdAt`、`pinnedAt`、`mergedAt`、`cleanedAt`、`archivedAt`、`updatedAt`。
+- 只接受有限且 `> 0` 的时间戳。
+- `updatedAt`：仅当它比其余所有已包含事件的最大时间至少晚 1000ms 时才加入；否则忽略，避免「最近更新」与「合并」同一时刻重复。
+- 排序：`at` 升序；相同时按 `created -> pinned -> merged -> cleaned -> archived -> updated` 的固定顺序。
+- `merged` 的 `commit`：`task.mergedCommit` 的字符串前 7 位（没有则不填）。
+- `lifecycleCycleDays`：`mergedAt >= createdAt` 时返回 `(mergedAt - createdAt) / 86400000`，保留 1 位小数；否则 null。
+- `lifecycleLabelKey` 返回 `lifecycleCreated` 等 key。
+- 不依赖 DOM、不依赖 locale 文案本身。
 
-#### 实时会话 UI（`src/client/stage.ts`）
+#### 5.5.2 任务概览（`src/client/stage.ts`）
 
-- `StageProps` 增加 `onSendPrompt?: (text: string) => Promise<void>` 与 `promptBusy?: boolean`。
-- `Live` 组件在日志下方增加指令区（仅 `props.sessionId` 存在时渲染）：
-  - 快捷指令 chips（点击填入输入框）。
-  - `<textarea>`，placeholder「给会话发一条指令…」，`Ctrl/Cmd+Enter` 发送。
-  - 发送按钮；禁用条件由 `quickPromptDisabledReason` 决定。
-  - 状态提示：无会话 / 等待处理 / 处理中 / 会话运行中指令将排队。
-- 发送成功后清空输入框；失败保留内容。
+- 在 `Overview` 中、`TaskMetaSection` 之后插入：
+  ```ts
+  h(TaskLifecycleSection, props)
+  ```
+- `TaskLifecycleSection`：
+  - `const events = buildTaskLifecycle(task)`；
+  - 分区标题 `t.taskLifecycle`；
+  - 已合并时标题右侧显示 `t.lifecycleCycle`（`{n}` = `lifecycleCycleDays`，1 位小数）；
+  - 纵向列表：每条事件一个圆点 + 事件名 + 相对时间（`relTime(event.at, t)`），合并事件追加 `shortSha(event.commit)`；
+  - 事件的 `title` 使用完整本地时间（`new Date(at).toLocaleString()`）；
+  - 空列表显示 `t.lifecycleEmpty`；
+  - 复用 `dshwd-block`、`dshwd-chip`，新增少量 `dshwd-lifecycle*` CSS。
+- 不新增交互（不可点击、不可编辑）。
 
-#### 看板接线（`src/client/board.ts`、`src/client/board/use-board-actions.ts`）
+#### 5.5.3 验收报告（`src/client/report.ts`）
 
-- `runPrompt(text)`：
-  - 未选中任务或没有 `sessionId` → 抛错；
-  - `busy` 非空 → 抛错；
-  - `setBusy('prompt')` → `sendSessionPrompt(remotes, sessionId, text)` → `say(t.quickPromptSent)`；
-  - 失败 Toast 后继续抛出，交给输入区保留文本；
-  - `finally` 清 busy。
-- Board 传 `onSendPrompt: actions.runPrompt`、`promptBusy: !!busy`（任一全局操作进行中都禁用，与 `runPrompt` 的 busy 拒绝逻辑保持一致）。
+- 在「备注」章节之后、「提交」章节之前增加：
+  ```md
+  ## 任务时间线
+  - YYYY-MM-DD HH:mm · 发布任务
+  ...
+  ```
+- 使用 `reportTimestamp(event.at)`；合并事件追加 `(短 SHA)`。
+- 已合并时追加一行 `t.lifecycleCycle`。
+- 没有事件时输出 `t.lifecycleEmpty`。
+- 不改变现有章节顺序与降级行为（只插入新章节）。
 
-#### 样式（`src/client/styles/workbench.ts`）
+#### 5.5.4 样式（`src/client/styles/workbench.ts`）
 
-- 新增 `.dshwd-prompt`、`.dshwd-prompt-chips`、`.dshwd-prompt-chip`、`.dshwd-prompt-box`、`.dshwd-prompt-foot`。
-- 复用现有颜色 token 与按钮高度，明暗主题一致；输入区获得焦点时使用现有 `focus-visible` 外环。
+- 新增 `.dshwd-lifecycle`、`.dshwd-lifecycle-item`、`.dshwd-lifecycle-dot`、`.dshwd-lifecycle-label`、`.dshwd-lifecycle-time`。
+- 使用现有 CSS 变量；左侧竖线用 `border-left`；圆点用伪元素或小 `span`。
+- 支持明暗主题；不引入动画。
 
-#### 文案
+#### 5.5.5 文案
 
-`quickPromptTitle`、`quickPromptContinue`、`quickPromptTests`、`quickPromptSummary`、`quickPromptCommit`、`quickPromptPlaceholder`、`quickPromptSend`、`quickPromptSent`、`quickPromptNoSession`、`quickPromptPending`、`quickPromptBusy`、`quickPromptQueued`。
+| key | 中文 | English |
+| --- | --- | --- |
+| `taskLifecycle` | 任务时间线 | Task timeline |
+| `lifecycleCreated` | 发布任务 | Task published |
+| `lifecyclePinned` | 置顶任务 | Pinned |
+| `lifecycleMerged` | 合并到基线 | Merged into base |
+| `lifecycleCleaned` | 清理 worktree | Worktree cleaned |
+| `lifecycleArchived` | 归档任务 | Archived |
+| `lifecycleUpdated` | 最近更新 | Last updated |
+| `lifecycleEmpty` | 暂无时间线记录 | No timeline yet |
+| `lifecycleCycle` | 发布 → 合并 {n} 天 | Published → merged in {n} days |
+| `reportLifecycle` | 任务时间线 | Task timeline |
 
 ### 5.6 验收标准
 
-- [x] 有会话任务显示指令区；无会话任务不显示。
-- [x] 四个快捷指令点击后填入对应文本，可编辑后发送。
-- [x] 发送成功：Toast、输入框清空、会话时间线在下一轮轮询出现新指令。
-- [x] 发送失败：Toast、输入框保留文本。
-- [x] 等待审批 / 回答时发送按钮禁用并说明原因。
-- [x] 会话运行中允许发送并提示「指令将排队」。
-- [x] `Ctrl/Cmd+Enter` 可发送，纯键盘可完成操作。
+- [ ] 概览显示时间线，事件顺序、文案、时间正确；合并事件带短 SHA。
+- [ ] `updatedAt` 只在明显晚于其他事件时出现，不因轮询重复。
+- [ ] 已合并任务显示周期天数；未合并不显示。
+- [ ] 单任务报告包含时间线章节，时间格式与界面一致（本地时间）。
+- [ ] 时间线不改变任务状态、不发请求、不新增存储字段。
+- [ ] 中英文 key 一致，`check:locale` 通过。
+
+### 5.7 测试要点
+
+- 新增 `test/client-task-lifecycle.test.ts`：
+  - 只有 `createdAt`；
+  - 全部时间戳；
+  - `updatedAt` 早于 / 等于 / 明显晚于其他事件；
+  - 非法 / 缺失 / 负数时间戳；
+  - 同一时刻的固定排序；
+  - `lifecycleCycleDays` 正常 / 缺失 / `mergedAt < createdAt`；
+  - `lifecycleLabelKey` 全覆盖。
+- `test/client-report.test.ts`（扩展）：时间线章节、合并短 SHA、空事件降级。
+- 不修改 `test/client-timeline.test.ts`（实时会话时间线）。
 
 ---
 
 ## 6. 通用实现约定
 
-- **中英文同步**：所有新文案同时加入 `locale/zh.json` 与 `locale/en.json`，`npm run check:locale` 必须通过。
-- **测试**：每个功能至少覆盖纯逻辑 + Store + HTTP 中的两层；客户端纯函数测试放在 `test/client-*.test.ts`。
-- **版本**：`package.json` 与 `package-lock.json` 升到 `1.11.0`。
-- **文档**：
-  - `README.md`：功能概览、工作台交互、HTTP API、模型工具各补对应条目。
-  - `CHANGELOG.md`：新增 `1.11.0` 条目，按「新增 / 接口 / 测试」分组。
-  - `docs/frontend-design.md`：补充合并门禁、验收报告、发布模板、置顶、快捷指令的交互说明。
-- **代码风格**：沿用现有模块边界与命名；纯逻辑放独立文件，React 组件只做展示与接线。
-- **安全**：所有写接口沿用 `task/*` 的 token 校验与同源检查；不新增任意文件读写入口。
-- **并发**：模板、置顶、门禁配置的写操作必须在 Store 的跨进程锁内读改写。
-- **向后兼容**：`mergeGate`、`pinnedAt`、`TaskTemplate` 均为新增可选数据；旧记录无需迁移，旧版本读取时忽略新字段。
+1. **共享纯函数优先**：截止日期、依赖、洞察、搜索、生命周期都放在无 DOM 的纯模块里；服务端与客户端共用同一套规则，不要在多个文件复制。
+2. **原子写**：所有任务字段写操作走 Store 的 `withLock` + `refresh` + `save`；HTTP / Runtime 只做校验与错误映射。
+3. **可选字段**：不写 `undefined` 键；清空即删除字段（沿用 `putTask` / `setTaskPinned` / `updateTaskMeta` 的约定）。
+4. **错误语义**：校验失败 400，任务不存在 404；错误信息使用中文，前端直接展示。
+5. **排序唯一入口**：继续使用 `compareTaskOrder`；截止日期与依赖不参与排序。
+6. **文案**：所有新文案同时加入 `locale/zh.json` 与 `locale/en.json`，key 集合一致；`check-locale` 必须通过。
+7. **可访问性**：日期输入、依赖下拉、移除按钮必须有可访问名称；错误用 `role="alert"`；保存中禁用；不引入仅靠颜色表达的状态。
+8. **不新增依赖**：不引入日期库、Markdown 库、图表库或 UI 库；继续使用现有原语与手写样式。
+9. **文档同步由主线程完成**：实施者不要修改 `README.md`、`CHANGELOG.md`、`docs/`、`package.json`、`package-lock.json`、`feature.md`；这些由主线程在集成时统一更新到 1.14.0。
+10. **最小 diff**：不重排现有代码、不重命名既有函数、不格式化整文件；共享文件只改本功能需要的行。
+11. **测试**：每个功能至少一个新增测试文件；必要时扩展已有测试。不要复制已有断言，不要依赖系统时钟（使用可注入的 `now`）。
+12. **实施边界**：每个子 agent 只实现自己负责的第 1–5 节之一；完成前运行 `npm run typecheck` 与 `npm test`（node_modules 缺失时先 `npm ci`），失败必须修复；最后只提交一次，并在结果中报告分支名、HEAD SHA、变更文件与测试数量。
 
 ## 7. 批次验收标准
 
-- [x] 5 个功能按本文档完成，界面文案中英文齐全。
-- [x] `npm run verify` 全部通过（typecheck + locale + 测试 + 构建）。
-- [x] 新增测试覆盖：合并门禁预检/拒绝、验收报告内容、模板 Store/HTTP、置顶 Store/HTTP/排序、快捷指令纯逻辑。
-- [x] `feature.md`、`README.md`、`CHANGELOG.md`、`docs/frontend-design.md` 已更新。
-- [x] 不改变既有任务状态机、合并流程与 Git 安全边界。
-- [ ] 改动以单个 PR 提交到 `master`，PR 描述包含 5 个功能摘要与验证结果（本提交推送后创建）。
+- [ ] 5 个功能均可从 UI 或模型工具触发；未设置截止日期 / 未设置依赖 / 未使用搜索语法时行为与 1.13.0 一致。
+- [ ] `dueAt`、`dependsOn` 在发布、详情编辑、刷新、重启、双实例场景下不丢失、不互相覆盖。
+- [ ] 截止日期、依赖、结构化搜索、注意力筛选、标签筛选、归档开关互相兼容；组合结果正确。
+- [ ] 项目洞察与生命周期时间线在空项目、旧记录、异常时间戳下不报错、不出现 NaN / 负值。
+- [ ] 旧任务记录（无新字段）加载不报错，排序与状态不变。
+- [ ] `npm run check:locale` 通过；中英文 key 完全一致。
+- [ ] `npm run verify`（typecheck + locale + 测试 + 构建）通过，测试数量不少于 1.13.0 的 408 项并有所增加。
+- [ ] README、CHANGELOG、docs/frontend-design.md、docs/i18n-terminology.md、package.json、package-lock.json 由主线程更新到 1.14.0。
+- [ ] 不引入新依赖，不新增 HTTP 路由，不改变现有接口语义（只扩展 `task/meta` 与 `publish` 的可选字段）。
 
 ## 8. 风险、边界与回滚
 
-| 风险 | 处理 |
-| --- | --- |
-| 门禁误伤没有验收标准的任务 | 只在 `acceptanceCriteria` 非空且存在未核对项时拦截 |
-| 门禁阻止「再次合并」 | `task.mergedAt` 存在时跳过门禁 |
-| 模板标准不在标准库导致丢失 | 自动放入手动补充区，发布时仍保存 |
-| 模板选择覆盖用户已填内容 | 只在用户主动选择模板时填充，之后可自由修改 |
-| 置顶影响状态 | `pinnedAt` 只参与排序，不参与 `statusOf` 或任何 Git 判断 |
-| 快捷指令误发 | 快捷 chip 只填入不直接发送；发送按钮与 Ctrl/Cmd+Enter 才提交 |
-| 多进程写冲突 | 模板/置顶/项目配置全部走 Store 锁 |
-| 回滚 | 删除新增路由与 UI；保留的 `mergeGate` / `pinnedAt` / 模板文件不影响旧版本读取 |
+- **旧记录兼容**：`dueAt`、`dependsOn` 全部可选；读取时不假设存在；清空用删除字段而不是写 `null`。
+- **双实例并发**：截止日期与依赖继续走 `updateTaskMeta` 的锁内读改写，只改传入的字段，避免覆盖另一实例刚写的会话 / 合并字段。
+- **依赖删除**：依赖任务被删除后，其他任务保留旧 id；UI 显示「已删除」且不阻塞，不自动清理，避免在未持有全部上下文时改写其他任务。
+- **循环依赖**：Store 在锁内做 DFS；客户端只做展示，不自行判断是否允许。
+- **日期时区**：`dueAt` 统一存本地日历日零点；跨时区迁移机器的用户可能看到日期漂移一天，这是「按本地日历」语义的已知边界，文档中注明。
+- **搜索性能**：解析与匹配都是线性字符串操作，任务量在本地台账规模内；不新增索引。
+- **洞察口径**：周期只统计 `mergedAt - createdAt`，不扣除等待验收时间；这是有意的最小口径，后续可扩展。
+- **时间线重复**：`updatedAt` 只在明显晚于其他事件时出现，避免轮询噪声。
+- **回滚**：
+  - 截止日期：移除 UI 与注意力分类即可，字段留在记录中不影响旧版本。
+  - 依赖：移除详情行、左栏 chip 与校验即可，字段留在记录中不影响旧版本。
+  - 洞察：移除卡片与 `project-insights.ts` 即可。
+  - 搜索：删除语法解析，恢复 `matchesSearch` 纯文本行为即可。
+  - 时间线：移除分区与报告章节即可。
+- **不做的事**：不做到期通知 / 日历视图、不做依赖图 / 合并阻断、不做跨项目依赖、不做保存搜索视图、不做完整状态变更日志。
 
 ## 9. 文件清单
 
 | 文件 | 改动 |
 | --- | --- |
-| `src/models.ts` | `Project.mergeGate`、`WorktreeTask.pinnedAt`、`TaskTemplate` |
-| `src/store.ts` | 模板 CRUD、`setTaskPinned`、templates 文件读写 |
-| `src/runtime.ts` | 模板方法、`setTaskPinned`、`updateProject` 类型 |
-| `src/runtime/projects.ts` | 门禁字段校验、置顶排序 |
-| `src/runtime/merge.ts` | `criteria-incomplete` 预检 blocker |
-| `src/http.ts` | `templates*`、`task/pin`、`projects/update` 透传 |
-| `src/tools.ts` | `worktree_act` 增加 `pin` / `unpin` |
-| `src/client/report.ts` | 验收报告 Markdown 与文件名纯函数（PR #21 实现） |
-| `src/client/quick-prompts.ts` | 快捷指令纯函数 |
-| `src/client/publish-state.ts` | `applyPublishTemplate` |
-| `src/client/model.ts` | `mergeGateMissing` |
-| `src/client/action-gate.ts` | 门禁 blocker 原因 |
-| `src/client/board.ts` | 门禁计算、置顶与指令接线 |
-| `src/client/board/use-board-actions.ts` | `runMerge` 门禁检查、报告复制/下载、`runPin`、`runPrompt` |
-| `src/client/board-data.ts` | 发布后置顶排序 |
-| `src/client/rail.ts` | 置顶按钮与标记 |
-| `src/client/stage.ts` | 验收报告按钮、快捷指令输入区 |
-| `src/client/publish.ts` | 模板选择与填充 |
-| `src/client/settings-page.ts` | 模板管理 |
-| `src/client/project-detail.ts` | 合并门禁开关 |
-| `src/client/icons.ts` | `pin` 图标 |
-| `src/client/styles/workbench.ts` | 置顶、报告、指令区样式 |
-| `src/client/styles/legacy.ts` | 设置页发布模板样式 |
+| `src/task-meta.ts` | 截止日期纯函数 |
+| `src/task-deps.ts` | 新增依赖纯函数 |
+| `src/models.ts` | `WorktreeTask` 增加 `dueAt` / `dependsOn` |
+| `src/store.ts` | `TaskMetaPatch` / `TaskMetaResult` / `updateTaskMeta` 扩展 |
+| `src/runtime.ts` | 元数据错误映射 |
+| `src/runtime/types.ts` | `PublishInput` 增加 `dueAt` |
+| `src/runtime/projects.ts` | 发布时校验并写入 `dueAt` |
+| `src/http.ts` | `task/meta` 透传 `dueAt` / `dependsOn` |
+| `src/tools.ts` | 发布 / meta / brief 支持截止日期与依赖 |
+| `src/client/publish-state.ts` | 草稿增加 `dueAt` |
+| `src/client/publish.ts` | 高级区截止日期与校验 |
+| `src/client/stage.ts` | 任务信息增加截止日期 / 前置任务；概览增加生命周期时间线 |
+| `src/client/rail.ts` | 截止 / 依赖 chip；搜索语法提示 |
+| `src/client/model.ts` | 结构化搜索接入 `filterProjectViews` |
+| `src/client/search-query.ts` | 新增搜索解析与匹配纯函数 |
+| `src/client/task-attention.ts` | `overdue` 分类与计数 |
+| `src/client/attention-filter.ts` | 逾期筛选项 |
+| `src/client/attention-summary.ts` | 逾期汇总文案 |
+| `src/client/board.ts` | 逾期输入、依赖查找、Stage / Rail props |
+| `src/client/board-data.ts` | 如搜索空态需要，透传查询（仅在必要时） |
+| `src/client/project-insights.ts` | 新增项目洞察纯函数 |
+| `src/client/project-detail.ts` | 项目洞察卡片 |
+| `src/client/task-lifecycle.ts` | 新增生命周期纯函数 |
+| `src/client/report.ts` | 单任务报告增加截止日期与时间线 |
+| `src/client/project-report.ts` | 项目报告增加截止日期列与逐任务截止行 |
+| `src/client/styles/workbench.ts` | 搜索提示 / 洞察柱状 / 时间线样式 |
 | `locale/zh.json`、`locale/en.json` | 新增文案 |
-| `test/*.test.ts` | 5 个功能的测试（报告测试采用 PR #21 版本） |
-| `README.md`、`CHANGELOG.md`、`docs/frontend-design.md`、`docs/i18n-terminology.md`、`package.json`、`package-lock.json` | 文档与版本 |
+| `test/task-meta.test.ts` | 截止日期用例 |
+| `test/task-deps.test.ts` | 新增依赖用例 |
+| `test/client-search-query.test.ts` | 新增搜索语法用例 |
+| `test/client-project-insights.test.ts` | 新增洞察用例 |
+| `test/client-task-lifecycle.test.ts` | 新增生命周期用例 |
+| `test/store.test.ts` | `updateTaskMeta` 新字段用例 |
+| `test/http-flow.test.ts` | `task/meta` / `publish` 新字段用例 |
+| `test/client-model.test.ts` | 结构化搜索过滤用例 |
+| `test/client-publish-state.test.ts` | 草稿截止日期用例 |
+| `test/client-task-attention.test.ts` | 逾期分类 / 计数用例 |
+| `test/client-report.test.ts` | 报告截止日期 / 时间线用例 |
+| `test/client-project-report.test.ts` | 项目报告截止列用例 |
+| `test/tools-act.test.ts` | 工具元数据用例 |
+| `README.md`、`CHANGELOG.md`、`docs/frontend-design.md`、`docs/i18n-terminology.md` | 主线程更新到 1.14.0 |
+| `package.json`、`package-lock.json` | 主线程更新到 1.14.0 |
 
-## 10. 验收记录（2026-11-22）
+## 10. 验收记录
 
-### 自动化验证
+- **状态**：5 个功能已全部实现并集成，`npm run verify` 通过；等待独立复核与 PR。
 
-- `npm run verify`：`tsc --noEmit` + 中英文 locale 校验 + **338 个测试全部通过** + `dist/index.js` / `dist/client.js` 构建成功。
-- 新增测试与功能对应：
+### 10.1 实施来源
 
-| 功能 | 测试文件 | 覆盖点 |
-| --- | --- | --- |
-| 项目合并门禁 | `test/merge-gate.test.ts` | 预检阻断、`merge` 拒绝、无标准放行、关闭门禁、未知值 400、已合并跳过 |
-| 验收报告导出 | `test/client-report.test.ts`（PR #21 版本） | 文件名规则、元信息与可选行、标准三态、五种文件状态、截断、三种 diff 失败原因、工作区计数、中英文占位符与 key 一致性、Stage 按钮渲染 |
-| 发布模板 | `test/templates.test.ts` | 模板拆分、Store CRUD/锁/多实例、排序稳定、Runtime 校验、HTTP token |
-| 任务置顶 | `test/task-pin.test.ts` | 置顶时间戳幂等、取消、排序、发布后排序、HTTP 403/404 |
-| 会话快捷指令 | `test/client-quick-prompts.test.ts` | chip 顺序、指令文本、禁用原因、locale key 映射 |
-
-### 人工复核与修复
-
-主线程逐文件复核后端（Store 锁内读改写、门禁预检、HTTP token 校验、模型工具）与客户端（门禁原因、报告生成、模板填充、置顶排序、快捷指令接线）。复核发现并修复 4 处问题：
-
-1. 设置页模板样式误放在 `src/client/styles/workbench.ts`，而设置页使用 legacy 样式表，导致模板管理界面无样式 → 移入 `src/client/styles/legacy.ts`。
-2. `promptBusy` 仅在 `busy === 'prompt'` 时为真，其他全局操作进行中按钮仍可点击但 `runPrompt` 会拒绝 → 改为 `!!busy`。
-3. 切换模板时仅在字段非空时覆盖，会残留上一个模板的标题/描述 → 改为无条件覆盖。
-4. 设置页模板标准 chip 的尺寸类名写成不存在的 `dshw-chip-sm` → 改为 `dshw-chip--sm`。
-
-### 合并 PR #21 的处理
-
-`origin/master` 在本批次开发期间合并了 PR #21（`6798a66`「验收报告复制与下载」），与本批次第 2 节功能重叠。合并处理：
-
-- 采用 PR #21 的 `src/client/report.ts`、`test/client-report.test.ts` 与 Stage 按钮实现（`acceptance-<id8>-<YYYYMMDD>-<HHmm>.md`、本地化文件状态与 diff 失败原因）。
-- 移除本批次早期的 `reportText` / `reportFileName` / `downloadTextFile` 接线，避免出现两套报告按钮和两种文件名。
-- 其余 4 个功能（合并门禁、发布模板、置顶、快捷指令）保持本批次实现；`use-board-actions.ts` 同时保留 PR #21 的报告动作与本批次的 `runPin` / `runPrompt` / 门禁检查。
-- `feature.md` 保留本批次 5 功能正文，附录 A 收录 PR #21 的完整功能说明。
-
-第二次合并 `origin/master`（`f87f063`，含 PR #7–#17 的看板修复与 PR #20）时，`board.ts`、`use-board-actions.ts`、`publish-state.ts`、`publish.ts`、`stage.ts` 按功能取并集：保留上游的 `railEmptyKind`、`branchChoices`、`commitRangeText`、`switchConfirmText`、`cleanupPrimaryLabel` 等，同时保留本批次的门禁、模板、置顶、快捷指令与报告接线。
-
-### 说明
-
-- 本批次未做浏览器端 E2E 点击验收；Toast、剪贴板、下载、`Ctrl/Cmd+Enter`、按钮禁用态等交互项通过代码走查与纯函数测试确认。
-- 任务状态机、合并流程与 Git 安全边界未改动；所有新增字段均为可选，旧记录无需迁移。
-- PR #22 已创建；合并 `origin/master` 后以 merge commit 更新，描述包含 5 个功能摘要与验证结果。
-
-
----
-
-# 附录 A：验收报告复制与下载（PR #21 已合并实现）
-
-> 本附录为 PR #21（`6798a66`）先行合并的功能说明，最终实现以本附录为准。本批次第 2 节保留原始方案与收益分析；入口位置、文件名、报告字段与测试覆盖面均已按附录实现。
-
-# 功能说明：验收报告复制与下载
-
-- 日期：2026-11-22
-- 目标版本：1.11.0
-- 状态：待验收（随本 PR 提交）
-- 涉及模块：客户端报告生成 / 任务概览交互 / 文案 / 测试 / 文档
-
-## 1. 一句话概述
-
-把任务详情里已经可勾选的验收清单、提交记录和改动统计，一键整理成一份 Markdown 验收报告，可复制到剪贴板或下载为 `.md` 文件。
-
-## 2. 背景与问题
-
-1.10.0 让验收标准可以逐项勾选，任务记录里已经同时保存了「标准是什么」和「核对到哪一步」。但这些信息仍然只存在于工作台内部：
-
-- **验收结果带不走**：要把验收结论发到 PR、issue、群聊或交接文档，用户只能手工复制标题、分支、提交和文件列表，过程繁琐且容易漏项。
-- **合并前的判断难以复盘**：合并确认弹窗会提示未核对项，但合并完成后没有一个稳定的文本快照，事后无法快速回答「当时按什么标准验收、核对了多少、改了哪些文件」。
-- **报告格式取决于个人**：不同用户整理的验收信息结构不一致，评审者需要反复确认信息是否齐全。
-
-验收标准、勾选状态、提交列表和逐文件统计都已经在客户端内存里（任务快照 + 已加载的 diff），只差一个把它们组织成可交付文本的出口。
-
-## 3. 功能说明
-
-### 3.1 报告入口
-
-- 任务详情「概览」标签的「验收标准」分区标题右侧新增两个操作：
-  - **复制报告**：把 Markdown 文本写入剪贴板，成功后 Toast 提示；剪贴板权限不可用时回退到隐藏 `textarea` 复制，仍失败则给出错误提示。
-  - **下载 .md**：通过 `Blob` + 临时 `<a download>` 下载 Markdown 文件，成功后 Toast 提示。
-- 两个操作对所有状态的任务可用（待开始、进行中、待验收、已合并、已清理、异常），方便在任意阶段导出当前记录。
-- 任一 Git 操作或验收勾选进行中时按钮禁用，避免与工作区操作并发造成快照不一致。
-- 按钮是原生 `button`，有可见焦点环和可读文案，键盘可直接操作。
-
-### 3.2 报告内容
-
-报告使用当前界面语言（中文 / English）生成，结构固定：
-
-```markdown
-# 验收报告：<任务标题>
-
-- 项目：<项目名>
-- 任务分支：`<branch>`
-- 基线分支：`<baseBranch>`
-- 状态：<状态文案>
-- 任务 HEAD：`<sha>`
-- 合并提交：`<sha>`（已合并时有）
-- 会话：`<sessionId>`（已绑定时有）
-- 生成时间：2026-11-22 20:30
-
-## 任务描述
-<description>
-
-## 验收标准
-- [x] 已核对的标准
-- [ ] 未核对的标准
-进度：已核对 1/2
-
-## 提交
-- `abc1234` 提交标题
-
-## 改动文件
-| 文件 | 变更 | + | - |
+| 功能 | 子 agent 分支 | 子 agent HEAD | 集成提交 |
 | --- | --- | --- | --- |
-| `src/a.ts` | 修改 | 10 | 2 |
-合计：1 个文件，+10 -2
+| 截止日期 | `t3/task-due-dates-overdue-reminders` | `97579eb` | `f859567` |
+| 前置依赖 | `t3/bd6f4b94` | `9c1473b` | `bad4e8c` |
+| 项目洞察 | `t3/project-insights-cycle-stats` | `1c85f6d` | `a65da1d` |
+| 结构化搜索 | `t3/046189c9` | `63775a9` | `f0bfd64` |
+| 任务时间线 | `t3/task-lifecycle-timeline` | `00e2b75` | `c1b7e3b` |
 
-## 工作区
-- 未提交改动：0
-- 待恢复暂存：0
-```
+所有子 agent 均从规划提交 `e74dfa1` 切出独立 worktree，各自只提交一次；主线程按顺序 cherry-pick 并解决 locale、`stage.ts`、`rail.ts`、`store.ts`、`http.ts`、`tools.ts` 与报告模块的集成冲突。
 
-规则：
+### 10.2 主线程复核修正
 
-- 验收标准最多原样列全，`checkedCriteria` 与当前标准取交集；已合并 / 已清理任务沿用概览页语义，显示为全部完成，避免报告与界面互相矛盾。
-- 任务没有验收标准时写「暂无验收标准」，不输出空列表。
-- 提交列表使用任务快照中的领先提交；没有提交时写「暂无提交」。提交标题中的换行压成空格，保证一行一个条目。
-- 改动文件表只列路径、变更类型和增删行数，**不包含 diff 正文**：报告保持可读、体量可控，也避免把大段代码或敏感内容复制到外部。
-- 文件路径中的 `|`、换行按 Markdown 表格规则转义；路径使用反引号包裹。
-- diff 被截断时追加说明；worktree 已清理、找不到合并基点或读取失败时，仍生成其余部分，并在「改动文件」处写明不可用原因。
-- 报告末尾附工作区状态：未提交改动数量、待恢复暂存数量，便于评审者判断验收时工作区是否干净。
+- `search-query.ts` 原先回引 `model.ts` 造成模块循环，改为模块内纯文本匹配（`1485894`）。
+- 集成冲突合并时同时保留依赖与截止日期的字段链路：`Store.updateTaskMeta` 先校验全部字段再写入，`runtime` 错误映射、HTTP `task/meta` 与 `worktree_act` 同时接受 `dueAt` / `dependsOn`。
+- `stage.ts` 只读与编辑两种模式同时渲染截止日期行与前置任务行；`rail.ts` 同时渲染截止 chip 与「等待 N 项前置」chip。
+- 补全 README / CHANGELOG / `docs/frontend-design.md` / `docs/i18n-terminology.md`，版本升至 1.14.0（`cd094d3`）。
+- 独立复核后修正：模型工具 `due_at` 不再强制 `String`，并允许 `number`，与 HTTP 的毫秒时间戳口径一致；前置任务候选排除已清理任务；README 补充时间戳与 `status:` 快照语义。
 
-### 3.3 文件命名
+### 10.3 验证结果
 
-```text
-acceptance-<id8>-<YYYYMMDD>-<HHmm>.md
-```
+- `npm run typecheck`：通过。
+- `npm run check:locale`：`zh=778 en=778`，客户端引用 547 个 key，全部存在。
+- `npm test`：**483 通过 / 0 失败**（基线 408，新增 75 项）。
+- `npm run build`：`dist/index.js` 166.5kb，`dist/client.js` 562.0kb。
+- `npm run verify`：以上四项全部通过。
 
-- `id8` 为任务 UUID 去掉连字符后的前 8 位。
-- 时间取浏览器本地时间，补零；文件名只含 ASCII 字母、数字和连字符，兼容 Windows / macOS。
-- 同一分钟内重复下载会覆盖同名文件，由浏览器自行处理；报告内容以生成时刻为准。
+### 10.4 验收审批
 
-### 3.4 数据来源与边界
+- 用户要求使用 `advisor` 审批。当前会话经 magpie 网关连接，官方 `advisor_20260301` 服务端工具未被网关转发，`advisor` 返回 `failed: unavailable`（本次再次确认）。
+- 按用户全局约定改用独立模型复核：`delegate_task` + `role: review` + provider `magpie` / model `mm/workbuddy/glm-5.3[1m]`，只读审查，不改代码。
+- 复核结论：**APPROVE**，0 个阻塞问题；5 条非阻塞建议中采纳 3 条（工具 `due_at` 数字透传、README `status:` 语义、前置候选排除已清理任务），其余 2 条（`depFailureText` 中文关键词耦合、引号内逗号仍按标签分隔）保留为已知边界，不影响交付。
 
-- 完全在客户端生成，不新增 HTTP 路由、不写任务记录、不触发 Git 操作。
-- 使用当前已加载的任务快照和 diff；打开任务后 diff 已由现有逻辑预取，点击报告按钮时不需要额外等待。
-- 任务 HEAD 复用 `branchHeadSha()`：验收中固定为 `reviewSha`，其余状态取分支尖端，和 Stage 标题显示一致。
-- 状态文案复用看板状态映射；运行中的任务显示为「执行中」，其余按生命周期状态显示。
+### 10.5 PR
 
-## 4. 为什么现在做
-
-- **承接 1.10.0 的验收闭环**：勾选让标准可执行，报告让执行结果可交付，两步合起来才构成完整的验收记录。
-- **成本最低**：所有数据已在客户端，新增的是一个纯函数和两个按钮，不需要新 API、新存储或迁移。
-- **收益直接**：复制一次即可粘贴到 PR 描述、issue、群聊或交接文档，省掉人工整理标题、分支、提交和文件列表。
-- **风险可控**：不改状态机、不改 Git 操作、不改权限；报告失败不影响任务本身。
-
-## 5. 预期效果
-
-| 维度 | 预期 |
-| --- | --- |
-| 验收记录 | 合并前后都能一键导出结构化验收信息 |
-| 沟通成本 | 评审者不必追问分支、提交和改动范围 |
-| 可追溯性 | 报告包含核对进度与工作区状态，能回答「当时怎么验收的」 |
-| 操作成本 | 两次点击内完成复制或下载，无弹窗、无新页面 |
-
-定性目标：让验收结果从「界面里的状态」变成「可以带走的交付物」。
-
-## 6. 收益
-
-- **对用户**：验收完成后直接复制报告，粘贴到 PR / issue / 交接文档，不用手抄。
-- **对团队 / 评审者**：报告结构统一，包含标准、进度、提交、改动文件和工作区状态，评审信息一次齐全。
-- **对插件**：补上验收闭环的「导出」一环；为后续服务端报告接口、报告模板和验收报告归档留下纯函数基础。
-- **对维护者**：改动集中在客户端一个新模块、两个按钮和文案，测试以纯函数为主，回滚只需移除入口和模块。
-
-## 7. 实现方案
-
-### 7.1 新增 `src/client/report.ts`
-
-导出：
-
-```ts
-export interface ReportInput {
-  task: WorktreeTask
-  snapshot: TaskSnapshot
-  diff: TaskDiff | null
-  projectName: string
-  statusLabel: string
-  t: Record<string, any>
-  now?: number
-}
-
-export function reportFilename(task: WorktreeTask, now?: number): string
-export function buildAcceptanceReport(input: ReportInput): string
-```
-
-要求：
-
-- `buildAcceptanceReport` 是纯函数，不访问 DOM、不发请求，便于单测。
-- 复用 `src/client/model.ts` 的 `criteria()`、`criteriaProgress()`、`branchHeadSha()`。
-- 复用 `src/client/format.ts` 的 `pad2()`；新增内部 `mdCell()` / `mdInline()` 处理表格转义。
-- 状态文案由调用方传入，避免在报告模块里重复状态映射。
-- diff 不可用原因由 `TaskDiff.reason` 映射到文案 key；未知原因回退到通用失败文案。
-
-### 7.2 `src/client/stage.ts`
-
-- `StageProps` 新增：
-
-```ts
-onCopyReport?: () => void
-onDownloadReport?: () => void
-reportBusy?: boolean
-```
-
-- 「验收标准」分区标题改为左右布局：左侧保留「验收标准 · 进度」，右侧渲染两个 ghost mini 按钮（复制报告 / 下载 .md）；回调缺失时不渲染按钮（保持 SSR / 测试兼容）。
-- 按钮在 `reportBusy` 时禁用，`title` 使用现有 `t.working`。
-- 新增样式类 `.dshwd-block-head` / `.dshwd-block-actions`，只改 `src/client/styles/workbench.ts`，复用现有间距和按钮类。
-
-### 7.3 `src/client/board/use-board-actions.ts`
-
-新增 `runCopyReport` / `runDownloadReport`：
-
-1. `busy` 时直接返回；`setBusy('report')`。
-2. 用 `selectedTask`、`diff`、`projectOfTask`、`statusLabel` 调用 `buildAcceptanceReport`。
-3. 复制：`copyText(markdown)`；失败抛错。
-4. 下载：`Blob` + `URL.createObjectURL` + 临时 `<a>`，`download=reportFilename(...)`；结束后 `revokeObjectURL`。
-5. 成功 / 失败用 `say()` 提示；`finally` 清 busy。
-
-`UseBoardActionsArgs` 新增 `diff: TaskDiff | null` 与 `statusLabel: string`。
-
-### 7.4 `src/client/board.ts`
-
-- 把 `data.diff` 和已计算的状态文案传入 `useBoardActions`。
-- 给 `Stage` 接线：
-
-```ts
-reportBusy: busy === 'report',
-onCopyReport: actions.runCopyReport,
-onDownloadReport: actions.runDownloadReport,
-```
-
-- 状态文案使用 `boardStatusLabel(t, status)`，与 Stage 标题 chip 保持一致。
-
-### 7.5 文案
-
-`locale/zh.json`、`locale/en.json` 同步新增（key 集合必须一致）：
-
-- 入口与结果：`reportCopy`、`reportDownload`、`reportCopied`、`reportDownloaded`、`reportFailed`
-- 报告字段：`reportTitle`、`reportProject`、`reportTaskBranch`、`reportBaseBranch`、`reportStatus`、`reportHead`、`reportMergedCommit`、`reportSession`、`reportGeneratedAt`、`reportCommits`、`reportNoCommits`、`reportFiles`、`reportFile`、`reportChange`、`reportTotals`、`reportNoFiles`、`reportProgress`、`reportWorkspace`、`reportUncommitted`、`reportStashes`、`reportTruncated`
-- 文件变更类型：`reportStatusAdded`、`reportStatusModified`、`reportStatusDeleted`、`reportStatusRenamed`、`reportStatusUntracked`
-- diff 不可用：`reportNoDiff`、`reportDiffWorktreeMissing`、`reportDiffNoMergeBase`、`reportDiffError`
-
-占位符沿用 `{n}`、`{total}` 约定；`reportTotals` 同时包含文件数、增、删三个占位符。
-
-### 7.6 文档与版本
-
-- `README.md`：功能概览与工作台交互各补一条；版本号与最后更新日期改为 1.11.0 / 2026-11-22。
-- `docs/frontend-design.md`：概览结构、验收标准组件说明和验收清单补报告入口。
-- `docs/i18n-terminology.md`：术语表补「验收报告 / Acceptance report」。
-- `CHANGELOG.md`：新增 `1.11.0` 条目。
-- `package.json` 与 `package-lock.json`：版本升至 `1.11.0`。
-
-## 8. 验收标准
-
-- [ ] 任务详情「概览」的验收标准分区显示「复制报告」「下载 .md」两个入口，所有任务状态均可用。
-- [ ] 点击「复制报告」后剪贴板内容为完整 Markdown；成功 Toast 提示，失败时给出错误提示。
-- [ ] 点击「下载 .md」生成 `acceptance-<id8>-<YYYYMMDD>-<HHmm>.md`，内容与复制一致，UTF-8 编码。
-- [ ] 报告包含元数据、任务描述、验收标准与核对进度、提交、改动文件表、合计、工作区状态。
-- [ ] 已核对 / 未核对标准正确输出为 `[x]` / `[ ]`；已合并 / 已清理任务与概览一致显示全部完成。
-- [ ] 无验收标准、无提交、无 diff、diff 截断、worktree 已清理时，报告仍可生成并给出对应说明。
-- [ ] 文件路径中的 `|` 和换行被正确转义，表格不会错列。
-- [ ] 报告不包含 diff 正文；文件数遵循现有 diff 上限。
-- [ ] 任一操作进行中时报告按钮禁用；按钮可键盘操作、有可见焦点环。
-- [ ] 中英文文案 key 完全一致，`npm run check:locale` 通过。
-- [ ] `npm run verify`（typecheck + locale 检查 + 测试 + 构建）通过。
-- [ ] `feature.md`、`README.md`、`docs/frontend-design.md`、`docs/i18n-terminology.md`、`CHANGELOG.md` 已更新，版本为 1.11.0。
-
-## 9. 测试与验证计划
-
-- **纯函数单测** `test/client-report.test.ts`：
-  - 标准与勾选状态：部分核对、全部核对、无标准。
-  - 已合并 / 已清理：全部显示完成。
-  - 元数据：项目、分支、基线、状态、HEAD、合并提交、会话、生成时间。
-  - 提交：多条、空列表；标题换行与 Markdown 特殊字符。
-  - 改动文件：新增 / 修改 / 删除 / 重命名 / 未跟踪、路径含 `|`、空列表、截断标记。
-  - diff 不可用：worktree-missing / no-merge-base / error 三种 reason。
-  - 工作区：未提交改动、待恢复暂存。
-  - 文件名：id8 提取、补零、只含安全字符、同一分钟稳定。
-- **回归**：`npm run verify` 全量通过；现有 281 项基础上新增用例。
-- **人工**：在 DSH Web 中打开不同状态任务，复制与下载报告，检查中英文、明暗主题、窄屏和键盘操作。
-
-## 10. 风险、边界与回滚
-
-- **剪贴板权限**：浏览器拒绝时回退到 `execCommand('copy')`；仍失败则只提示，不改变任务状态。
-- **下载被拦截**：`Blob` 下载失败时 Toast 报错；不依赖宿主额外能力。
-- **内容体量**：报告不包含 diff 正文，文件列表沿用 diff 的 300 个文件上限，提交列表来自快照；不会生成超大文本。
-- **敏感信息**：报告由用户显式触发，只在本地生成；复制或下载后是否外发由用户决定。
-- **语义一致性**：已合并 / 已清理任务沿用概览的「全部完成」语义；原始勾选数据仍保留在任务记录中。
-- **回滚**：移除两个按钮和 `report.ts` 即可；不涉及存储字段、路由或 Git 状态。
-
-## 11. 后续计划（不在本次范围）
-
-- 服务端报告接口与模型工具 `worktree_report`，供自动化流程直接获取报告。
-- 报告可选包含逐文件 diff 摘要或完整 patch。
-- 项目级报告模板：自定义章节顺序与固定说明。
-- 将报告归档到任务记录，支持历史版本对比。
-- 导出 HTML / PDF 版本。
-
-## 12. 文件清单
-
-| 文件 | 改动 |
-| --- | --- |
-| `src/client/report.ts` | 新增报告生成、文件名与 Markdown 转义纯函数 |
-| `src/client/stage.ts` | 概览验收分区标题与报告入口 |
-| `src/client/board/use-board-actions.ts` | 复制 / 下载动作与 busy 处理 |
-| `src/client/board.ts` | 传入 diff、状态文案并接线 |
-| `src/client/styles/workbench.ts` | 分区标题左右布局样式 |
-| `locale/zh.json`、`locale/en.json` | 新增报告与文件状态文案 |
-| `test/client-report.test.ts` | 新增纯函数用例 |
-| `README.md`、`docs/frontend-design.md`、`docs/i18n-terminology.md`、`CHANGELOG.md`、`package.json`、`package-lock.json` | 文档与版本 |
+- 分支：`t3/daily-5-feature-pipeline`
+- PR：待创建（创建后回填编号与链接）。

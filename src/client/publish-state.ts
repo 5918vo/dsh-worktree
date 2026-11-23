@@ -14,6 +14,12 @@ export interface PublishDraft {
   manualCriteria: string
   pickedCriteria: string[]
   branchName: string
+  /** Raw tag text; parsed only on submit so typing stays untouched. */
+  tags: string
+  /** One of '', 'low', 'normal', 'high'; '' means the untouched default. */
+  priority: string
+  /** `YYYY-MM-DD` from the date input; '' means no deadline. */
+  dueAt: string
 }
 
 export interface PublishCheckInfo {
@@ -33,6 +39,9 @@ export function initialPublishForm(draft?: any, fallbackTitle = ''): PublishDraf
     manualCriteria: String(d.manualCriteria || ''),
     pickedCriteria: Array.isArray(d.pickedCriteria) ? d.pickedCriteria.map(String) : [],
     branchName: String(d.branchName || ''),
+    tags: String(d.tags || ''),
+    priority: d.priority === 'low' || d.priority === 'high' ? String(d.priority) : 'normal',
+    dueAt: String(d.dueAt || ''),
   }
 }
 
@@ -50,6 +59,9 @@ export function publishDraftDirty(initial: PublishDraft, current: PublishDraft):
     || initial.manualCriteria !== current.manualCriteria
     || criteriaKey(initial.pickedCriteria) !== criteriaKey(current.pickedCriteria)
     || initial.branchName !== current.branchName
+    || initial.tags !== current.tags
+    || initial.priority !== current.priority
+    || initial.dueAt !== current.dueAt
 }
 
 /**

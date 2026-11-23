@@ -4,13 +4,16 @@ import { relTime, taskStamp } from './format'
 import { railStatsText } from './model'
 import type { ProjectView, TaskView } from '../models'
 import { boardBranch, boardStat, boardStatTitle, boardStatus, boardStatusLabel, type BoardFilter, type BoardTheme } from './model'
+import { dueStateOf } from '../task-meta'
 import { pendingLabel, postMergeLabel } from './status'
 import { AttentionFilter } from './attention-filter'
 import { AttentionSummaryBar } from './attention-summary'
 import { quickActionKey, type QuickAction, type SessionHealth, type TaskAttention } from './task-attention'
 import { environmentWarnings, type EnvironmentInfo } from './environment'
+import { fill } from './markdown'
+import type { DependencyStatus } from '../task-deps'
 
-export type RailEmptyKind = '' | 'search' | 'filter' | 'no-projects' | 'no-tasks'
+export type RailEmptyKind = '' | 'search' | 'tag' | 'filter' | 'no-projects' | 'no-tasks'
 
 export interface RailProps {
   t: any
@@ -20,6 +23,10 @@ export interface RailProps {
   selectedProjectId: string
   query: string
   filter: BoardFilter
+  /** Tag options available in the current task set; empty hides the filter. */
+  tags?: string[]
+  tagFilter?: string
+  onTagFilter?: (tag: string) => void
   showArchived: boolean
   archivedCount: number
   theme: BoardTheme
@@ -27,6 +34,8 @@ export interface RailProps {
   pendingOf: (task: any) => string
   healthOf: (task: any) => SessionHealth | null
   attentionOf: (view: TaskView) => TaskAttention
+  /** Prerequisite state of a task; omitted hides the "waiting on" chip. */
+  depsOf?: (task: any) => DependencyStatus
   counts: Record<string, number>
   attentionTotal: number
   attentionStale: boolean
@@ -98,9 +107,24 @@ export function Rail(props: RailProps) {
           value: props.query,
           placeholder: t.boardSearch,
           'aria-label': t.boardSearch,
+          'aria-description': t.searchSyntaxHint,
+          title: t.searchSyntaxHint,
           onInput: (e: any) => props.onQuery(e.target.value),
         }),
         h('span', { className: 'dshwd-search-kbd dshwd-mono' }, '/')),
+      props.query ? null : h('div', { className: 'dshwd-search-hint' }, t.searchSyntaxHint),
+      props.tags && props.tags.length
+        ? h('div', { className: 'dshwd-tag-filter-wrap' },
+          h('select', {
+            className: 'dshwd-tag-filter',
+            value: props.tagFilter || '',
+            'aria-label': t.taskTagFilter,
+            title: t.taskTagFilter,
+            onChange: (e: any) => { if (props.onTagFilter) props.onTagFilter(e.target.value) },
+          },
+            h('option', { value: '' }, t.taskTagAll),
+            props.tags.map((tag) => h('option', { key: tag, value: tag }, '#' + tag))))
+        : null,
       h('div', { className: 'dshwd-rail-tools' },
         h(AttentionFilter, { t, value: props.filter, counts: props.counts, onChange: props.onFilter }),
         props.archivedCount > 0 || props.showArchived
@@ -135,12 +159,17 @@ export function Rail(props: RailProps) {
             h('div', { className: 'dshwd-empty-title' }, t.boardNoMatches),
             h('div', { className: 'dshwd-hint' }, t.boardClearSearch),
             h('button', { className: 'dshwd-btn dshwd-btn-ghost', onClick: () => props.onQuery('') }, t.boardClearSearch))
-          : props.emptyKind === 'filter'
+          : props.emptyKind === 'tag'
             ? h('div', { className: 'dshwd-empty', style: { minHeight: '160px' } },
-              h('div', { className: 'dshwd-empty-title' }, t.attentionEmptyTitle),
-              h('div', { className: 'dshwd-hint' }, t.attentionEmptyHint),
-              h('button', { className: 'dshwd-btn dshwd-btn-ghost', onClick: () => props.onFilter('all') }, t.attentionAll))
-            : props.views.map((view) => h('div', { key: view.project.id },
+              h('div', { className: 'dshwd-empty-title' }, t.taskTagNoMatch),
+              h('div', { className: 'dshwd-hint' }, t.taskTagNoMatchHint),
+              h('button', { className: 'dshwd-btn dshwd-btn-ghost', onClick: () => props.onTagFilter && props.onTagFilter('') }, t.taskTagAll))
+            : props.emptyKind === 'filter'
+              ? h('div', { className: 'dshwd-empty', style: { minHeight: '160px' } },
+                h('div', { className: 'dshwd-empty-title' }, t.attentionEmptyTitle),
+                h('div', { className: 'dshwd-hint' }, t.attentionEmptyHint),
+                h('button', { className: 'dshwd-btn dshwd-btn-ghost', onClick: () => props.onFilter('all') }, t.attentionAll))
+              : props.views.map((view) => h('div', { key: view.project.id },
               h('button', {
                 className: 'dshwd-group-head',
                 title: t.boardOpenProject,
@@ -181,11 +210,12 @@ const QUICK_ICON: Record<QuickAction, string> = {
 }
 
 /** Alert copy shared by the row chip and the "more states" popover. */
-function alertText(t: any, kind: string, tv: TaskView, pendingKind: string, health: SessionHealth | null): string {
+function alertText(t: any, kind: string, tv: TaskView, pendingKind: string, health: SessionHealth | null, stalledDays?: number): string {
   switch (kind) {
     case 'recovery': return t.attentionRecovery
     case 'pending': return pendingLabel(t, pendingKind)
     case 'broken': return t.attentionBroken
+    case 'stalled': return String(t.attentionStalledDays).replace('{n}', String(stalledDays || 0))
     case 'post-merge': return postMergeLabel(t, Number((tv.snapshot && tv.snapshot.postMergeAhead) || 0))
     case 'session':
       if (!health) return t.sessionIdle
@@ -233,8 +263,33 @@ function taskRow(
     }
   }
   const primary = attention.primaryAlert
+  if (task.priority === 'high') chips.push(chip(t.priorityHigh, 'warn'))
+  else if (task.priority === 'low') chips.push(chip(t.priorityLow, 'weak'))
+  // Advisory only: a blocked task keeps its status and sort order.
+  const deps = props.depsOf ? props.depsOf(task) : null
+  if (deps && deps.blocked) {
+    chips.push(chip(fill(t.taskDepsBlocked, { n: deps.open.length }), 'warn', deps.open.map((item) => item.title).join(', ')))
+  }
+  // Deadline chip: overdue is an error tone, today/soon a warning. Later dates
+  // stay out of the row so a far-off deadline does not add noise.
+  const due = dueStateOf(task.dueAt)
+  if (due && due.kind === 'overdue') {
+    chips.push(chip(String(t.taskDueOverdue).replace('{n}', String(due.days)), 'err', t.taskDueHint))
+  } else if (due && due.kind === 'today') {
+    chips.push(chip(t.taskDueToday, 'warn', t.taskDueHint))
+  } else if (due && due.kind === 'soon') {
+    chips.push(chip(String(t.taskDueSoon).replace('{n}', String(due.days)), 'warn', t.taskDueHint))
+  }
+  // Two tags at most: the row stays one line; the full list lives in the title
+  // and in "+N" so nothing is lost.
+  const tags: string[] = Array.isArray(task.tags) ? task.tags : []
+  const tagsTitle = tags.join(', ')
+  if (tags.length) {
+    chips.push(chip(tags.slice(0, 2).map((tag) => '#' + tag).join(' '), 'tag', tagsTitle))
+    if (tags.length > 2) chips.push(chip('+' + String(tags.length - 2), 'tag', tagsTitle))
+  }
   if (primary && primary !== 'pending' && primary !== 'session') {
-    chips.push(chip(alertText(t, primary, tv, pendingKind, health), alertTone(primary)))
+    chips.push(chip(alertText(t, primary, tv, pendingKind, health, attention.stalledDays), alertTone(primary)))
   }
 
   return h('div', {
@@ -300,6 +355,6 @@ function taskRow(
         h('div', { className: 'dshwd-more-head' }, t.moreStates),
         extras.map((kind) => h('div', { key: kind, className: 'dshwd-more-item' + (kind === 'broken' || kind === 'session' ? ' dshwd-more-item-err' : '') },
           h(Icon, { name: kind === 'broken' || kind === 'session' ? 'alert' : 'clock' }),
-          h('span', null, alertText(t, kind, tv, pendingKind, health)))))
+          h('span', null, alertText(t, kind, tv, pendingKind, health, attention.stalledDays)))))
       : null)
 }

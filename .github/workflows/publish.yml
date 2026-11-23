@@ -1,0 +1,68 @@
+name: Publish to npm
+
+# 手动发布走 workflow_dispatch（默认 dry-run），正式发布由打 tag 触发：
+#   npm version patch|minor|major && git push --follow-tags
+# 需要仓库 secret `NPM_TOKEN`（granular token，对 @5318vo/dsh-worktree 有 Read and write）。
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '只跑 npm publish --dry-run，不真正上传'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write # npm provenance 需要
+
+concurrency:
+  group: npm-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          pkg="$(node -p "require('./package.json').version")"
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$pkg" != "$tag" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version ${pkg}"
+            exit 1
+          fi
+          echo "publishing ${pkg}"
+
+      - name: Verify (typecheck, locale, test, build)
+        run: npm run verify
+
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          # verify 已经跑过，跳过 prepublishOnly 避免重复执行
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            npm publish --dry-run --provenance --access public --ignore-scripts
+          else
+            npm publish --provenance --access public --ignore-scripts
+          fi

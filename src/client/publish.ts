@@ -2,6 +2,7 @@ import { React, h } from './ui'
 import { appCtx, getJson, postLong, bindSession } from './context'
 import { useBranchInfo } from './hooks'
 import { normalizeCriteria, parseCriteriaText } from '../criteria'
+import { parseDueAt, parseTagText, validateTags } from '../task-meta'
 import { applyPublishTemplate, branchChoices, initialPublishForm, publishDraftDirty, type PublishCheckInfo, type PublishDraft } from './publish-state'
 import { worktreePreviewRoot } from '../worktree-layout'
 import type { ProjectView, TaskView, TaskTemplate } from '../models'
@@ -46,9 +47,12 @@ export function PublishModal(props: PublishModalProps) {
   const [base, setBase] = React.useState(parentTask ? parentTask.baseBranch : project ? project.baseBranch : '')
   const [title, setTitle] = React.useState(form0.title)
   const [description, setDescription] = React.useState(form0.description)
-  // A restored branch means the advanced panel was in use; reopen it so the
-  // draft is visibly applied instead of looking like a silent override.
-  const [advanced, setAdvanced] = React.useState(!!form0.branchName)
+  // A restored branch, tag or non-normal priority means the advanced panel was
+  // in use; reopen it so the draft is visibly applied instead of looking like a
+  // silent override.
+  const [advanced, setAdvanced] = React.useState(
+    !!form0.branchName || !!form0.tags || form0.priority !== 'normal' || !!form0.dueAt,
+  )
   const [branch, setBranch] = React.useState(form0.branchName)
   const [start, setStart] = React.useState(true)
   const [asPlain, setAsPlain] = React.useState(false)
@@ -70,6 +74,9 @@ export function PublishModal(props: PublishModalProps) {
   const [models, setModels] = React.useState([] as ModelRow[])
   const [modelKey, setModelKey] = React.useState('')
   const [modelError, setModelError] = React.useState('')
+  const [tags, setTags] = React.useState(form0.tags)
+  const [priority, setPriority] = React.useState(form0.priority)
+  const [dueAt, setDueAt] = React.useState(form0.dueAt)
   const [showAllBranches, setShowAllBranches] = React.useState(false)
 
   const titleRef = React.useRef(null)
@@ -174,7 +181,7 @@ export function PublishModal(props: PublishModalProps) {
     setShowAllBranches(false)
   }, [projectId])
 
-  const currentForm = (): PublishDraft => ({ title, description, manualCriteria: manual, pickedCriteria: picked, branchName: branch })
+  const currentForm = (): PublishDraft => ({ title, description, manualCriteria: manual, pickedCriteria: picked, branchName: branch, tags, priority, dueAt })
   const dirty = publishDraftDirty(form0, currentForm())
   const handleClose = () => {
     if (busy) return
@@ -206,7 +213,7 @@ export function PublishModal(props: PublishModalProps) {
   React.useEffect(() => {
     if (!changedOnce.current) { changedOnce.current = true; return }
     if (onDraftRef.current) onDraftRef.current(currentForm())
-  }, [title, description, manual, picked, branch])
+  }, [title, description, manual, picked, branch, tags, priority, dueAt])
 
   React.useEffect(() => {
     const onKey = (e: any) => {
@@ -262,6 +269,14 @@ export function PublishModal(props: PublishModalProps) {
     if (!title.trim()) next.title = t.requiredField
     if (!description.trim()) next.description = t.requiredField
     if (advanced && branch.trim() && !validBranch(branch.trim())) next.branch = t.branchInvalid
+    // Parse here so the request and the hint agree; an invalid tag set never
+    // reaches the server.
+    const tagList = parseTagText(tags)
+    const tagCheck = validateTags(tagList)
+    if (!tagCheck.ok) next.tags = tagCheck.error === 'too-many' ? t.taskTagsTooMany : t.taskTagsTooLong
+    // An unparsable date never reaches the server; empty means "no deadline".
+    const due = dueAt.trim() ? parseDueAt(dueAt) : { ok: true as const, value: null }
+    if (!due.ok) next.dueAt = t.taskDueInvalid
     setFieldErrors(next)
     if (next.title && titleRef.current) (titleRef.current as any).focus()
     if (Object.keys(next).length) return
@@ -280,6 +295,9 @@ export function PublishModal(props: PublishModalProps) {
         // backend applies the project's configured prefix (dsh-wt/<id8>).
         ...(advanced && branch.trim() ? { branchName: branch.trim() } : {}),
         acceptanceCriteria: normalizeCriteria([...picked, ...parseCriteriaText(manual)]),
+        ...(tagList.length ? { tags: tagList } : {}),
+        ...(priority && priority !== 'normal' ? { priority } : {}),
+        ...(due.ok && due.value !== null ? { dueAt: due.value } : {}),
         ...(chosenModel ? { model: chosenModel } : {}),
         ...(parentTask && !asPlain ? { parentId: parentTask.id, carryLeftover } : {}),
         start,
@@ -509,7 +527,36 @@ export function PublishModal(props: PublishModalProps) {
           },
             h('option', { value: '' }, t.modelDefault),
             models.map((m: ModelRow, i: number) => h('option', { key: m.provider + ':' + m.model, value: String(i) }, `${m.providerName} · ${m.modelName}`)))
-          : h('div', { className: 'dshwd-hint' }, modelError || t.loading)))
+          : h('div', { className: 'dshwd-hint' }, modelError || t.loading)),
+        field(t, t.taskTags, h('input', {
+          className: 'dshwd-input' + (fieldErrors.tags ? ' dshwd-invalid' : ''),
+          value: tags,
+          disabled: busy,
+          placeholder: t.taskTagsPlaceholder,
+          'aria-invalid': fieldErrors.tags ? 'true' : 'false',
+          onChange: (e: any) => { setTags(e.target.value); clearField('tags') },
+        })),
+        h('div', { className: 'dshwd-hint' }, t.taskTagsHint),
+        fieldErrors.tags ? h('div', { className: 'dshwd-alert', role: 'alert' }, fieldErrors.tags) : null,
+        field(t, t.taskPriority, h('select', {
+          className: 'dshwd-select',
+          value: priority,
+          disabled: busy,
+          onChange: (e: any) => setPriority(e.target.value),
+        },
+          h('option', { value: 'low' }, t.priorityLow),
+          h('option', { value: 'normal' }, t.priorityNormal),
+          h('option', { value: 'high' }, t.priorityHigh))),
+        field(t, t.taskDue, h('input', {
+          type: 'date',
+          className: 'dshwd-input' + (fieldErrors.dueAt ? ' dshwd-invalid' : ''),
+          value: dueAt,
+          disabled: busy,
+          'aria-label': t.taskDue,
+          'aria-invalid': fieldErrors.dueAt ? 'true' : 'false',
+          onChange: (e: any) => { setDueAt(e.target.value); clearField('dueAt') },
+        })),
+        fieldErrors.dueAt ? h('div', { className: 'dshwd-alert', role: 'alert' }, fieldErrors.dueAt) : null)
       : null,
 
     parentTask

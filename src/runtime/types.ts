@@ -30,6 +30,12 @@ export interface PublishInput {
   model?: ModelSelection
   /** Optional acceptance criteria, one trimmed line per item. */
   acceptanceCriteria?: string[]
+  /** Free-form tags; normalized and validated before any git work runs. */
+  tags?: unknown
+  /** Display priority; omitted/`normal` stores nothing. */
+  priority?: unknown
+  /** Deadline: YYYY-MM-DD, epoch ms, or null; normalized to local midnight. */
+  dueAt?: number | string | null
 }
 
 export interface AddProjectInput {

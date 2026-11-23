@@ -1,6 +1,7 @@
 import type { ProjectView, TaskDiff, TaskSnapshot, TaskStatus, TaskView, WorktreeTask } from '../models'
 import type { AttentionCategory } from './task-attention'
 import { DEFAULT_WORKTREE_DIR, worktreePreviewRoot } from '../worktree-layout'
+import { matchesStructuredQuery, parseSearchQuery } from './search-query'
 
 /** The rail filter is an attention category, never a lifecycle status. */
 export type BoardFilter = AttentionCategory | 'all'
@@ -149,8 +150,10 @@ export function matchesSearch(query: string, fields: Array<string | null | undef
 }
 
 /**
- * Filter project groups by attention category and search text, dropping groups
- * that lost every task. With no filter and no query every project stays, so a
+ * Filter project groups by attention category, tag and search text, dropping
+ * groups that lost every task. Query text may carry structured tokens
+ * (`tag:` / `priority:` / `status:`) parsed here, so callers keep passing one
+ * plain string. With no filter, tag and query every project stays, so a
  * freshly added repository remains selectable before its first task exists.
  */
 export function filterProjectViews(
@@ -159,29 +162,64 @@ export function filterProjectViews(
   query: string,
   get: (view: TaskView) => { categories: Set<AttentionCategory> },
   pendingText: (task: WorktreeTask) => string,
+  tag: string = '',
 ): ProjectView[] {
-  const q = String(query || '').trim()
-  const keepEmpty = filter === 'all' && !q
+  const parsed = parseSearchQuery(query)
+  const text = parsed.text
+  const wantedTag = String(tag || '').trim().toLowerCase()
+  const keepEmpty = filter === 'all' && !text && !parsed.tags.length && !parsed.priorities.length && !parsed.statuses.length && !wantedTag
   return views
     .map((view) => {
-      const projectHit = matchesSearch(q, [view.project.name, view.project.repoPath])
       const tasks = view.tasks.filter((tv) => {
+        if (wantedTag) {
+          const tags = Array.isArray(tv.task.tags) ? tv.task.tags : []
+          if (!tags.some((item) => String(item || '').toLowerCase() === wantedTag)) return false
+        }
         const attention = get(tv)
         if (filter !== 'all' && !(attention && attention.categories.has(filter))) return false
-        if (!q || projectHit) return true
-        return matchesSearch(q, [tv.task.title, tv.task.branch, pendingText(tv.task)])
+        const tags = Array.isArray(tv.task.tags) ? tv.task.tags.join(' ') : ''
+        // A project-name hit widens the search to every task of that project,
+        // so the project fields belong in the same field list as the task text.
+        const fields = [
+          view.project.name,
+          view.project.repoPath,
+          tv.task.title,
+          tv.task.branch,
+          tags,
+          tv.task.notes,
+          pendingText(tv.task),
+        ]
+        return matchesStructuredQuery(parsed, tv.task, tv.snapshot, fields)
       })
       return { ...view, tasks }
     })
     .filter((view) => view.tasks.length > 0 || keepEmpty)
 }
 
+/** Every tag currently in use, first spelling wins, sorted for the rail. */
+export function collectTags(views: ProjectView[]): string[] {
+  const byKey = new Map<string, string>()
+  for (const view of views || []) {
+    for (const tv of view.tasks || []) {
+      const tags = tv.task && Array.isArray(tv.task.tags) ? tv.task.tags : []
+      for (const raw of tags) {
+        const text = String(raw || '').trim()
+        if (!text) continue
+        const key = text.toLowerCase()
+        if (!byKey.has(key)) byKey.set(key, text)
+      }
+    }
+  }
+  return [...byKey.values()].sort((a, b) => a.localeCompare(b))
+}
+
 /**
- * Which empty state the rail should show. A search or filter may report no
- * matches without widening to the generic "no tasks" copy: only an actually
- * empty filtered list earns an empty state, and the query wins over the filter
- * because it is the more specific thing the user just typed. `loaded` guards
- * the first paint, when an empty project list is not yet authoritative.
+ * Which empty state the rail should show. A search, tag or filter may report
+ * no matches without widening to the generic "no tasks" copy: only an actually
+ * empty filtered list earns an empty state. The query wins over the tag, and
+ * the tag over the attention filter, because each is more specific than the
+ * next thing the user just set. `loaded` guards the first paint, when an empty
+ * project list is not yet authoritative.
  */
 export function railEmptyKind(
   projects: ProjectView[],
@@ -189,11 +227,13 @@ export function railEmptyKind(
   query: string,
   filter: BoardFilter,
   loaded = true,
-): '' | 'no-projects' | 'search' | 'filter' {
+  tag = '',
+): '' | 'no-projects' | 'search' | 'tag' | 'filter' {
   if (!loaded) return ''
   if (!projects.length) return 'no-projects'
   if (filtered.length) return ''
   if (String(query || '').trim()) return 'search'
+  if (String(tag || '').trim()) return 'tag'
   return filter === 'all' ? '' : 'filter'
 }
 

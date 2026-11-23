@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { acceptanceHintFor, boardBranch, boardCta, boardStat, boardStatTitle, boardStatus, branchHeadSha, cleanupPrimaryLabel, commitRangeText, criteria, criteriaProgress, diffBaseSha, diffCount, diffHeadSha, diffLineKind, filterProjectViews, matchesSearch, mergeSummary, mergeSummaryText, pathPreview, railEmptyKind, railStatsText, shortSha, switchConfirmText, taskMergeSummary, themeFor, type BoardStatus } from '../src/client/model.js'
+import { acceptanceHintFor, boardBranch, boardCta, boardStat, boardStatTitle, boardStatus, branchHeadSha, cleanupPrimaryLabel, collectTags, commitRangeText, criteria, criteriaProgress, diffBaseSha, diffCount, diffHeadSha, diffLineKind, filterProjectViews, matchesSearch, mergeSummary, mergeSummaryText, pathPreview, railEmptyKind, railStatsText, shortSha, switchConfirmText, taskMergeSummary, themeFor, type BoardStatus } from '../src/client/model.js'
+import { compareTaskOrder } from '../src/task-meta.js'
 
 const T = {
   boardReady: '待开始',
@@ -198,6 +199,11 @@ test('railEmptyKind only reports an empty state for an actually empty result', (
   assert.equal(railEmptyKind(one, empty, '', 'review'), 'filter')
   // An all-filter with no rows would mean no projects at all.
   assert.equal(railEmptyKind(one, empty, '', 'all'), '')
+  // A tag with no matches owns the empty state after the query, before the filter.
+  assert.equal(railEmptyKind(one, one, '', 'all', true, 'bug'), '')
+  assert.equal(railEmptyKind(one, empty, '', 'all', true, 'bug'), 'tag')
+  assert.equal(railEmptyKind(one, empty, '', 'review', true, 'bug'), 'tag')
+  assert.equal(railEmptyKind(one, empty, 'nope', 'all', true, 'bug'), 'search')
   assert.equal(railEmptyKind(empty, empty, 'x', 'all'), 'no-projects')
   // The first paint is not evidence that there are no projects.
   assert.equal(railEmptyKind(empty, empty, 'x', 'all', false), '')
@@ -326,4 +332,91 @@ test('mergeSummaryText reports a cleaned worktree', () => {
   const t = { ...T, boardPreviewCleaned: 'cleaned', boardPreviewCleanedMerged: 'cleaned+merged' }
   assert.equal(mergeSummaryText(t, { key: 'cleaned', tone: 'warn' }), 'cleaned')
   assert.equal(mergeSummaryText(t, { key: 'cleanedMerged', tone: 'ok' }), 'cleaned+merged')
+})
+
+test('collectTags dedupes case-insensitively, keeps the first spelling and sorts', () => {
+  assert.deepEqual(collectTags([]), [])
+  const views = [
+    { project: { id: 'p1' }, tasks: [{ task: task({ id: 'a', tags: ['UI', 'api'] }) }] },
+    { project: { id: 'p2' }, tasks: [{ task: task({ id: 'b', tags: ['ui', 'docs', ''] }) }] },
+    { project: { id: 'p3' }, tasks: [{ task: task({ id: 'c' }) }] },
+  ] as any
+  assert.deepEqual(collectTags(views), ['api', 'docs', 'UI'])
+})
+
+test('filterProjectViews filters by one tag and keeps the search intersection', () => {
+  const categoriesOf = () => ({ categories: new Set() } as any)
+  const views = [
+    {
+      project: { id: 'p1', name: 'Repo', repoPath: '/repo' },
+      tasks: [
+        { task: task({ id: 't1', tags: ['ui', 'api'] }), snapshot: { status: 'review' } },
+        { task: task({ id: 't2', tags: ['docs'] }), snapshot: { status: 'review' } },
+      ],
+    },
+    { project: { id: 'p2', name: 'Other', repoPath: '/other' }, tasks: [], stats: {} },
+  ] as any
+
+  const onlyUi = filterProjectViews(views, 'all', '', categoriesOf, () => '', 'UI')
+  assert.deepEqual(onlyUi.map((v: any) => v.project.id), ['p1'])
+  assert.deepEqual(onlyUi[0].tasks.map((v: any) => v.task.id), ['t1'])
+
+  // An empty tag is a no-op and does not drop empty projects.
+  assert.equal(filterProjectViews(views, 'all', '', categoriesOf, () => '', '').length, 2)
+  // Tag + text must both match.
+  assert.equal(filterProjectViews(views, 'all', 'docs', categoriesOf, () => '', 'ui').length, 0)
+  assert.equal(filterProjectViews(views, 'all', 'repo', categoriesOf, () => '', 'ui')[0].tasks.length, 1)
+})
+
+test('filterProjectViews search matches tags and notes', () => {
+  const categoriesOf = () => ({ categories: new Set() } as any)
+  const views = [{
+    project: { id: 'p1', name: 'Repo', repoPath: '/repo' },
+    tasks: [{ task: task({ id: 't1', title: 'Alpha', tags: ['billing'], notes: 'rotate the token' }), snapshot: { status: 'review' } }],
+  }] as any
+  assert.equal(filterProjectViews(views, 'all', 'billing', categoriesOf, () => '').length, 1)
+  assert.equal(filterProjectViews(views, 'all', 'rotate', categoriesOf, () => '').length, 1)
+  assert.equal(filterProjectViews(views, 'all', 'missing', categoriesOf, () => '').length, 0)
+})
+
+test('filterProjectViews applies structured search conditions', () => {
+  const categoriesOf = (tv: any) => ({ categories: new Set([tv.snapshot.status === 'merged' ? 'merged' : 'review']) } as any)
+  const views = [{
+    project: { id: 'p1', name: 'Repo', repoPath: '/repo' },
+    tasks: [
+      { task: task({ id: 't1', title: 'Alpha', tags: ['前端'], priority: 'high' }), snapshot: { status: 'review' } },
+      { task: task({ id: 't2', title: 'Beta', tags: ['后端'], priority: 'high' }), snapshot: { status: 'merged' } },
+      { task: task({ id: 't3', title: 'Gamma', tags: ['前端'], notes: 'urgent' }), snapshot: { status: 'developing' } },
+    ],
+  }] as any
+  const ids = (list: any[]) => list.length ? list[0].tasks.map((item: any) => item.task.id) : []
+
+  assert.deepEqual(ids(filterProjectViews(views, 'all', 'tag:前端', categoriesOf, () => '')), ['t1', 't3'])
+  assert.deepEqual(ids(filterProjectViews(views, 'all', 'TAG:前端 TAG:紧急', categoriesOf, () => '')), [])
+  assert.deepEqual(ids(filterProjectViews(views, 'all', 'priority:high', categoriesOf, () => '')), ['t1', 't2'])
+  assert.deepEqual(ids(filterProjectViews(views, 'all', 'status:merged', categoriesOf, () => '')), ['t2'])
+  assert.deepEqual(ids(filterProjectViews(views, 'all', 'tag:前端 priority:high', categoriesOf, () => '')), ['t1'])
+  assert.deepEqual(ids(filterProjectViews(views, 'all', 'tag:前端 status:review status:merged', categoriesOf, () => '')), ['t1'])
+
+  // Plain text is unchanged: a project-name hit still widens to every task.
+  assert.deepEqual(ids(filterProjectViews(views, 'all', 'repo', categoriesOf, () => '')), ['t1', 't2', 't3'])
+  // ...but the name hit must not bypass a structured condition.
+  assert.deepEqual(ids(filterProjectViews(views, 'all', 'repo tag:后端', categoriesOf, () => '')), ['t2'])
+  assert.deepEqual(ids(filterProjectViews(views, 'all', 'repo tag:missing', categoriesOf, () => '')), [])
+
+  // An invalid value degrades to plain text and matches nothing here.
+  assert.equal(filterProjectViews(views, 'all', 'priority:urgent', categoriesOf, () => '').length, 0)
+
+  // The tag dropdown and the attention filter still stack with the query.
+  assert.deepEqual(ids(filterProjectViews(views, 'all', 'tag:前端', categoriesOf, () => '', '前端')), ['t1', 't3'])
+  assert.equal(filterProjectViews(views, 'all', 'tag:前端', categoriesOf, () => '', '后端').length, 0)
+  assert.deepEqual(ids(filterProjectViews(views, 'review', 'tag:前端', categoriesOf, () => '')), ['t1', 't3'])
+  assert.equal(filterProjectViews(views, 'review', 'status:merged', categoriesOf, () => '').length, 0)
+})
+
+test('compareTaskOrder is the single order used by the board', () => {
+  const older = task({ id: 'old', createdAt: 10, priority: 'high' })
+  const newer = task({ id: 'new', createdAt: 20 })
+  const pinned = task({ id: 'pin', createdAt: 1, priority: 'low', pinnedAt: 5 })
+  assert.deepEqual([newer, older, pinned].sort(compareTaskOrder).map((t: any) => t.id), ['pin', 'old', 'new'])
 })

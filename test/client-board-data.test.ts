@@ -86,3 +86,15 @@ test('visibleProjectViews hides archived tasks and recomputes stats', () => {
   assert.equal(views[0].tasks.length, 2, 'input must not be mutated')
   assert.equal(visibleProjectViews(views, true), views, 'showing archived keeps the input list')
 })
+
+test('upsertPublishedTask places a high-priority task above newer normal ones', () => {
+  const views = [view(project('p1', 'C:/repo'), [task('newer', 'p1', 50)])]
+  const next = upsertPublishedTask(views, task('urgent', 'p1', 10, { priority: 'high' }), 'p1', 'ready')
+  assert.deepEqual(next[0].tasks.map((v) => v.task.id), ['urgent', 'newer'])
+})
+
+test('upsertPublishedTask keeps pinned tasks ahead of a fresh high-priority one', () => {
+  const views = [view(project('p1', 'C:/repo'), [task('pinned', 'p1', 1, { pinnedAt: 2 })])]
+  const next = upsertPublishedTask(views, task('urgent', 'p1', 30, { priority: 'high' }), 'p1', 'ready')
+  assert.deepEqual(next[0].tasks.map((v) => v.task.id), ['pinned', 'urgent'])
+})

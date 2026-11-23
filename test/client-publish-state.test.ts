@@ -8,6 +8,7 @@ const draft = (extra = {}) => ({
   manualCriteria: '',
   pickedCriteria: [],
   branchName: '',
+  dueAt: '',
   ...extra,
 })
 
@@ -17,6 +18,7 @@ test('initialPublishForm falls back to the continuation title without a draft', 
   assert.equal(form.description, '')
   assert.deepEqual(form.pickedCriteria, [])
   assert.equal(form.branchName, '')
+  assert.equal(form.dueAt, '', 'no draft means no deadline')
 })
 
 test('initialPublishForm restores every draft field and keeps an explicit empty title', () => {
@@ -34,6 +36,13 @@ test('initialPublishForm restores every draft field and keeps an explicit empty 
   assert.equal(form.branchName, 'feat/x')
 })
 
+test('initialPublishForm restores the planned deadline and drops a malformed one', () => {
+  assert.equal(initialPublishForm(draft({ dueAt: '2026-09-01' })).dueAt, '2026-09-01')
+  assert.equal(initialPublishForm(draft({ dueAt: '2026-09-01' })).dueAt.length, 10)
+  assert.equal(initialPublishForm({ dueAt: null }).dueAt, '')
+  assert.equal(initialPublishForm({ dueAt: 1735689600000 }).dueAt, '1735689600000', 'only a date string is expected here')
+})
+
 test('initialPublishForm ignores malformed pickedCriteria', () => {
   const form = initialPublishForm({ pickedCriteria: 'a,b' })
   assert.deepEqual(form.pickedCriteria, [])
@@ -46,6 +55,10 @@ test('publishDraftDirty is false for an unchanged form', () => {
 
 test('publishDraftDirty detects every tracked field', () => {
   const base = draft({ title: 't', description: 'd', manualCriteria: 'm', pickedCriteria: ['a'], branchName: 'b' })
+  const dated = { ...base, dueAt: '2026-09-01' }
+  assert.equal(publishDraftDirty(base, dated), true)
+  assert.equal(publishDraftDirty(dated, base), true, 'clearing a deadline is a change too')
+  assert.equal(publishDraftDirty(dated, { ...dated }), false)
   assert.equal(publishDraftDirty(base, { ...base, title: 't2' }), true)
   assert.equal(publishDraftDirty(base, { ...base, description: 'd2' }), true)
   assert.equal(publishDraftDirty(base, { ...base, manualCriteria: 'm2' }), true)
@@ -100,4 +113,28 @@ test('isDetachedBranchLabel recognises git pseudo entries only', () => {
   assert.equal(isDetachedBranchLabel('(HEAD detached at 1a2b3c4)'), true)
   assert.equal(isDetachedBranchLabel('main'), false)
   assert.equal(isDetachedBranchLabel(''), false)
+})
+
+test('initialPublishForm restores tags and priority from the draft', () => {
+  const form = initialPublishForm(draft({ tags: 'ui, api', priority: 'high' }))
+  assert.equal(form.tags, 'ui, api')
+  assert.equal(form.priority, 'high')
+})
+
+test('initialPublishForm defaults the priority to normal and drops unknown values', () => {
+  assert.equal(initialPublishForm(undefined).priority, 'normal')
+  assert.equal(initialPublishForm(draft({ priority: 'low' })).priority, 'low')
+  assert.equal(initialPublishForm(draft({ priority: 'urgent' })).priority, 'normal')
+  assert.equal(initialPublishForm(draft({ tags: undefined })).tags, '')
+})
+
+test('publishDraftDirty notices tag and priority edits', () => {
+  const base = draft({ title: 't' })
+  assert.equal(publishDraftDirty(base, draft({ title: 't' })), false)
+  assert.equal(publishDraftDirty(base, draft({ title: 't', tags: 'ui' })), true)
+  assert.equal(publishDraftDirty(base, draft({ title: 't', priority: 'high' })), true)
+  assert.equal(
+    publishDraftDirty(draft({ title: 't', tags: 'ui', priority: 'high' }), draft({ title: 't', tags: 'ui', priority: 'high' })),
+    false,
+  )
 })

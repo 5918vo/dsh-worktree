@@ -54,3 +54,77 @@ test('worktree_act delete reports missing tasks and pending stashes', async () =
     await rmrf(root)
   }
 })
+
+test('worktree_act meta patches only the fields it receives', async () => {
+  const root = await mkTempDir('dshw-act-meta-')
+  const host = bootHost({}, { stateDir: join(root, 'state') })
+  const tool = host.tools.find((def: any) => def.name === 'worktree_act')
+  assert.ok(tool, 'worktree_act is registered')
+  try {
+    host.app.store.putTask(task('meta'))
+
+    const seeded: any = await tool.execute({ id: 'meta', action: 'meta', tags: ['ui', 'api'], priority: 'high', notes: 'first' })
+    assert.equal(seeded.ok, true, JSON.stringify(seeded))
+    assert.deepEqual(seeded.task.tags, ['ui', 'api'])
+    assert.equal(seeded.task.priority, 'high')
+    assert.equal(seeded.task.notes, 'first')
+
+    // Omitting tags/priority must not clear them.
+    const notesOnly: any = await tool.execute({ id: 'meta', action: 'meta', notes: 'second' })
+    assert.equal(notesOnly.ok, true, JSON.stringify(notesOnly))
+    assert.deepEqual(notesOnly.task.tags, ['ui', 'api'])
+    assert.equal(notesOnly.task.priority, 'high')
+    assert.equal(notesOnly.task.notes, 'second')
+
+    const cleared: any = await tool.execute({ id: 'meta', action: 'meta', tags: [], priority: 'normal', notes: '' })
+    assert.equal(cleared.ok, true, JSON.stringify(cleared))
+    assert.deepEqual(cleared.task.tags, [])
+    assert.equal(cleared.task.priority, 'normal')
+    assert.equal(cleared.task.notes, '')
+
+    const missing: any = await tool.execute({ id: 'nope', action: 'meta', notes: 'x' })
+    assert.equal(missing.ok, false)
+    assert.match(String(missing.error), /任务不存在/)
+
+    const invalid: any = await tool.execute({ id: 'meta', action: 'meta', priority: 'urgent' })
+    assert.equal(invalid.ok, false)
+    assert.match(String(invalid.error), /优先级/)
+  } finally {
+    await rmrf(root)
+  }
+})
+
+test('worktree_act meta writes depends_on and the brief reports it', async () => {
+  const root = await mkTempDir('dshw-act-deps-')
+  const host = bootHost({}, { stateDir: join(root, 'state') })
+  const tool = host.tools.find((def: any) => def.name === 'worktree_act')
+  assert.ok(tool, 'worktree_act is registered')
+  try {
+    host.app.store.putTask(task('dep-a'))
+    host.app.store.putTask(task('dep-b'))
+
+    // A task without dependencies still reports an empty list.
+    const untouched: any = await tool.execute({ id: 'dep-a', action: 'meta', notes: 'n' })
+    assert.equal(untouched.ok, true, JSON.stringify(untouched))
+    assert.deepEqual(untouched.task.dependsOn, [])
+
+    const set: any = await tool.execute({ id: 'dep-a', action: 'meta', depends_on: ['dep-b'] })
+    assert.equal(set.ok, true, JSON.stringify(set))
+    assert.deepEqual(set.task.dependsOn, ['dep-b'])
+
+    // Omitting depends_on must not clear it.
+    const notesOnly: any = await tool.execute({ id: 'dep-a', action: 'meta', notes: 'kept' })
+    assert.equal(notesOnly.ok, true, JSON.stringify(notesOnly))
+    assert.deepEqual(notesOnly.task.dependsOn, ['dep-b'])
+
+    const rejected: any = await tool.execute({ id: 'dep-a', action: 'meta', depends_on: ['dep-a'] })
+    assert.equal(rejected.ok, false)
+    assert.match(String(rejected.error), /不能依赖自己/)
+
+    const cleared: any = await tool.execute({ id: 'dep-a', action: 'meta', depends_on: [] })
+    assert.equal(cleared.ok, true, JSON.stringify(cleared))
+    assert.deepEqual(cleared.task.dependsOn, [])
+  } finally {
+    await rmrf(root)
+  }
+})

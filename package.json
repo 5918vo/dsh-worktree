@@ -1,6 +1,6 @@
 {
   "name": "@5318vo/dsh-worktree",
-  "version": "1.13.0",
+  "version": "1.14.0",
   "description": "DeepSeek Worktree task plugin — publish git-worktree-backed tasks; each task is a real DSH session bound to its worktree.",
   "type": "module",
   "main": "./dist/index.js",
@@ -32,6 +32,14 @@
   ],
   "author": "5318vo",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/5918vo/dsh-worktree.git"
+  },
+  "homepage": "https://github.com/5918vo/dsh-worktree#readme",
+  "bugs": {
+    "url": "https://github.com/5918vo/dsh-worktree/issues"
+  },
   "engines": {
     "node": ">=20"
   },

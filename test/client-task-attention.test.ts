@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  CATEGORY_ORDER,
   RECOVERY_UI_READY,
   categoryKey,
   computeFilterCounts,
@@ -9,6 +10,7 @@ import {
   filterViewsByAttention,
   parseTurnEndHealth,
   quickActionKey,
+  severityOf,
   summarizeAttention,
 } from '../src/client/task-attention.js'
 import { matchesSearch } from '../src/client/model.js'
@@ -140,7 +142,7 @@ test('summarizeAttention is empty for a calm board', () => {
   const s = summarizeAttention(views, (v) => deriveTaskAttention({ task: v.task, snapshot: v.snapshot }))
   assert.equal(s.total, 0)
   assert.equal(s.maxSeverity, 0)
-  assert.deepEqual(s.counts, { pending: 0, review: 0, recovery: 0, broken: 0 })
+  assert.deepEqual(s.counts, { pending: 0, review: 0, recovery: 0, broken: 0, stalled: 0, overdue: 0 })
 })
 
 test('filterViewsByAttention keeps matching tasks only', () => {
@@ -226,4 +228,101 @@ test('filterCount follows the active filter, not the attention total', () => {
   assert.equal(filterCount(counts, 'recovery'), 0)
   assert.equal(filterCount(counts, 'broken'), 3)
   assert.equal(filterCount(null, 'review'), 0)
+})
+
+test('stalledDays adds the stalled category and alert, carrying the day count', () => {
+  const t = view('t', snap({ status: 'review' }))
+  const a = deriveTaskAttention({ task: t.task, snapshot: t.snapshot, stalledDays: 4 })
+  assert.ok(a.categories.has('stalled'))
+  assert.equal(a.primaryAlert, 'stalled')
+  assert.equal(a.stalledDays, 4)
+
+  // Under one day is not stalled.
+  const fresh = deriveTaskAttention({ task: t.task, snapshot: t.snapshot, stalledDays: 0 })
+  assert.equal(fresh.categories.has('stalled'), false)
+  assert.equal(fresh.primaryAlert, null)
+  assert.equal(fresh.stalledDays, undefined)
+})
+
+test('a pending session outranks stalled, which stays as an extra alert', () => {
+  const t = view('t', snap({ status: 'review' }))
+  const a = deriveTaskAttention({ task: t.task, snapshot: t.snapshot, pendingKind: 'approval', stalledDays: 3 })
+  assert.equal(a.primaryAlert, 'pending')
+  assert.ok(a.extraAlerts.includes('stalled'))
+})
+
+test('broken outranks stalled and recovery outranks both', () => {
+  const t = view('t', snap({ status: 'broken' }))
+  const broken = deriveTaskAttention({ task: t.task, snapshot: t.snapshot, stalledDays: 9 })
+  if (broken.categories.has('broken')) assert.equal(broken.primaryAlert, 'broken')
+  // Severity mirrors the alert order: recovery > broken > pending > stalled.
+  assert.ok(severityOf('recovery') > severityOf('broken'))
+  assert.ok(severityOf('broken') > severityOf('pending'))
+  assert.ok(severityOf('pending') > severityOf('stalled'))
+  assert.ok(severityOf('stalled') > 0)
+})
+
+test('categoryKey and CATEGORY_ORDER know about stalled and overdue', () => {
+  assert.equal(categoryKey('stalled'), 'attentionStalled')
+  assert.equal(categoryKey('overdue'), 'attentionOverdue')
+  assert.deepEqual(CATEGORY_ORDER, ['recovery', 'broken', 'pending', 'overdue', 'review', 'stalled'])
+})
+
+test('overdueDays adds the overdue category without touching the alert ladder', () => {
+  const a = deriveTaskAttention({ task: view('t', snap()).task, snapshot: snap(), overdueDays: 4 })
+  assert.ok(a.categories.has('overdue'))
+  assert.equal(a.categories.size, 1, 'an overdue task with nothing else has one category')
+  assert.equal(a.primaryAlert, null, 'overdue is a category, not an alert')
+  assert.equal(severityOf('overdue'), 2)
+})
+
+test('an overdue task can also be stalled and is counted once per category', () => {
+  const views = [view('a', snap({ status: 'ready' })), view('b', snap({ status: 'ready' }))]
+  const map = new Map([
+    ['a', deriveTaskAttention({ task: views[0].task, snapshot: views[0].snapshot, overdueDays: 1, stalledDays: 5 })],
+    ['b', deriveTaskAttention({ task: views[1].task, snapshot: views[1].snapshot })],
+  ])
+  const s = summarizeAttention(views, (v) => map.get(v.task.id) as any)
+  assert.equal(s.counts.overdue, 1)
+  assert.equal(s.counts.stalled, 1)
+  assert.equal(s.total, 1, 'one task, two categories')
+  assert.equal(s.maxSeverity, 2)
+  assert.equal(deriveTaskAttention({ task: {}, snapshot: snap(), overdueDays: 0 }).categories.has('overdue'), false)
+  assert.equal(deriveTaskAttention({ task: {}, snapshot: snap() }).categories.has('overdue'), false)
+})
+
+test('computeFilterCounts folds overdue into the hurting total', () => {
+  const views = [view('a', snap({ worktree: { ahead: 0 } })), view('b', snap())]
+  const map = new Map([
+    ['a', deriveTaskAttention({ task: views[0].task, snapshot: views[0].snapshot, overdueDays: 2 })],
+    ['b', deriveTaskAttention({ task: views[1].task, snapshot: views[1].snapshot })],
+  ])
+  const counts = computeFilterCounts(views, views, (v) => map.get(v.task.id) as any, true)
+  assert.equal(counts.overdue, 1)
+  assert.equal(counts.total, 1)
+  assert.equal(filterCount(counts, 'overdue'), 1)
+  assert.deepEqual(filterViewsByAttention(views, (v) => map.get(v.task.id) as any, 'overdue').map((v) => v.task.id), ['a'])
+})
+
+test('summarizeAttention counts stalled tasks', () => {
+  const views = [view('a', snap({ status: 'ready' })), view('b', snap({ status: 'ready' }))]
+  const map = new Map([
+    ['a', deriveTaskAttention({ task: views[0].task, snapshot: views[0].snapshot, stalledDays: 5 })],
+    ['b', deriveTaskAttention({ task: views[1].task, snapshot: views[1].snapshot })],
+  ])
+  const s = summarizeAttention(views, (v) => map.get(v.task.id) as any)
+  assert.equal(s.counts.stalled, 1)
+  assert.equal(s.total, 1)
+  assert.equal(s.maxSeverity, severityOf('stalled'))
+  assert.deepEqual(filterViewsByAttention(views, (v) => map.get(v.task.id) as any, 'stalled').map((v) => v.task.id), ['a'])
+})
+
+test('computeFilterCounts counts stalled once even when the task also needs approval', () => {
+  const views = [view('a', snap({ status: 'review' }))]
+  const map = new Map([['a', deriveTaskAttention({ task: views[0].task, snapshot: views[0].snapshot, pendingKind: 'approval', stalledDays: 3 })]])
+  const counts = computeFilterCounts(views, views, (v) => map.get(v.task.id) as any, true)
+  assert.equal(counts.pending, 1)
+  assert.equal(counts.stalled, 1)
+  assert.equal(counts.total, 1, 'total counts tasks, not categories')
+  assert.equal(filterCount(counts, 'stalled'), 1)
 })

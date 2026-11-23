@@ -340,3 +340,235 @@ test('task/archive hides a merged task from the default listing and unarchive re
   const def2 = await call('tasks', { method: 'GET', headers: auth })
   assert.equal(def2.body.tasks.some((v: any) => v.task.id === task.id), true, 'unarchive restores the default listing')
 })
+
+test('task/meta saves tags, priority and notes without clearing the other fields', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
+  const projectId = added.body.project.id
+  const published = await call('publish', {
+    body: { projectId, title: 'meta task', description: 'd' },
+    headers: auth,
+  })
+  assert.equal(published.status, 200, JSON.stringify(published.body))
+  const id = published.body.task.id
+
+  const seeded = await call('task/meta', {
+    body: { id, tags: ['ui', 'UI', 'api'], priority: 'high', notes: 'first note' },
+    headers: auth,
+  })
+  assert.equal(seeded.status, 200, JSON.stringify(seeded.body))
+  assert.deepEqual(seeded.body.view.task.tags, ['ui', 'api'])
+  assert.equal(seeded.body.view.task.priority, 'high')
+  assert.equal(seeded.body.view.task.notes, 'first note')
+
+  // Notes-only: the HTTP layer must not forward tags/priority as cleared.
+  const notesOnly = await call('task/meta', { body: { id, notes: 'second note' }, headers: auth })
+  assert.equal(notesOnly.status, 200, JSON.stringify(notesOnly.body))
+  assert.deepEqual(notesOnly.body.view.task.tags, ['ui', 'api'])
+  assert.equal(notesOnly.body.view.task.priority, 'high')
+  assert.equal(notesOnly.body.view.task.notes, 'second note')
+
+  // Explicit empty values clear the fields.
+  const cleared = await call('task/meta', { body: { id, tags: [], priority: 'normal', notes: '' }, headers: auth })
+  assert.equal(cleared.status, 200, JSON.stringify(cleared.body))
+  assert.equal('tags' in cleared.body.view.task, false)
+  assert.equal('priority' in cleared.body.view.task, false)
+  assert.equal('notes' in cleared.body.view.task, false)
+})
+
+test('task/meta rejects unauthenticated, unknown and invalid requests', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const anonymous = await call('task/meta', { body: { id: 'x', notes: 'n' } })
+  assert.equal(anonymous.status, 403)
+
+  const unknown = await call('task/meta', { body: { id: 'missing', notes: 'n' }, headers: auth })
+  assert.equal(unknown.status, 404)
+  assert.match(unknown.body.error, /任务不存在：missing/)
+
+  const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
+  const published = await call('publish', {
+    body: { projectId: added.body.project.id, title: 'meta invalid', description: 'd' },
+    headers: auth,
+  })
+  const id = published.body.task.id
+
+  const priority = await call('task/meta', { body: { id, priority: 'urgent' }, headers: auth })
+  assert.equal(priority.status, 400)
+  assert.equal(priority.body.error, '优先级只能是 low、normal 或 high')
+
+  const tooMany = await call('task/meta', {
+    body: { id, tags: Array.from({ length: 9 }, (_, i) => 't' + i) },
+    headers: auth,
+  })
+  assert.equal(tooMany.status, 400)
+  assert.equal(tooMany.body.error, '标签最多 8 个')
+
+  const tooLong = await call('task/meta', { body: { id, notes: 'x'.repeat(2001) }, headers: auth })
+  assert.equal(tooLong.status, 400)
+  assert.equal(tooLong.body.error, '备注最多 2000 个字符')
+})
+
+test('publish accepts tags and priority and rejects invalid values', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
+  const projectId = added.body.project.id
+
+  const published = await call('publish', {
+    body: { projectId, title: 'tagged', description: 'd', tags: ['ui', 'api'], priority: 'high' },
+    headers: auth,
+  })
+  assert.equal(published.status, 200, JSON.stringify(published.body))
+  assert.deepEqual(published.body.task.tags, ['ui', 'api'])
+  assert.equal(published.body.task.priority, 'high')
+
+  // normal is the default and stays out of the record.
+  const normal = await call('publish', {
+    body: { projectId, title: 'normal', description: 'd', priority: 'normal' },
+    headers: auth,
+  })
+  assert.equal(normal.status, 200, JSON.stringify(normal.body))
+  assert.equal('priority' in normal.body.task, false)
+
+  const badTags = await call('publish', {
+    body: { projectId, title: 'bad tags', description: 'd', tags: Array.from({ length: 9 }, (_, i) => 't' + i) },
+    headers: auth,
+  })
+  assert.equal(badTags.status, 400)
+  assert.equal(badTags.body.error, '标签最多 8 个')
+
+  const badPriority = await call('publish', {
+    body: { projectId, title: 'bad priority', description: 'd', priority: 'urgent' },
+    headers: auth,
+  })
+  assert.equal(badPriority.status, 400)
+  assert.equal(badPriority.body.error, '优先级只能是 low、normal 或 high')
+})
+
+test('task/meta stores dependencies and rejects invalid ones', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
+  const projectId = added.body.project.id
+  const mk = async (title: string) => {
+    const res = await call('publish', { body: { projectId, title, description: 'd' }, headers: auth })
+    assert.equal(res.status, 200, JSON.stringify(res.body))
+    return res.body.task.id as string
+  }
+  const a = await mk('dep a')
+  const b = await mk('dep b')
+  const c = await mk('dep c')
+
+  const set = await call('task/meta', { body: { id: a, dependsOn: [b, c, b] }, headers: auth })
+  assert.equal(set.status, 200, JSON.stringify(set.body))
+  assert.deepEqual(set.body.view.task.dependsOn, [b, c], 'duplicates are dropped')
+
+  // A patch for another field keeps the edges intact.
+  const unrelated = await call('task/meta', { body: { id: a, notes: 'keep deps' }, headers: auth })
+  assert.equal(unrelated.status, 200, JSON.stringify(unrelated.body))
+  assert.deepEqual(unrelated.body.view.task.dependsOn, [b, c])
+
+  const tooMany = await call('task/meta', {
+    body: { id: a, dependsOn: Array.from({ length: 9 }, (_, i) => 'x' + i) },
+    headers: auth,
+  })
+  assert.equal(tooMany.status, 400, JSON.stringify(tooMany.body))
+  assert.equal(tooMany.body.error, '前置任务最多 8 个')
+
+  const self = await call('task/meta', { body: { id: a, dependsOn: [a] }, headers: auth })
+  assert.equal(self.status, 400, JSON.stringify(self.body))
+  assert.equal(self.body.error, '不能依赖自己')
+
+  const missing = await call('task/meta', { body: { id: a, dependsOn: ['nope'] }, headers: auth })
+  assert.equal(missing.status, 400, JSON.stringify(missing.body))
+  assert.equal(missing.body.error, '前置任务不存在')
+
+  // a -> b is set, so b -> a is a direct cycle.
+  const direct = await call('task/meta', { body: { id: b, dependsOn: [a] }, headers: auth })
+  assert.equal(direct.status, 400, JSON.stringify(direct.body))
+  assert.equal(direct.body.error, '不能形成循环依赖')
+
+  // e <- f <- g; making e depend on g closes a longer cycle.
+  const e = await mk('dep e')
+  const f = await mk('dep f')
+  const g = await mk('dep g')
+  assert.equal((await call('task/meta', { body: { id: f, dependsOn: [e] }, headers: auth })).status, 200)
+  assert.equal((await call('task/meta', { body: { id: g, dependsOn: [f] }, headers: auth })).status, 200)
+  const indirect = await call('task/meta', { body: { id: e, dependsOn: [g] }, headers: auth })
+  assert.equal(indirect.status, 400, JSON.stringify(indirect.body))
+  assert.equal(indirect.body.error, '不能形成循环依赖')
+
+  // A dependency from another project is refused even though the id exists.
+  const repo2 = join(root, 'repo2')
+  await fs.mkdir(repo2, { recursive: true })
+  await initRepo(repo2)
+  const added2 = await call('projects/add', { body: { repoPath: repo2 }, headers: auth })
+  const other = (await call('publish', {
+    body: { projectId: added2.body.project.id, title: 'dep other', description: 'd' },
+    headers: auth,
+  })).body.task.id
+  const cross = await call('task/meta', { body: { id: a, dependsOn: [other] }, headers: auth })
+  assert.equal(cross.status, 400, JSON.stringify(cross.body))
+  assert.equal(cross.body.error, '只能依赖同一项目的任务')
+
+  const listed = await call('tasks', { method: 'GET', headers: auth })
+  const row = listed.body.tasks.find((v: any) => v.task.id === a)
+  assert.deepEqual(row.task.dependsOn, [b, c], 'rejected edits never change the record')
+
+  const cleared = await call('task/meta', { body: { id: a, dependsOn: [] }, headers: auth })
+  assert.equal(cleared.status, 200, JSON.stringify(cleared.body))
+  assert.equal('dependsOn' in cleared.body.view.task, false)
+})
+
+test('publish accepts a due date and rejects an invalid one', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
+  const projectId = added.body.project.id
+
+  const dated = await call('publish', {
+    body: { projectId, title: 'dated', description: 'd', dueAt: '2026-07-04' },
+    headers: auth,
+  })
+  assert.equal(dated.status, 200, JSON.stringify(dated.body))
+  assert.equal(dated.body.task.dueAt, new Date(2026, 6, 4).getTime(), 'the date lands on local midnight')
+
+  const undated = await call('publish', {
+    body: { projectId, title: 'undated', description: 'd' },
+    headers: auth,
+  })
+  assert.equal(undated.status, 200, JSON.stringify(undated.body))
+  assert.equal('dueAt' in undated.body.task, false, 'no deadline means no field')
+
+  const bad = await call('publish', {
+    body: { projectId, title: 'bad due', description: 'd', dueAt: '2026-02-30' },
+    headers: auth,
+  })
+  assert.equal(bad.status, 400)
+  assert.equal(bad.body.error, '截止日期无效')
+})
+
+test('task/meta sets and clears the due date', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
+  const published = await call('publish', {
+    body: { projectId: added.body.project.id, title: 'due task', description: 'd' },
+    headers: auth,
+  })
+  const id = published.body.task.id
+
+  const set = await call('task/meta', { body: { id, dueAt: '2026-08-09' }, headers: auth })
+  assert.equal(set.status, 200, JSON.stringify(set.body))
+  assert.equal(set.body.view.task.dueAt, new Date(2026, 7, 9).getTime())
+
+  // A notes-only patch keeps the deadline (the HTTP layer forwards dueAt only when present).
+  const notesOnly = await call('task/meta', { body: { id, notes: 'keep the date' }, headers: auth })
+  assert.equal(notesOnly.status, 200, JSON.stringify(notesOnly.body))
+  assert.equal(notesOnly.body.view.task.dueAt, new Date(2026, 7, 9).getTime())
+
+  const invalid = await call('task/meta', { body: { id, dueAt: 'never' }, headers: auth })
+  assert.equal(invalid.status, 400)
+  assert.equal(invalid.body.error, '截止日期无效')
+
+  const cleared = await call('task/meta', { body: { id, dueAt: null }, headers: auth })
+  assert.equal(cleared.status, 200, JSON.stringify(cleared.body))
+  assert.equal('dueAt' in cleared.body.view.task, false)
+  assert.equal(cleared.body.view.task.notes, 'keep the date', 'clearing the deadline keeps the notes')
+})
