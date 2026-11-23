@@ -26,7 +26,7 @@ function clean(value: unknown): Json {
   }
 }
 
-function brief(v: { task: { id: string; title: string; repoPath: string; baseBranch: string; branch: string; worktreePath: string; sessionId: string | null; parentId?: string; tags?: string[]; priority?: string; notes?: string; acceptanceCriteria?: string[] }; snapshot: { status: string; worktree: { ahead: number; dirtyCount: number }; repo: { currentBranch: string | null }; postMergeAhead?: number } }) {
+function brief(v: { task: { id: string; title: string; repoPath: string; baseBranch: string; branch: string; worktreePath: string; sessionId: string | null; parentId?: string; tags?: string[]; priority?: string; notes?: string; dependsOn?: string[]; acceptanceCriteria?: string[] }; snapshot: { status: string; worktree: { ahead: number; dirtyCount: number }; repo: { currentBranch: string | null }; postMergeAhead?: number } }) {
   return {
     id: v.task.id,
     title: v.task.title,
@@ -39,6 +39,7 @@ function brief(v: { task: { id: string; title: string; repoPath: string; baseBra
     tags: Array.isArray(v.task.tags) ? v.task.tags : [],
     priority: v.task.priority || 'normal',
     notes: v.task.notes || '',
+    dependsOn: Array.isArray(v.task.dependsOn) ? v.task.dependsOn : [],
     acceptanceCriteria: Array.isArray(v.task.acceptanceCriteria) ? v.task.acceptanceCriteria : [],
     status: v.snapshot.status,
     ahead: v.snapshot.worktree.ahead,
@@ -163,6 +164,7 @@ export function registerTools(app: App): () => void {
           tags: { type: 'array', items: { type: 'string' }, description: 'For meta: replace the tag list (max 8, 24 chars each; [] clears).' },
           priority: { type: 'string', enum: ['low', 'normal', 'high'], description: 'For meta: set the priority; normal clears it.' },
           notes: { type: 'string', description: 'For meta: set acceptance/handover notes (max 2000 chars; empty clears).' },
+          depends_on: { type: 'array', items: { type: 'string' }, description: 'For meta: replace the prerequisite task ids (same project, max 8; [] clears).' },
         },
         required: ['id', 'action'],
       },
@@ -181,6 +183,9 @@ export function registerTools(app: App): () => void {
             const patch: any = {}
             for (const key of ['tags', 'priority', 'notes']) {
               if (Object.prototype.hasOwnProperty.call(args, key) && args[key] !== undefined) patch[key] = args[key]
+            }
+            if (Object.prototype.hasOwnProperty.call(args, 'depends_on') && args.depends_on !== undefined) {
+              patch.dependsOn = args.depends_on
             }
             return clean({ ok: true, task: brief(await app.runtime.view(app.runtime.updateTaskMeta(id, patch))) })
           }

@@ -380,3 +380,98 @@ test('updateTaskMeta writes are visible to another store instance', async () => 
     await rmrf(dir)
   }
 })
+
+test('updateTaskMeta stores dependencies and clears them only on an explicit empty list', async () => {
+  const { store, dir } = await freshStore()
+  try {
+    store.putTask(task('d1', 'p1'))
+    store.putTask(task('d2', 'p1'))
+    store.putTask(task('d3', 'p1'))
+
+    const set = store.updateTaskMeta('d1', { dependsOn: ['d2', 'd3', 'd2'] })
+    assert.equal(set.ok, true)
+    if (!set.ok) return
+    assert.deepEqual(set.task.dependsOn, ['d2', 'd3'], 'duplicates are dropped')
+
+    // A patch for another field keeps the dependency list intact.
+    const notesOnly = store.updateTaskMeta('d1', { notes: 'n' })
+    assert.equal(notesOnly.ok, true)
+    if (!notesOnly.ok) return
+    assert.deepEqual(notesOnly.task.dependsOn, ['d2', 'd3'])
+
+    const cleared = store.updateTaskMeta('d1', { dependsOn: [] })
+    assert.equal(cleared.ok, true)
+    if (!cleared.ok) return
+    assert.equal('dependsOn' in cleared.task, false, 'an empty list removes the field')
+
+    const reloaded = new Store(dir)
+    await reloaded.load()
+    assert.equal('dependsOn' in reloaded.getTask('d1')!, false)
+    reloaded.dispose()
+    await reloaded.flush()
+  } finally {
+    await cleanup(store, dir)
+  }
+})
+
+test('updateTaskMeta rejects invalid dependency edits without touching the record', async () => {
+  const { store, dir } = await freshStore()
+  try {
+    store.putTask(task('d4', 'p1'))
+    store.putTask(task('d5', 'p1'))
+    store.putTask({ ...task('d6', 'p2'), projectId: 'p2' })
+    store.updateTaskMeta('d4', { dependsOn: ['d5'] })
+
+    assert.deepEqual(
+      store.updateTaskMeta('d4', { dependsOn: ['d4'] }),
+      { ok: false, reason: 'deps-self' },
+    )
+    assert.deepEqual(
+      store.updateTaskMeta('d4', { dependsOn: ['nope'] }),
+      { ok: false, reason: 'deps-missing' },
+    )
+    assert.deepEqual(
+      store.updateTaskMeta('d4', { dependsOn: ['d6'] }),
+      { ok: false, reason: 'deps-cross-project' },
+    )
+    assert.deepEqual(
+      store.updateTaskMeta('d4', { dependsOn: Array.from({ length: 9 }, (_, i) => 'm' + i) }),
+      { ok: false, reason: 'deps-too-many' },
+      'the limit is checked before existence',
+    )
+    // d5 -> d4 would close a cycle once d4 already depends on d5.
+    assert.deepEqual(
+      store.updateTaskMeta('d5', { dependsOn: ['d4'] }),
+      { ok: false, reason: 'deps-cycle' },
+    )
+    assert.deepEqual(store.getTask('d4')!.dependsOn, ['d5'], 'a rejected edit leaves the list alone')
+    assert.equal('dependsOn' in store.getTask('d5')!, false)
+  } finally {
+    await cleanup(store, dir)
+  }
+})
+
+test('two store instances can edit dependencies and notes without clobbering each other', async () => {
+  const dir = await fs.mkdtemp(join(tmpdir(), 'dshw-store-'))
+  const a = new Store(dir)
+  const b = new Store(dir)
+  await a.load()
+  await b.load()
+  try {
+    a.putTask(task('d7', 'p1'))
+    a.putTask(task('d8', 'p1'))
+    b.refreshTasks()
+    assert.equal(b.updateTaskMeta('d7', { dependsOn: ['d8'] }).ok, true)
+    a.refreshTasks()
+    assert.equal(a.updateTaskMeta('d7', { notes: 'from-a' }).ok, true)
+    b.refreshTasks()
+    assert.deepEqual(b.getTask('d7')!.dependsOn, ['d8'], 'the notes write must not drop dependencies')
+    assert.equal(b.getTask('d7')!.notes, 'from-a')
+  } finally {
+    a.dispose()
+    b.dispose()
+    await a.flush()
+    await b.flush()
+    await rmrf(dir)
+  }
+})

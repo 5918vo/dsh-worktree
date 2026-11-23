@@ -407,6 +407,7 @@ export function registerHttp(app: App): () => void {
     if (Object.prototype.hasOwnProperty.call(body, 'tags')) patch.tags = body.tags
     if (Object.prototype.hasOwnProperty.call(body, 'priority')) patch.priority = body.priority
     if (Object.prototype.hasOwnProperty.call(body, 'notes')) patch.notes = body.notes
+    if (Object.prototype.hasOwnProperty.call(body, 'dependsOn')) patch.dependsOn = body.dependsOn
     app.runtime.updateTaskMeta(id, patch)
   })
   act('delete', async (id) => app.runtime.delete(id))

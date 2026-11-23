@@ -15,6 +15,7 @@ import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { normalizeCriteria } from './criteria.js'
+import { normalizeDependencyIds, validateDependencyIds, type DependencyIssue } from './task-deps.js'
 import { NOTES_MAX_LENGTH, normalizePriority, normalizeTags, validateTags } from './task-meta.js'
 import { Project, TaskTemplate, WorktreeTask } from './models.js'
 
@@ -43,6 +44,7 @@ export type TaskMetaPatch = {
   tags?: unknown
   priority?: unknown
   notes?: unknown
+  dependsOn?: unknown
 }
 
 /** Outcome of an atomic metadata update; callers map reasons to 404 / 400. */
@@ -50,8 +52,34 @@ export type TaskMetaResult =
   | { ok: true; task: WorktreeTask }
   | {
     ok: false
-    reason: 'missing' | 'tags-too-many' | 'tags-too-long' | 'priority-invalid' | 'notes-too-long'
+    reason:
+      | 'missing'
+      | 'tags-too-many'
+      | 'tags-too-long'
+      | 'priority-invalid'
+      | 'notes-too-long'
+      | 'deps-too-many'
+      | 'deps-self'
+      | 'deps-missing'
+      | 'deps-cross-project'
+      | 'deps-cycle'
   }
+
+/** Map a dependency validation issue to the store-level failure reason. */
+function dependencyReason(issue: DependencyIssue):
+  | 'deps-too-many'
+  | 'deps-self'
+  | 'deps-missing'
+  | 'deps-cross-project'
+  | 'deps-cycle' {
+  switch (issue) {
+    case 'too-many': return 'deps-too-many'
+    case 'self': return 'deps-self'
+    case 'cross-project': return 'deps-cross-project'
+    case 'cycle': return 'deps-cycle'
+    default: return 'deps-missing'
+  }
+}
 
 /**
  * One global task store for every DSH process on this machine.
@@ -575,12 +603,12 @@ export class Store {
   }
 
   /**
-   * Update tags / priority / notes under the store lock.
+   * Update tags / priority / notes / dependencies under the store lock.
    *
-   * One critical section for all three fields: refresh, validate, then save,
-   * so two DSH processes editing different fields cannot overwrite each other.
-   * Keys absent from the patch — or present with `undefined`, as an HTTP body
-   * may deliver — are left untouched; only an explicit empty value clears.
+   * One critical section for all fields: refresh, validate, then save, so two
+   * DSH processes editing different fields cannot overwrite each other. Keys
+   * absent from the patch — or present with `undefined`, as an HTTP body may
+   * deliver — are left untouched; only an explicit empty value clears.
    */
   updateTaskMeta(taskId: string, patch: TaskMetaPatch): TaskMetaResult {
     return this.withLock(() => {
@@ -601,7 +629,18 @@ export class Store {
       if (has('priority') && !priority) return { ok: false, reason: 'priority-invalid' }
       const notes = has('notes') ? String(patch.notes == null ? '' : patch.notes).trim() : null
       if (notes !== null && notes.length > NOTES_MAX_LENGTH) return { ok: false, reason: 'notes-too-long' }
-      if (!tags && !priority && notes === null) return { ok: true, task }
+      const dependsOn = has('dependsOn') ? normalizeDependencyIds(patch.dependsOn) : null
+      if (dependsOn && dependsOn.length) {
+        const check = validateDependencyIds({
+          taskId: task.id,
+          projectId: task.projectId,
+          repoPath: task.repoPath,
+          ids: dependsOn,
+          tasks: [...this.tasks.values()],
+        })
+        if (!check.ok) return { ok: false, reason: dependencyReason(check.error) }
+      }
+      if (!tags && !priority && notes === null && dependsOn === null) return { ok: true, task }
 
       if (tags) {
         if (tags.length) task.tags = tags
@@ -614,6 +653,10 @@ export class Store {
       if (notes !== null) {
         if (notes) task.notes = notes
         else delete task.notes
+      }
+      if (dependsOn !== null) {
+        if (dependsOn.length) task.dependsOn = dependsOn
+        else delete task.dependsOn
       }
       task.updatedAt = Date.now()
       this.saveTasks()

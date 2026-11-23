@@ -43,6 +43,8 @@ import {
   type BoardFilter,
 } from './model'
 import { stalledDays } from './staleness'
+import { compareTaskOrder } from '../task-meta'
+import { dependencyStatus, isDependencyDone, isSameProject } from '../task-deps'
 
 const THEME_KEY = 'dshw-board:theme'
 let boardStyleEl: HTMLStyleElement | null = null
@@ -365,7 +367,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
 
   // One attention map feeds the rows, the filter counts and the summary bar, so
   // they can never disagree about what needs attention.
-  const allViews = React.useMemo(() => {
+  const allViews: TaskView[] = React.useMemo(() => {
     const out: TaskView[] = []
     for (const view of views) for (const tv of view.tasks) out.push(tv)
     return out
@@ -396,6 +398,33 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     return map
   }, [allViews, pendingMap, sessionMap, healthMap, err])
   const attentionOf = React.useCallback((tv: TaskView) => attentionMap.get(tv.task.id) || EMPTY_ATTENTION, [attentionMap])
+  // Dependencies are resolved against every task, archived or not, so a chip
+  // never flaps while the archive toggle changes what the list shows.
+  const taskLookup = React.useMemo(() => {
+    const map = new Map<string, any>()
+    for (const tv of allViews) map.set(tv.task.id, tv.task)
+    return map
+  }, [allViews])
+  const depsOf = React.useCallback((task: any) => dependencyStatus(task, taskLookup), [taskLookup])
+  const dependencyItems = React.useMemo(() => {
+    if (!selectedTask) return undefined
+    const ids: string[] = Array.isArray(selectedTask.task.dependsOn) ? selectedTask.task.dependsOn : []
+    return ids.map((id) => {
+      const dep = taskLookup.get(id)
+      if (!dep) return { id, title: id, done: false, missing: true }
+      return { id, title: String(dep.title || id), done: isDependencyDone(dep), missing: false }
+    })
+  }, [selectedTask, taskLookup])
+  const dependencyOptions = React.useMemo(() => {
+    if (!selectedTask) return undefined
+    return allViews
+      .filter((tv) => tv.task.id !== selectedTask.task.id
+        && !tv.task.archivedAt
+        && isSameProject(selectedTask.task, tv.task))
+      .slice()
+      .sort((a, b) => compareTaskOrder(a.task, b.task))
+      .map((tv) => ({ id: tv.task.id, title: String(tv.task.title || tv.task.id), done: isDependencyDone(tv.task) }))
+  }, [allViews, selectedTask])
   const visibleTasks = React.useMemo(() => {
     const out: TaskView[] = []
     for (const view of shownViews) for (const tv of view.tasks) out.push(tv)
@@ -449,6 +478,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
         pendingOf,
         healthOf,
         attentionOf,
+        depsOf,
         counts,
         attentionTotal: counts.total,
         attentionStale: !!err,
@@ -487,6 +517,8 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           onToggleCriterion: actions.runCriterion,
           onSaveMeta: actions.runSaveMeta,
           metaBusy: !!busy,
+          dependencyItems,
+          dependencyOptions,
           onCopyReport: actions.runCopyReport,
           onDownloadReport: actions.runDownloadReport,
           // Any in-flight action freezes the snapshot the report would read.
