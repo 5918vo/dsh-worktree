@@ -169,3 +169,32 @@ test('a release never deletes a lock whose owner token changed underneath it', a
     await rmrf(dir)
   }
 })
+
+test('a slow live lock owner is not stolen after the stale threshold', async () => {
+  const dir = await freshDir()
+  const holder = new Store(dir, { heartbeat: false, lockStaleMs: 100 })
+  const waiter = new Store(dir, { lockWaitMs: 50, heartbeat: false, lockStaleMs: 100 })
+  try {
+    await holder.load()
+    await waiter.load()
+    holder.putProject(project('owner'))
+    ;(holder as any).withLock(() => {
+      // Simulate a stalled synchronous filesystem operation with an old owner
+      // timestamp. Its live PID still makes moving the lock unsafe.
+      const current = JSON.parse(readFileSync(lockPath(dir), 'utf8'))
+      writeFileSync(lockPath(dir), JSON.stringify({ ...current, at: Date.now() - 5_000 }))
+      assert.throws(
+        () => waiter.putProject(project('competitor')),
+        (error: any) => error instanceof StoreError && error.code === 'store-lock',
+      )
+      assert.equal(JSON.parse(readFileSync(lockPath(dir), 'utf8')).token, current.token)
+      ;(holder as any).saveProjects()
+    })
+    assert.deepEqual(holder.listProjects().map((item) => item.id), ['owner'])
+    assert.deepEqual(readdirSync(dir).filter((name) => name.includes('.stale-') || name.includes('.rel-')), [])
+  } finally {
+    holder.dispose()
+    waiter.dispose()
+    await rmrf(dir)
+  }
+})

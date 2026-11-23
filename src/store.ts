@@ -105,6 +105,8 @@ export interface StoreOptions {
   bindLeaseMs?: number
   /** Run the instance heartbeat (default true; tests may disable it). */
   heartbeat?: boolean
+  /** Test-only stale threshold; production uses LOCK_STALE_MS. */
+  lockStaleMs?: number
 }
 
 function describeError(error: unknown): string {
@@ -218,10 +220,10 @@ function readLockInfo(file: string): LockInfo | null {
   }
 }
 
-function staleByInfo(info: LockInfo | null, now = Date.now()): boolean {
+function staleByInfo(info: LockInfo | null, now = Date.now(), staleMs = LOCK_STALE_MS): boolean {
   if (!info || typeof info.token !== 'string') return false
   const at = Number(info.at) || 0
-  if (at > 0 && now - at > LOCK_STALE_MS) return true
+  if (at > 0 && now - at > staleMs) return true
   if (info.host === hostname() && Number.isInteger(info.pid) && !pidAlive(Number(info.pid))) return true
   return false
 }
@@ -245,9 +247,11 @@ export class Store {
   private readonly instanceId = randomUUID()
   private readonly startedAt = Date.now()
   private readonly lockWaitMs: number
+  private readonly lockStaleMs: number
   private readonly bindLeaseMs: number
   private readonly heartbeatEnabled: boolean
   private beatTimer: ReturnType<typeof setInterval> | null = null
+  private inBeat = false
   /** Sessions this process runs; defaults to none so a missed wiring is safe. */
   private runningProvider: () => readonly string[] = () => []
   /** Sessions confirmed running since the last heartbeat. */
@@ -264,6 +268,7 @@ export class Store {
     this.dir = dir
     this.migrateLegacy = dir === stateDir()
     this.lockWaitMs = Math.max(50, Number(options?.lockWaitMs) || LOCK_WAIT_MS)
+    this.lockStaleMs = Math.max(50, Number(options?.lockStaleMs) || LOCK_STALE_MS)
     this.bindLeaseMs = Math.max(1_000, Number(options?.bindLeaseMs) || BIND_LEASE_MS)
     this.heartbeatEnabled = options?.heartbeat !== false
   }
@@ -293,7 +298,12 @@ export class Store {
   }
 
   private read(file: string): any {
-    return readJsonSync<any>(file, undefined, (target, detail) => this.noteRead(target, detail))
+    return readJsonSync<any>(file, undefined, (target, detail) => {
+      this.noteRead(target, detail)
+      // A missing file is a valid first run; malformed or unreadable existing
+      // state must never be refreshed into an empty map and saved over itself.
+      throw new StoreError(`任务台账读取失败，已阻止覆盖原数据：${target}（${detail}）`, 'store-read', 500)
+    })
   }
 
   private readProjects(): Record<string, Project> {
@@ -464,7 +474,13 @@ export class Store {
         return { fd, token }
       }
       const info = readLockInfo(lock)
-      if (this.lockIsStale(info)) {
+      // Never judge freshness, move the file and rename it back in separate
+      // operations: a healthy writer could release/replace it in between. A
+      // live same-host PID is authoritative and must not have its lock moved.
+      if (info?.host === hostname() && pidAlive(Number(info.pid)) && Number(info.at) > 0) {
+        // A live local owner can be stalled in synchronous disk I/O; its age is
+        // not proof of abandonment. Never move its pathname out from under it.
+      } else if (this.lockIsStale(info)) {
         this.takeOverStaleLock(lock)
         continue
       }
@@ -489,7 +505,7 @@ export class Store {
       // Gone already: treat as free so the caller retries `openSync`.
       return true
     }
-    if (staleByInfo(info)) return true
+    if (staleByInfo(info, Date.now(), this.lockStaleMs)) return true
     // No readable owner record: only a crashed mid-write can produce that, and
     // it is indistinguishable from a live creator for a few milliseconds.
     if (!info || typeof info.token !== 'string') return age > LOCK_PARTIAL_MS
@@ -510,7 +526,7 @@ export class Store {
     const info = readLockInfo(aside)
     // Prove the moved file is the one we judged stale. A live owner may have
     // replaced the lock between stat and rename; put it back untouched then.
-    if (staleByInfo(info)) {
+    if (staleByInfo(info, Date.now(), this.lockStaleMs)) {
       try {
         rmSync(aside, { force: true })
       } catch {
@@ -580,22 +596,28 @@ export class Store {
   /** Publish this process's heartbeat so other instances can see it exists. */
   beat(force = false): void {
     const now = Date.now()
-    if (!force && now - this.lastBeatAt < INSTANCE_BEAT_MS) return
-    this.lastBeatAt = now
+    // The provider can consult the ledger. Do not re-enter a lock wait from its
+    // read path; retain the last successful run list until a complete beat.
+    if (this.inBeat || (!force && now - this.lastBeatAt < INSTANCE_BEAT_MS)) return
+    this.inBeat = true
     try {
       mkdirSync(this.instancesDir(), { recursive: true })
+      const running = [...new Set([...this.runningProvider(), ...this.runHints])]
       const lease: InstanceLease = {
         instanceId: this.instanceId,
         pid: process.pid,
         host: hostname(),
         startedAt: this.startedAt,
         at: now,
-        running: [...new Set([...this.runningProvider(), ...this.runHints])],
+        running,
       }
       writeFileSync(this.instanceFile(), JSON.stringify(lease, null, 2), { encoding: 'utf8', mode: 0o600 })
+      this.lastBeatAt = now
       this.runHints.clear()
     } catch {
       // Liveness is advisory: a missed beat must not fail a ledger write.
+    } finally {
+      this.inBeat = false
     }
   }
 

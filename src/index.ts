@@ -167,7 +167,13 @@ export function apply(ctx: Ctx, rawConfig: unknown, options?: ApplyOptions): App
       const sessionId = task.sessionId
       if (!sessionId) continue
       const owner = task.sessionOwner
-      if (owner && owner.instanceId && owner.instanceId !== store.instance().instanceId) continue
+      if (owner && owner.instanceId && owner.instanceId !== store.instance().instanceId) {
+        // A foreign instance owns this session. Mirror its live state rather
+        // than publishing an empty list just because our registry cannot see it.
+        const state = store.lookupSessionRun(sessionId)
+        if (state === 'running') running.push(sessionId)
+        continue
+      }
       const local = localAgentState(ctx, sessionId)
       if (local.found && local.state === 'running') running.push(sessionId)
     }

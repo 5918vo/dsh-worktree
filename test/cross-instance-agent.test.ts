@@ -246,3 +246,43 @@ test('instance heartbeats are keyed by process and never inherit a peer pid', as
     await close(dir, a, b)
   }
 })
+
+test('a second store waits without replacing its own running heartbeat', async () => {
+  const { dir, a, b } = await twoInstances()
+  let probes = 0
+  const host = { get: () => ({ get: () => ({ status: 'running' }) }) }
+  const provider = () => {
+    probes += 1
+    return probeSessionState(host, 's1', { store: b }) === 'running' ? ['s1'] : []
+  }
+  b.setRunningSessionsProvider(provider)
+  b.beat(true)
+  writeFileSync(join(dir, '.store.lock'), JSON.stringify({ pid: process.pid, host: hostname(), token: 'busy', at: Date.now() }))
+  try {
+    assert.throws(() => b.putProject({ ...project(), id: 'blocked' }), (error: any) => error.code === 'store-lock')
+    assert.equal(probes, 1, 'the provider must not re-enter a blocked ledger read')
+    assert.equal(a.lookupSessionRun('s1'), 'running', 'waiting must not broadcast an empty run list')
+    b.beat(true)
+    assert.equal(probes, 2, 'a later uncontended heartbeat consults the real provider')
+    assert.equal(a.lookupSessionRun('s1'), 'running')
+  } finally {
+    await close(dir, a, b)
+  }
+})
+
+test('a non-owner mirrors a peer run state instead of erasing it', async () => {
+  const { dir, a, b } = await twoInstances()
+  try {
+    a.bindSession('t1', 's1')
+    a.setRunningSessionsProvider(() => ['s1'])
+    a.beat(true)
+    b.setRunningSessionsProvider(() => {
+      const owner = b.getTask('t1')!.sessionOwner!
+      return owner.instanceId !== b.instance().instanceId && b.lookupSessionRun('s1') === 'running' ? ['s1'] : []
+    })
+    b.beat(true)
+    assert.equal(a.lookupSessionRun('s1'), 'running', 'an unrelated live third instance cannot erase ownership evidence')
+  } finally {
+    await close(dir, a, b)
+  }
+})

@@ -54,16 +54,18 @@ async function cleanup(store: Store, dir: string): Promise<void> {
 
 test('a corrupt ledger file is quarantined instead of silently discarded', async () => {
   const dir = await fs.mkdtemp(join(tmpdir(), 'dshw-corrupt-'))
-  await fs.writeFile(join(dir, 'projects.json'), '{ this is not json', 'utf8')
+  const original = '{ this is not json'
+  await fs.writeFile(join(dir, 'projects.json'), original, 'utf8')
   const store = new Store(dir)
   try {
-    await store.load()
-    assert.deepEqual(store.listProjects(), [], 'a corrupt file reads as empty rather than throwing')
-    assert.equal(store.warnings().length, 1, 'the loss is reported, not swallowed')
-    assert.match(store.warnings()[0], /projects/)
+    await assert.rejects(store.load(), (error: any) => error instanceof StoreError && error.code === 'store-read')
+    assert.equal(store.warnings().length, 1)
+    assert.throws(() => store.listProjects(), (error: any) => error instanceof StoreError && error.code === 'store-read')
+    assert.throws(() => store.putProject(project('p2')), (error: any) => error instanceof StoreError && error.code === 'store-read')
+    assert.equal(readFileSync(join(dir, 'projects.json'), 'utf8'), original, 'a read failure must never replace the ledger with an empty map')
     const quarantined = readdirSync(dir).filter((name) => name.includes('.corrupt-'))
     assert.equal(quarantined.length, 1)
-    assert.equal(readFileSync(join(dir, quarantined[0]), 'utf8'), '{ this is not json', 'the original bytes are kept for recovery')
+    assert.equal(readFileSync(join(dir, quarantined[0]), 'utf8'), original, 'the original bytes are kept for recovery')
   } finally {
     store.dispose()
     await rmrf(dir)
@@ -80,16 +82,17 @@ test('a missing ledger file is a first run, not a warning', async () => {
   }
 })
 
-test('saveProjects surfaces a write failure as a 5xx StoreError', async () => {
+test('saveProjects refuses an unreadable ledger as a 5xx StoreError', async () => {
   const { store, dir } = await freshStore()
   try {
     store.putProject(project('p1'))
-    // A directory where the ledger file belongs makes every rename fail.
+    // A directory where the ledger file belongs is read-unsafe as well; refuse
+    // the whole mutation before attempting to replace it with an empty map.
     await fs.rm(join(dir, 'projects.json'))
     await fs.mkdir(join(dir, 'projects.json'))
     assert.throws(
       () => store.putProject(project('p2')),
-      (error: any) => error instanceof StoreError && error.code === 'store-write' && error.status === 500,
+      (error: any) => error instanceof StoreError && error.code === 'store-read' && error.status === 500,
     )
     const leftovers = readdirSync(dir).filter((name) => name.endsWith('.tmp'))
     assert.deepEqual(leftovers, [], 'no temp file is left behind')

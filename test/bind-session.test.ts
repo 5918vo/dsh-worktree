@@ -90,6 +90,7 @@ function makeRemotes(over: any = {}) {
       },
       async delete(arg: any) {
         calls.sessionDeleted.push(arg)
+        if (over.sessionDelete) return over.sessionDelete(arg)
         return { ok: true }
       },
     },
@@ -296,4 +297,42 @@ test('bindSession retries a lost bind response instead of orphaning the session'
   assert.equal(sessionId, 'sess-1')
   assert.equal(srv.bindCalls.length, 2, 'the retry makes the bind a no-op instead of failing')
   assert.equal(svc.sessionDeleted.length, 0)
+})
+
+test('bindSession cleans up after both bind attempts lose their responses', async () => {
+  const srv = boardServer({
+    bind: () => { throw new TypeError('fetch failed') },
+  })
+  const { remotes, calls: svc } = makeRemotes()
+
+  await assert.rejects(() => bindSession(remotes, makeTask(), '项目A'), /fetch failed/)
+  assert.equal(srv.bindCalls.length, 2)
+  assert.deepEqual(svc.sessionDeleted, [{ sessionId: 'sess-1' }])
+})
+
+test('bindSession reports the bind failure even when cleanup also fails', async () => {
+  const srv = boardServer({
+    bind: () => { throw new TypeError('fetch failed') },
+  })
+  const { remotes, calls: svc } = makeRemotes({
+    // The host may already have dropped the session, or the delete RPC may be
+    // the thing that is broken. Either way it is secondary to the lost bind.
+    sessionDelete: () => { throw new Error('delete rpc unavailable') },
+  })
+
+  await assert.rejects(() => bindSession(remotes, makeTask(), '项目A'), /fetch failed/)
+  assert.equal(srv.bindCalls.length, 2)
+  assert.deepEqual(svc.sessionDeleted, [{ sessionId: 'sess-1' }], 'cleanup is still attempted exactly once')
+})
+
+test('bindSession requires a host reload rather than bypassing a missing claim endpoint', async () => {
+  installFetch({
+    '/session': () => jsonRes({ token: 'tok' }),
+    '/bind/claim': () => jsonRes({ error: 'not found' }, 404),
+  })
+  const { remotes, calls: svc } = makeRemotes()
+
+  await assert.rejects(() => bindSession(remotes, makeTask(), '项目A'), /刷新页面/)
+  assert.equal(svc.sessionCreate.length, 0)
+  assert.equal(svc.prompt.length, 0)
 })

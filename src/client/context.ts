@@ -217,7 +217,17 @@ async function createTaskSession(
  * gets a 409 here and never creates a session, instead of racing the first one.
  */
 async function claimTask(taskId: string): Promise<string> {
-  const res = await post('bind/claim', { id: taskId, owner: BIND_OWNER })
+  let res: any
+  try {
+    res = await post('bind/claim', { id: taskId, owner: BIND_OWNER })
+  } catch (error: any) {
+    // A host reload updates the server before the browser bundle. Refusing to
+    // create a session is safe; silently bypassing the claim is not.
+    if (error?.status === 404 || error?.status === 405) {
+      throw Object.assign(new Error('Host 已更新但工作台仍是旧版；请刷新页面后再创建会话'), { code: 'host-reload-required', status: error.status })
+    }
+    throw error
+  }
   const lease = res && res.lease && res.lease.token ? String(res.lease.token) : ''
   if (!lease) throw Object.assign(new Error('未能取得绑定租约，请刷新看板后重试'), { code: 'lease-missing' })
   return lease
@@ -312,10 +322,23 @@ export async function bindSession(remotes: any, task: any, projectTitle?: string
     return sessionId
   } finally {
     if (!bound) {
-      // Order: give the task back first (so a retry can start immediately), then
-      // remove the session we created but never bound.
-      await releaseClaim(task.id, lease)
-      if (discard) await discard()
+      // Even if the bind response was lost twice, do not leave an unrecorded
+      // session working in the worktree, and hand the claim back so a retry can
+      // start immediately. Both steps are secondary: neither may replace the
+      // original failure the caller needs to see (a lost bind is reported as a
+      // bind error, not as "session delete failed").
+      if (discard) {
+        try {
+          await discard()
+        } catch {
+          /* the host may already have dropped the session */
+        }
+      }
+      try {
+        await releaseClaim(task.id, lease)
+      } catch {
+        /* releaseClaim swallows; the lease TTL is the final fallback */
+      }
     }
   }
 }
