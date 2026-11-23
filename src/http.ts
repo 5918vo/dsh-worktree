@@ -23,7 +23,7 @@ function readJson(req: any): Promise<any> {
   return new Promise((resolve, reject) => {
     const type = String(header(req, 'content-type') || '').toLowerCase()
     if (!type.includes('application/json')) {
-      reject(Object.assign(new Error('json required'), { status: 415 }))
+      reject(Object.assign(new Error('请求需要 application/json'), { status: 415 }))
       return
     }
     let size = 0
@@ -31,7 +31,7 @@ function readJson(req: any): Promise<any> {
     req.on('data', (c: Buffer) => {
       size += c.length
       if (size > MAX_BODY) {
-        reject(Object.assign(new Error('too large'), { status: 413 }))
+        reject(Object.assign(new Error('请求体过大'), { status: 413 }))
         req.destroy()
       } else chunks.push(c)
     })
@@ -39,7 +39,7 @@ function readJson(req: any): Promise<any> {
       try {
         resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {})
       } catch {
-        reject(Object.assign(new Error('bad json'), { status: 400 }))
+        reject(Object.assign(new Error('请求体不是合法 JSON'), { status: 400 }))
       }
     })
     req.on('error', reject)
@@ -66,7 +66,7 @@ export function registerHttp(app: App): () => void {
   }
   const requireToken = (req: any): void => {
     const token = header(req, 'x-dsh-worktree-token')
-    if (!token || !app.tokens.has(token)) throw Object.assign(new Error('bad token'), { status: 403, code: 'bad-token' })
+    if (!token || !app.tokens.has(token)) throw Object.assign(new Error('工作台 token 无效或已过期'), { status: 403, code: 'bad-token' })
   }
   const q = (req: any, name: string): string => {
     try {
@@ -106,8 +106,14 @@ export function registerHttp(app: App): () => void {
 
   route('config', 'GET', async (_req, res) => send(res, 200, { config: app.config, environment: await app.runtime.environment() }))
 
-  route('recents', 'GET', async (_req, res) => send(res, 200, { dirs: app.store.listRecents() }))
-  route('recents/clear', 'POST', async (_req, res) => {
+  // Recents reveal absolute paths from this machine, so they need the same
+  // board token as every other read that is not a static config.
+  route('recents', 'GET', async (req, res) => {
+    requireToken(req)
+    send(res, 200, { dirs: app.store.listRecents() })
+  })
+  route('recents/clear', 'POST', async (req, res) => {
+    requireToken(req)
     app.store.clearRecents()
     send(res, 200, { ok: true })
   })
@@ -307,9 +313,69 @@ export function registerHttp(app: App): () => void {
     const sessionId = String(body.sessionId || '')
     if (!id || !sessionId) return send(res, 400, { error: 'id and sessionId required' })
     try {
-      send(res, 200, { task: await app.runtime.bind(id, sessionId) })
+      const lease = body.lease === undefined ? undefined : String(body.lease || '')
+      send(res, 200, { task: await app.runtime.bind(id, sessionId, lease ? { lease } : undefined) })
     } catch (error) {
-      if (error instanceof TaskError) return send(res, error.status, { error: error.message })
+      if (error instanceof TaskError) return send(res, error.status, { error: error.message, code: error.code })
+      send(res, 500, { error: error instanceof Error ? error.message : String(error) })
+    }
+  })
+
+  // Claim/abandon the exclusive right to create the session for one task.
+  // The client claims before it calls remote.session.create, so two windows
+  // publishing the same task cannot both start an agent (see store.claimTask).
+  route('bind/claim', 'POST', async (req, res) => {
+    requireToken(req)
+    const body = await readJson(req)
+    const id = String(body.id || '')
+    const owner = String(body.owner || '')
+    if (!id) return send(res, 400, { error: 'id required' })
+    try {
+      const result = app.store.claimTask(id, owner)
+      if (result.ok) return send(res, 200, { task: result.task, lease: result.lease })
+      if (result.conflict === 'missing') return send(res, 404, { error: `任务不存在：${id}`, code: 'missing' })
+      const title = (result.other && result.other.title) || id
+      if (result.conflict === 'lease-held') {
+        return send(res, 409, {
+          error: `另一个窗口正在为任务「${title}」创建会话，请稍后刷新`,
+          code: 'lease-held',
+          task: result.other || null,
+        })
+      }
+      return send(res, 409, { error: `任务「${title}」已绑定其他会话，请刷新后再试`, code: 'task-bound', task: result.other || null })
+    } catch (error) {
+      if (error instanceof TaskError) return send(res, error.status, { error: error.message, code: error.code })
+      send(res, 500, { error: error instanceof Error ? error.message : String(error) })
+    }
+  })
+
+  // Give a claim back when session creation or the first prompt failed, so the
+  // task is immediately publishable again instead of waiting for the TTL.
+  route('bind/release', 'POST', async (req, res) => {
+    requireToken(req)
+    const body = await readJson(req)
+    const id = String(body.id || '')
+    const lease = String(body.lease || '')
+    if (!id || !lease) return send(res, 400, { error: 'id and lease required' })
+    try {
+      send(res, 200, { released: app.store.releaseBindLease(id, lease) })
+    } catch (error) {
+      if (error instanceof TaskError) return send(res, error.status, { error: error.message, code: error.code })
+      send(res, 500, { error: error instanceof Error ? error.message : String(error) })
+    }
+  })
+
+  // Manual recovery for a binding no live DSH process can confirm (e.g. the
+  // window that created the session is frozen). Deliberately explicit.
+  route('session/reset', 'POST', async (req, res) => {
+    requireToken(req)
+    const body = await readJson(req)
+    const id = String(body.id || '')
+    if (!id) return send(res, 400, { error: 'id required' })
+    try {
+      send(res, 200, { task: app.runtime.resetSession(id) })
+    } catch (error) {
+      if (error instanceof TaskError) return send(res, error.status, { error: error.message, code: error.code })
       send(res, 500, { error: error instanceof Error ? error.message : String(error) })
     }
   })

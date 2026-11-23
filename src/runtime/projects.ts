@@ -10,8 +10,32 @@ import * as gitx from '../gitx.js'
 import { Project, ProjectView, TaskView, WorktreeTask } from '../models.js'
 import { compareTaskOrder, normalizePriority, normalizeTags, parseDueAt, validateTags } from '../task-meta.js'
 import { assertTaskBranchName, buildFirstPrompt, id8, normalizeModelSelection } from './prompt.js'
-import { absPath, AddProjectInput, effectiveConfig, ParentPromptInfo, PublishInput, RuntimeContext, TaskError } from './types.js'
+import {
+  absPath,
+  AddProjectInput,
+  assertAgentIdle,
+  assertNoInProgress,
+  effectiveConfig,
+  ParentPromptInfo,
+  PublishInput,
+  RuntimeContext,
+  TaskError,
+  withRepoLock,
+} from './types.js'
 import { isExternalWorktreeDir, worktreeProjectSegment } from '../worktree-layout.js'
+
+/** One-line reason for a failed filesystem/git call, for user-facing errors. */
+function describeError(error: unknown): string {
+  if (error instanceof Error) return error.message
+  return String(error)
+}
+
+async function pathExists(target: string): Promise<boolean> {
+  return fs
+    .stat(target)
+    .then(() => true)
+    .catch(() => false)
+}
 
 export async function addProject(ctx: RuntimeContext, input: AddProjectInput): Promise<Project> {
   const repoPath = absPath(input.repoPath)
@@ -90,32 +114,61 @@ export async function deleteProject(
   if (tasks.length > 0 && !opts.withTasks) {
     throw new TaskError(`项目下还有 ${tasks.length} 个任务；勾选「连同任务删除」后重试`)
   }
-  let deletedWorktrees = 0
-  for (const t of tasks) {
-    if ((await ctx.snapshot(t)).status === 'reviewing') {
-      throw new TaskError(`任务「${t.title}」正在验收中，请先切回原分支再删除项目`, 409)
-    }
-    if ((t.pendingStashes || []).length) {
-      throw new TaskError(`任务「${t.title}」还有未处理的暂存，请先恢复或丢弃再删除项目`, 409, 'pending-stash')
-    }
-  }
-  if (opts.withWorktrees) {
+  // Deleting a project is destructive: gate it exactly like a single task
+  // delete, and take the per-repo lock so a concurrent publish/merge cannot
+  // recreate a worktree between the check and the removal.
+  return withRepoLock(ctx, project.repoPath, 'delete-project', async () => {
+    await assertNoInProgress(ctx, project.repoPath)
     for (const t of tasks) {
-      if (await removeWorktreeDir(ctx, t)) deletedWorktrees += 1
-    }
-    // Best-effort: drop the (now empty) shared worktree container so the
-    // project's folder does not linger on disk.
-    for (const parent of new Set(tasks.map((t) => dirname(t.worktreePath)))) {
-      try {
-        if ((await fs.readdir(parent)).length === 0) await fs.rmdir(parent)
-      } catch {
-        /* missing or non-empty: leave it alone */
+      assertAgentIdle(ctx, t)
+      if ((await ctx.snapshot(t)).status === 'reviewing') {
+        throw new TaskError(`任务「${t.title}」正在验收中，请先切回原分支再删除项目`, 409)
+      }
+      if ((t.pendingStashes || []).length) {
+        throw new TaskError(`任务「${t.title}」还有未处理的暂存，请先恢复或丢弃再删除项目`, 409, 'pending-stash')
       }
     }
-  }
-  for (const t of tasks) ctx.store.deleteTask(t.id)
-  ctx.store.deleteProject(id)
-  return { deletedTasks: tasks.length, deletedWorktrees }
+    let deletedWorktrees = 0
+    const failed: Array<{ taskId: string; title: string; reason: string }> = []
+    if (opts.withWorktrees) {
+      for (const t of tasks) {
+        try {
+          if (await removeWorktreeDir(ctx, t)) deletedWorktrees += 1
+        } catch (error) {
+          failed.push({ taskId: t.id, title: t.title, reason: describeError(error) })
+        }
+      }
+      // Best-effort: drop the (now empty) shared worktree container so the
+      // project's folder does not linger on disk.
+      for (const parent of new Set(tasks.map((t) => dirname(t.worktreePath)))) {
+        try {
+          if ((await fs.readdir(parent)).length === 0) await fs.rmdir(parent)
+        } catch {
+          /* missing or non-empty: leave it alone */
+        }
+      }
+    }
+    // Records of tasks whose worktree is gone are deleted; records that still
+    // own a worktree stay, so the ledger never points at a directory the user
+    // could no longer clean up from the board.
+    const failedIds = new Set(failed.map((item) => item.taskId))
+    let deletedTasks = 0
+    for (const t of tasks) {
+      if (failedIds.has(t.id)) continue
+      ctx.store.deleteTask(t.id)
+      deletedTasks += 1
+    }
+    if (failed.length) {
+      const names = failed.map((item) => `「${item.title}」（${item.reason}）`).join('、')
+      throw new TaskError(
+        `项目「${project.name}」未删除：${names} 的 worktree 删除失败；已清理 ${deletedWorktrees} 个 worktree、${deletedTasks} 条任务记录，请修复后重试`,
+        409,
+        'partial-delete',
+      )
+    }
+    ctx.store.deleteProject(id)
+    return { deletedTasks, deletedWorktrees }
+  })
 }
 
 /** Resolve the owning project for a publish: explicit id, repo match, or create. */
@@ -296,12 +349,26 @@ export async function publishTask(ctx: RuntimeContext, input: PublishInput): Pro
   const external = isExternalWorktreeDir(eff.dirName)
   // External roots mirror T3 Code: <root>/<project>/<id8>, never inside the
   // repo. A relative dirName keeps the legacy in-repo placement.
-  const worktreePath = external
+  const preferred = external
     ? join(absPath(eff.dirName), worktreeProjectSegment(project.name), short)
     : join(repoPath, eff.dirName, short)
+  // `git worktree add` refuses an existing directory, and a leftover from an
+  // interrupted publish (or a manual copy) would otherwise block the task. Pick
+  // a free sibling instead of failing: dirs are never shared between tasks.
+  let worktreePath = preferred
+  for (let attempt = 0; await pathExists(worktreePath); attempt += 1) {
+    if (attempt >= 4) throw new TaskError(`worktree 目录已被占用且无法自动改名：${preferred}`)
+    worktreePath = `${preferred}-${id8(randomUUID()).slice(0, 4)}`
+  }
 
   await fs.mkdir(dirname(worktreePath), { recursive: true })
-  await gitx.worktreeAdd(ctx.gitPath, repoPath, worktreePath, branch, base)
+  try {
+    await gitx.worktreeAdd(ctx.gitPath, repoPath, worktreePath, branch, base)
+  } catch (error) {
+    // Remove only the empty shell we just created; never user content.
+    await fs.rmdir(worktreePath).catch(() => {})
+    throw error
+  }
   // Only an in-repo worktree can show up as untracked in the main repo.
   if (!external) await gitx.ensureExclude(ctx.gitPath, repoPath, eff.dirName)
 

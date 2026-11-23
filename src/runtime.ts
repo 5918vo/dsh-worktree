@@ -18,6 +18,7 @@ import { computeSnapshot, statusOf } from './runtime/snapshot.js'
 import {
   absPath,
   AddProjectInput,
+  AgentRunState,
   effectiveConfig,
   MergeOptions,
   PreviewCacheEntry,
@@ -49,7 +50,7 @@ export class Runtime {
   constructor(deps: {
     store: Store
     config: WorktreeConfig
-    sessionState?: (sessionId: string) => 'running' | 'idle' | 'unknown'
+    sessionState?: (sessionId: string, task?: WorktreeTask) => AgentRunState
     /** Override for tests; defaults next to the shared task store. */
     repoLockDir?: string
   }) {
@@ -58,7 +59,7 @@ export class Runtime {
     const opWarnings = new Map<string, string>()
     const partials = new Map<string, { restoreFailed: boolean; reason: string }>()
     const previewCache = new Map<string, PreviewCacheEntry>()
-    const sessionState = deps.sessionState || (() => 'idle')
+    const sessionState = deps.sessionState || (() => 'idle' as AgentRunState)
     this.ctx = {
       store: deps.store,
       config: deps.config,
@@ -316,8 +317,15 @@ export class Runtime {
     return deleteTask(this.ctx, id)
   }
 
-  bind(id: string, sessionId: string): WorktreeTask {
-    return bindTask(this.ctx, id, sessionId)
+  bind(id: string, sessionId: string, options?: { lease?: string }): WorktreeTask {
+    return bindTask(this.ctx, id, sessionId, options)
+  }
+
+  /** Manual recovery for a binding no live process can confirm (see store.clearSessionBinding). */
+  resetSession(id: string): WorktreeTask {
+    const task = this.ctx.store.clearSessionBinding(id)
+    if (!task) throw new TaskError(`任务不存在：${id}`, 404)
+    return task
   }
 
   unbindBySession(sessionId: string): WorktreeTask | null {

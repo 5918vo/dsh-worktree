@@ -100,13 +100,16 @@ export async function deleteTask(ctx: RuntimeContext, id: string): Promise<void>
   ctx.store.deleteTask(id)
 }
 
-export function bindTask(ctx: RuntimeContext, id: string, sessionId: string): WorktreeTask {
-  const result = ctx.store.bindSession(id, sessionId)
+export function bindTask(ctx: RuntimeContext, id: string, sessionId: string, options?: { lease?: string }): WorktreeTask {
+  const result = ctx.store.bindSession(id, sessionId, options)
   if (!result.ok) {
     if (result.conflict === 'missing') throw new TaskError(`任务不存在：${id}`, 404)
     if (result.conflict === 'session-taken') {
       const title = (result.other && result.other.title) || ''
       throw new TaskError(`该会话已绑定到任务「${title}」，请刷新后再试`, 409, 'session-taken')
+    }
+    if (result.conflict === 'lease-lost') {
+      throw new TaskError('另一个窗口已接手该任务的绑定，本次会话未绑定；请先关闭刚创建的会话再重试', 409, 'lease-lost')
     }
     const title = (result.other && result.other.title) || id
     throw new TaskError(`任务「${title}」已绑定其他会话，请刷新后再试`, 409, 'task-bound')

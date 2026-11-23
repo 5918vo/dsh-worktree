@@ -260,7 +260,25 @@ export function useBoardData(args: UseBoardDataArgs) {
         bindingRef.current.add(task.id)
         bindSession(remote, task, view.project.name)
           .then(() => { void refresh() })
-          .catch(() => { bindingRef.current.delete(task.id) })
+          .catch((error: any) => {
+            // A 4xx conflict means another window owns the binding (or a stale
+            // lease exists): refresh so the board shows the winner, but do not
+            // retry immediately or the two windows would ping-pong.
+            const code = String((error && error.code) || '')
+            const conflict =
+              code === 'lease-held' ||
+              code === 'task-bound' ||
+              code === 'session-taken' ||
+              code === 'lease-lost' ||
+              code === 'agent-unknown'
+            if (conflict) {
+              window.setTimeout(() => bindingRef.current.delete(task.id), 5_000)
+              void refresh()
+              return
+            }
+            bindingRef.current.delete(task.id)
+            setErr(String((error && error.message) || error))
+          })
       }
     }
   }, [views, refresh])

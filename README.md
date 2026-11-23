@@ -52,8 +52,11 @@
        └─ 记录任务台账
 
 绑定会话
-  └─ remote.session.create({ cwd: worktree })
-       └─ 左侧工作区出现同名会话
+  └─ POST bind/claim           ← 先原子占位，另一个窗口拿不到就不得开工
+       ├─ remote.session.create({ workspaceId, cwd: worktree })（回报的 cwd 必须是该 worktree）
+       ├─ 重命名 / 选模型 / 发送首个 prompt
+       └─ POST bind（带 lease）  ← 记录 sessionId 与「会话归属哪个 DSH 实例」
+            └─ 失败时释放占位并删除刚建的会话，避免孤儿
 
 开发与验收
   └─ 原生对话 / 审批 / 追问
@@ -287,7 +290,11 @@ POST task/pin
 POST task/meta
 ```
 
-- `publish`、`projects/*`、`tasks`、`bind`、`task/*`、`templates/save`、`templates/delete` 需要 `x-dsh-worktree-token`。
+- `publish`、`projects/*`、`tasks`、`bind`、`bind/claim`、`bind/release`、`session/reset`、`recents`、`recents/clear`、`task/*`、`templates/save`、`templates/delete` 需要 `x-dsh-worktree-token`。
+- `recents` 返回 `{ dirs }`，内容是绝对路径，因此和任务列表一样需要 token；`recents/clear` 返回 `{ ok: true }`。
+- `bind/claim` 请求体 `{ id, owner }`，返回 `{ lease, expiresAt }`；已有未过期的占位时返回 409 `lease-held`，任务已绑定会话时返回 409 `task-bound`，任务不存在返回 404。`owner` 是客户端窗口标识，同一 owner 重试是幂等的。
+- `bind` 可带 `lease`（`bind/claim` 拿到的那张）；租约不匹配返回 409 `lease-lost`，此时客户端不得把已经建好的会话挂到任务上。`bind/release` 请求体 `{ id, lease }`，用于放弃占位。
+- `session/reset` 请求体 `{ id }` 是人工逃生口：宿主无法确认会话是否还在运行时，清掉绑定让任务重新可用（供 `session/disposed` 事件丢失或另一个窗口崩溃后使用）。
 - `templates` 只读接口返回全部发布模板；保存与删除在 Store 的跨进程锁内读改写，响应始终是完整的 `{ templates }` 列表。
 - `projects/update` 可带 `mergeGate: 'off' | 'criteria'`；其他取值返回 400。
 - `task/pin` 请求体 `{ id, pinned }`，只写入展示字段 `pinnedAt`，不改变任务状态与 Git。
@@ -299,13 +306,45 @@ POST task/meta
 - `publish` 可带 `parentId`：从已合并任务派生后续任务，校验前序任务已合并且其合并时的分支尖端在基线历史中；不满足时返回 400/404。
 - `task/merge-preview` 使用 `git merge-tree --write-tree` 做无工作区副作用的合并预检，返回 `baseAhead`、`overlapFiles`、`conflictFiles`；Git 低于 2.38 时返回 `supported: false`，只提示文件重叠。
 
+## 多窗口与并发安全
+
+任务台账由多个 DSH 窗口共享，下面每条都是「宁可拒绝，也不猜」的显式约束。
+
+### 台账写入
+
+- 所有写入都在 `<stateDir>/.store.lock` 的跨进程锁内完成：`open(..., 'wx')` 原子创建 + owner token 校验，释放时只删除自己 token 对应的锁。等待超时不再「无锁照写」，而是抛 `StoreError`（HTTP 503），调用方看到的是明确失败。
+- 等锁用 `Atomics.wait` 停放线程，不忙等烧 CPU。**已知边界**：Store 的公开 API 是同步的（宿主从同步路径调用），所以最长会阻塞事件循环 `lockWaitMs`（默认 2s），这是「保持同步 API + 绝不无锁写」的折中；锁内只做台账级的小读写。
+- 崩溃留下的锁：`pid` 已死或时间戳超过 30s 才判定为 stale，用临时文件重命名接管，接管后再校验内容，不会删掉仍被人正常持有的锁。
+- 写盘是「唯一临时文件 + rename」，失败重试 5 次后抛 `StoreError`（HTTP 500），不会退回「就地写一半」。读到坏文件时把原始字节另存为 `<file>.corrupt-<ts>`（每个进程每个文件只保留一份），并通过 `store.warnings()` 与日志报出，不会静默清空。
+
+### 会话绑定与 Agent 状态
+
+- 绑定分两步：先 `bind/claim` 原子占位（租约默认 60s），再创建会话、发 prompt，最后带租约 `bind`。第二个窗口拿不到占位就不能开工；租约被接手后原窗口 `bind` 得到 409 `lease-lost`，客户端会删掉自己刚建的会话。
+- 会话必须建在任务的 worktree 上：`session.create` 回报的 `cwd` 与 `task.worktreePath` 不一致时，先丢弃该会话再退回 `{ cwd }` 创建；仍不一致则直接失败，不会悄悄在主仓库里开发。
+- Agent 状态是**三态**：`running` / `idle` / `unknown`。看不到某个会话的 Agent **不等于**它没在跑——运行它的窗口可能是另一个 DSH 进程。因此合并、切分支、清理、删除任务/项目在状态不确定时一律拒绝（409 `agent-unknown`），并给出「结束会话 / 在运行它的窗口确认空闲 / 解除会话绑定」的恢复指引。
+- 跨实例可见性靠每个进程的心跳文件（`<stateDir>/instances/<instanceId>.json`，每 3s 一次，含 `pid`、`host`、`running[]`）。会话结束（`session/disposed`）、手动解除绑定、成功绑定都会立刻广播，不用等心跳周期。
+- 恢复路径：
+  - 正常结束会话 → 事件清掉绑定；
+  - 窗口崩溃 → 心跳超过 30s 或 `pid` 已消失即视为死亡，不再阻塞；
+  - 仍无法确认（对端刚崩，或对端是旧版本不带 `running`）→ 人工 `session/reset` 清绑定，之后可正常合并。
+- 绑定、解除、接管都在同一把台账锁内完成并记录 `sessionOwner`（`instanceId` + `pid`），所以「哪个窗口拥有这个会话」是可审计的事实，不需要猜。
+
+### 删除与发布
+
+- `projects/delete` 与 `task/delete` 走同一套门禁：仓库锁 → 主仓库无未完成 git 操作（409 `repo-in-progress`）→ 每个任务 Agent 空闲 → 不在验收/切换状态 → 无未处理 stash。
+- worktree 逐个删除并记账：部分失败时保留失败任务的记录（避免台账指向已删除目录），返回 409 `partial-delete` 并列出失败项；修好后重试同一调用即可收尾。
+- 发布时若目标目录已被占用（残留目录或手工拷贝），改用同名前缀加随机后缀的兄弟目录；`git worktree add` 失败时只清理刚建的空壳目录，然后如实报错。
+
 ## 模型工具
 
 ```text
+worktree_projects {}
 worktree_publish { repository, base_branch?, title, task, branch_name?, parent_id?, start?, tags?, priority?, due_at? }
 worktree_tasks   {}
 worktree_act     { id, action, force?, delete_branch?, tags?, priority?, notes?, due_at?, depends_on? }
 ```
+
+`worktree_projects` 列出已登记的项目（仓库路径、默认基线分支、任务数与状态分布），`worktree_publish` 的 `project_id` 就取自这里。
 
 `due_at` 接受 `YYYY-MM-DD` 或毫秒时间戳，写入时统一归一到本地日历日零点；`worktree_act` 的 `meta` 动作传 `null` 或空串清除。
 
