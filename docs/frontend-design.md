@@ -100,8 +100,8 @@ grid-template-columns: 272px minmax(0, 1fr) 284px;
 | --- | --- |
 | `> 980px` | 三栏；`272px / 自适应 / 284px` |
 | `≤ 980px` | 左栏收至 `248px`；右栏默认收起，展开时以 `300px` 覆盖式抽屉出现在顶栏下方 |
-| `≤ 620px` | 左栏收至 `208px`；抽屉占满 Stage 宽度 |
-| 任意宽度 | 左右栏都可通过顶栏按钮折叠/展开，折叠状态不丢选中任务 |
+| `≤ 720px` | 看板收为单栏：左栏与右栏都变成覆盖式抽屉（左抽屉最宽 `300px` 或 88% 容器宽，右抽屉占满容器宽），共用一层遮罩；`Esc`、点击遮罩或抽屉关闭按钮收起 |
+| 任意宽度 | 左右栏都可通过顶栏按钮折叠/展开，折叠状态不丢选中任务；窄屏同时只开一个抽屉 |
 
 项目详情与设置页沿用原 `dshw-scope` 的容器查询断点（双栏 → 单栏），`.dshw-scope` 自身也是容器，因此嵌入 Stage 后会按 Stage 宽度响应。
 
@@ -116,11 +116,11 @@ grid-template-columns: 272px minmax(0, 1fr) 284px;
 
 ### 5.1 配色管理
 
-看板颜色集中定义在 `src/client/styles.ts` 的 `WORKBENCH_CSS`，以 `.dshw-board` 作用域的 CSS 变量承载：
+看板颜色集中在 `src/client/palette.ts` 定义，由 `src/client/styles/workbench.ts` 的 `WORKBENCH_CSS` 以 `.dshw-board` 作用域的 CSS 变量承载（`--text-3` 直接读 `PALETTE`，避免两处漂移）：
 
 ```css
 .dshw-board { --bg-canvas: #0b0b0c; --bg-rail: #070708; --bg-stage: #0b0b0c;
-             --text-1: #f2f0ec; --text-2: #a9a59d; --text-3: #807c74;
+             --text-1: #f2f0ec; --text-2: #a9a59d; --text-3: #8b877f;
              --line: rgba(242,240,236,.11);
              --accent: #e0a256; --ok: #8fbf94; --warn: #d9a93f; --err: #e0776f; }
 .dshw-board[data-theme="light"] { --bg-canvas: #f8f5ef; --text-1: #17150f; ... }
@@ -141,7 +141,7 @@ grid-template-columns: 272px minmax(0, 1fr) 284px;
 
 - 看板换色只改 `WORKBENCH_CSS` 顶部两组 token；项目详情/设置页换色只改 `PALETTE`。
 - 强调色只用于：运行态、领先提交数、主操作、选中行左侧条。其余状态用降饱和的成功/警告/危险色。
-- 文本三级色必须满足 AA：深色 `#807c74`、浅色 `#736f64`（均 ≥4.6:1）。
+- 文本三级色必须满足 AA，且要在**实际承载它的抬升面**上达标（rail `--bg-rail`、surface2、surface3，不只画布）：深色 `#8b877f`、浅色 `#6b6659`，两套 token 同步定义在 `src/client/palette.ts` 与 `src/client/styles/workbench.ts`，并由 `test/client-contrast.test.ts` 用真实色值防回归。
 - 看板主题由 `.dshw-board[data-theme]` 控制，默认跟随宿主亮度，用户切换后写入 `localStorage` 的 `dshw-board:theme`。
 - 项目详情/设置页跟随宿主 `dshw-dark` 类；该类由 `useStyles()` 根据宿主文本颜色自动维护并监听主题变化。
 - 看板语义 token 包括：画布/栏底/舞台/浮层背景、悬停/激活、边框、三级文本、主 CTA、强调色、成功/警告/危险、代码块、diff 增删底色。
@@ -589,7 +589,7 @@ src/client/
 - [ ] 宽容器下为 `272px / 自适应 / 284px` 三栏。
 - [ ] 左右栏折叠按钮生效，折叠后选中任务和标签页状态不丢。
 - [ ] 未选中任务时右栏自动收起；选中项目时 Stage 显示项目详情。
-- [ ] 容器宽度 980px 以下左栏收至 248px，右栏默认收起，展开时以覆盖式抽屉出现且不挤压 Stage；620px 以下左栏收至 208px。
+- [ ] 容器宽度 980px 以下左栏收至 248px，右栏默认收起，展开时以覆盖式抽屉出现且不挤压 Stage；720px 以下看板为单栏，左右栏均为覆盖式抽屉（同一时刻只开一个，带遮罩，支持 Esc / 点击遮罩关闭）。
 - [ ] 折叠/展开有 180ms 宽度过渡，`prefers-reduced-motion` 下关闭。
 - [ ] 长标题、长路径、长分支名不撑破容器。
 - [ ] 200% 缩放下主要操作仍可到达。

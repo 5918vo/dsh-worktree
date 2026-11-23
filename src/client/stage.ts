@@ -7,7 +7,7 @@ import { pendingLabel } from './status'
 import { buildTaskLifecycle, lifecycleCycleDays, lifecycleLabelKey } from './task-lifecycle'
 import type { SessionHealth } from './task-attention'
 import { fallbackEntries, type TimelineEntry } from './timeline'
-import { entryTag, entryTitle, liveStatsText, modelLabel, modelLabelFull, pressurePercent, readLive, stepStatusLabel, tokenSummary } from './live-session'
+import { entryTag, entryTitle, liveStatsText, modelLabel, modelLabelFull, nearBottom, pressurePercent, readLive, shouldFollowLive, stepStatusLabel, tokenSummary } from './live-session'
 import { postMergeCount, reviewStaleCount } from './review-surfaces'
 import { NOTES_MAX_LENGTH, dueInputValue, dueStateOf, parseDueAt, parseTagText, validateTags } from '../task-meta'
 import { DEPENDENCY_LIMIT } from '../task-deps'
@@ -66,6 +66,9 @@ export interface StageProps {
   onToggleInspector: () => void
   /** Narrow container: labelled back-to-list entry, rail is an overlay. */
   narrow?: boolean
+  /** Current drawer visibility, so the toggle buttons can expose aria-expanded. */
+  railHidden?: boolean
+  inspectorHidden?: boolean
   notice?: { message: string } | null
   onDismissNotice?: () => void
   /** Persistent note when a publish only partly succeeded (session not bound). */
@@ -129,7 +132,13 @@ export function Stage(props: StageProps) {
           ? h('button', { className: 'dshwd-btn dshwd-btn-ghost', title: t.backToList, 'aria-label': t.backToList, onClick: props.onBackToList || props.onToggleRail },
             h('span', { key: 'i', 'aria-hidden': 'true' }, '‹'),
             h('span', { key: 'l', className: 'dshwd-btn-label' }, t.backToList))
-          : h('button', { className: 'dshwd-btn dshwd-btn-ghost', title: t.boardCollapseLeft, onClick: props.onToggleRail }, '◧'),
+          : h('button', {
+            className: 'dshwd-btn dshwd-btn-ghost',
+            title: t.boardCollapseLeft,
+            'aria-label': t.boardCollapseLeft,
+            'aria-expanded': props.railHidden ? 'false' : 'true',
+            onClick: props.onToggleRail,
+          }, '◧'),
         h('div', { className: 'dshwd-breadcrumb' },
           h('span', null, props.projectName),
           h('span', null, '/'),
@@ -137,7 +146,13 @@ export function Stage(props: StageProps) {
           h('span', null, '→'),
           h('span', { className: 'dshwd-mono' }, task.baseBranch))),
       h('div', { className: 'dshwd-topbar-right' },
-        h('button', { className: 'dshwd-btn dshwd-btn-ghost', title: t.boardCollapseRight, 'aria-label': t.boardInspector, onClick: props.onToggleInspector },
+        h('button', {
+          className: 'dshwd-btn dshwd-btn-ghost',
+          title: t.boardCollapseRight,
+          'aria-label': t.boardInspector,
+          'aria-expanded': props.inspectorHidden ? 'false' : 'true',
+          onClick: props.onToggleInspector,
+        },
           h('span', { key: 'i', 'aria-hidden': 'true' }, '◨'),
           h('span', { key: 'l', className: 'dshwd-btn-label' }, t.boardInspector)))),
 
@@ -173,12 +188,13 @@ export function Stage(props: StageProps) {
           ctas.secondary ? actionButton(t, ctas.secondary.action, ctas.secondary.label, props, false) : null,
           actionButton(t, ctas.primary.action, ctas.primary.label, props, true))),
 
-      h('nav', { className: 'dshwd-tabs' },
+      h('nav', { className: 'dshwd-tabs', 'aria-label': t.boardTabs },
         tabButton('overview', t.boardOverviewTab, props),
         tabButton('live', t.liveSession, props),
         h('button', {
           key: 'diff',
           className: 'dshwd-tab' + (props.tab === 'diff' ? ' dshwd-active' : ''),
+          'aria-current': props.tab === 'diff' ? 'page' : undefined,
           onClick: () => props.onTab('diff'),
         }, t.codeChanges, h('span', { className: 'dshwd-mono', style: { fontSize: '11px', color: 'var(--text-3)' } }, String(count))))),
 
@@ -246,6 +262,7 @@ function tabButton(tab: BoardTab, label: string, props: StageProps) {
   return h('button', {
     key: tab,
     className: 'dshwd-tab' + (props.tab === tab ? ' dshwd-active' : ''),
+    'aria-current': props.tab === tab ? 'page' : undefined,
     onClick: () => props.onTab(tab),
   }, label)
 }
@@ -712,11 +729,34 @@ function Live(props: StageProps) {
   const [showAll, setShowAll] = React.useState(false)
   const [prompt, setPrompt] = React.useState('')
   const [sending, setSending] = React.useState(false)
+  // Follow new output only while the reader is at the bottom; a session switch
+  // always starts at the newest line.
+  const followRef = React.useRef({ session: props.sessionId, nearBottom: true })
+  const readScroll = () => {
+    const el: any = bodyRef.current
+    if (!el) return null
+    return nearBottom({ scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight })
+  }
+  const onLogScroll = () => {
+    const atBottom = readScroll()
+    if (atBottom !== null) followRef.current = { session: props.sessionId, nearBottom: atBottom }
+  }
   React.useEffect(() => { setShowAll(false) }, [props.sessionId])
   React.useEffect(() => { setPrompt('') }, [props.sessionId])
   React.useEffect(() => {
     const el: any = bodyRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    const prev = followRef.current
+    const sessionChanged = prev.session !== props.sessionId
+    if (!el) {
+      followRef.current = { session: props.sessionId, nearBottom: prev.nearBottom }
+      return
+    }
+    if (!shouldFollowLive({ sessionChanged, nearBottom: prev.nearBottom })) {
+      followRef.current = { session: props.sessionId, nearBottom: false }
+      return
+    }
+    el.scrollTop = el.scrollHeight
+    followRef.current = { session: props.sessionId, nearBottom: true }
   }, [props.entries.length, props.sessionId])
 
   if (!props.sessionId) {
@@ -777,7 +817,7 @@ function Live(props: StageProps) {
       h('button', { className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini', onClick: props.onOpenSession }, t.openInSession, ' ↗')),
 
     h('div', { className: 'dshwd-live-grid' },
-      h('div', { ref: bodyRef, className: 'dshwd-live-log' },
+      h('div', { ref: bodyRef, className: 'dshwd-live-log', onScroll: onLogScroll },
         !props.entriesReady
           ? h('div', { className: 'dshwd-hint' }, t.loading)
           : visible.length

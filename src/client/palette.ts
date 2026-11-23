@@ -38,7 +38,7 @@ export const PALETTE = {
 
     text: '#17150f', // --text-1
     text2: '#4d4a42', // --text-2
-    text3: '#736f64', // --text-3  (4.61:1 on bg — AA for 11–12px)
+    text3: '#6b6659', // --text-3  (4.60:1 on surface-3, 4.90:1 on tree-bg — AA for 11–12px)
 
     brand: '#9a5619', // --accent (copper, darkened for light paper)
     brandStrong: '#7a4314',
@@ -83,6 +83,9 @@ export const PALETTE = {
     backdrop: 'rgba(23,21,15,.32)',
     toastBg: '#17150f',
     toastFg: '#f8f5ef',
+    toastErrorBg: '#fbe9e7',
+    toastErrorText: '#7a1f1a',
+    toastErrorBorder: '#a8625d',
 
     codeBg: '#f3efe6',
     diffAddBg: 'rgba(63,122,74,.10)',
@@ -93,7 +96,7 @@ export const PALETTE = {
     termText: '#e8e6e1',
     termMuted: '#9a958a',
     termBar: '#9a958a',
-    termGutter: '#6f6b60',
+    termGutter: '#8b877f',
     termUser: '#d8c39a',
     termTool: '#9dc2a2',
     termWarn: '#d9a93f',
@@ -103,7 +106,7 @@ export const PALETTE = {
     meterTo: '#3f7a4a',
 
     selectArrow:
-      'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'16\' height=\'16\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23736f64\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpath d=\'m6 9 6 6 6-6\'/%3E%3C/svg%3E")',
+      'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'16\' height=\'16\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%236b6659\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpath d=\'m6 9 6 6 6-6\'/%3E%3C/svg%3E")',
   },
   dark: {
     bg: '#0b0b0c', // paper
@@ -122,7 +125,7 @@ export const PALETTE = {
 
     text: '#f2f0ec',
     text2: '#a9a59d',
-    text3: '#807c74', // 4.71:1 on paper
+    text3: '#8b877f', // 5.00:1 on surface-3, 5.19:1 on elevated — metadata AA
 
     brand: '#e0a256', // copper
     brandStrong: '#eab877',
@@ -167,6 +170,9 @@ export const PALETTE = {
     backdrop: 'rgba(4,4,5,.74)',
     toastBg: '#f2f0ec',
     toastFg: '#0b0b0c',
+    toastErrorBg: '#2a1413',
+    toastErrorText: '#ffd9d5',
+    toastErrorBorder: '#a8544e',
 
     codeBg: '#070708',
     diffAddBg: 'rgba(143,191,148,.12)',
@@ -177,7 +183,7 @@ export const PALETTE = {
     termText: '#e8e6e1',
     termMuted: '#8b877f',
     termBar: '#8b877f',
-    termGutter: '#6a665f',
+    termGutter: '#8b877f',
     termUser: '#d8c39a',
     termTool: '#9dc2a2',
     termWarn: '#d9a93f',
@@ -187,7 +193,21 @@ export const PALETTE = {
     meterTo: '#8fbf94',
 
     selectArrow:
-      'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'16\' height=\'16\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23807c74\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpath d=\'m6 9 6 6 6-6\'/%3E%3C/svg%3E")',
+      'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'16\' height=\'16\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%238b877f\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpath d=\'m6 9 6 6 6-6\'/%3E%3C/svg%3E")',
+  },
+}
+
+/** Error toast colours, also available as `--dshw-toast-error-*` variables. */
+export const TOAST_ERROR = {
+  light: {
+    bg: PALETTE.light.toastErrorBg,
+    text: PALETTE.light.toastErrorText,
+    border: PALETTE.light.toastErrorBorder,
+  },
+  dark: {
+    bg: PALETTE.dark.toastErrorBg,
+    text: PALETTE.dark.toastErrorText,
+    border: PALETTE.dark.toastErrorBorder,
   },
 }
 

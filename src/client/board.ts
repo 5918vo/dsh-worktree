@@ -15,6 +15,7 @@ import { WORKBENCH_CSS } from './styles'
 import { Rail } from './rail'
 import { Stage, type BoardTab } from './stage'
 import { Inspector } from './inspector'
+import { activeDrawer, closeAllDrawers, closeDrawer, dismissDrawer, toggleDrawer, type DrawerState, type DrawerSide } from './drawers'
 import { PublishModal } from './publish'
 import { AddProjectModal } from './add-project'
 import { openNativeSession } from './actions'
@@ -229,6 +230,48 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     setNotice(null)
   }, [selectedTaskId])
 
+  // Drawer state is derived once so the rail and inspector can never both be
+  // open as sheets; the wide layout keeps its independent hide toggles.
+  const drawerState: DrawerState = { railHidden, inspectorHidden }
+  const drawerReturn = React.useRef(null as any)
+  const setDrawers = (next: DrawerState) => {
+    setRailHidden(next.railHidden)
+    setInspectorHidden(next.inspectorHidden)
+  }
+  const toggleSide = (side: DrawerSide) => {
+    if (narrow && activeDrawer(drawerState, narrow, !!selectedTask) === null) {
+      drawerReturn.current = document.activeElement
+    }
+    setDrawers(toggleDrawer(drawerState, side, narrow))
+  }
+  const closeDrawers = () => setDrawers(closeAllDrawers(drawerState))
+  // Picking a task from the rail sheet hands focus to the stage it reveals.
+  const focusStage = React.useRef(false)
+  // Focus moves into the open sheet (its close button) and returns to whatever
+  // opened it; closing both restores the opener exactly once.
+  React.useEffect(() => {
+    if (!narrow) { drawerReturn.current = null; return }
+    const side = activeDrawer({ railHidden, inspectorHidden }, narrow, !!selectedTask)
+    if (!side) {
+      const el: any = drawerReturn.current
+      drawerReturn.current = null
+      if (el && el.isConnected && typeof el.focus === 'function') el.focus()
+      return
+    }
+    const root: any = rootRef.current
+    const scope = root && root.querySelector(side === 'rail' ? '.dshwd-rail' : '.dshwd-inspector')
+    const btn: any = scope && scope.querySelector('.dshwd-drawer-close')
+    if (btn && typeof btn.focus === 'function') btn.focus()
+  }, [narrow, railHidden, inspectorHidden, selectedTaskId])
+
+  React.useEffect(() => {
+    if (!focusStage.current) return
+    focusStage.current = false
+    const root: any = rootRef.current
+    const btn: any = root && root.querySelector('.dshwd-stage .dshwd-topbar button')
+    if (btn && typeof btn.focus === 'function') btn.focus()
+  }, [selectedTaskId, tab])
+
   const openPublish = (projectId?: string, parentId = '') => {
     // Prefer what the user is looking at now; `views` is ordered by recent
     // activity, so its first entry is the "last used" project and must not win
@@ -242,12 +285,8 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (publishOpen || addOpen || confirm || stashView) {
-        // Publish and add-project own their Escape handling so a submit in
-        // flight cannot be dismissed from here.
-        if (e.key === 'Escape' && !busy) {
-          if (confirm) setConfirm(null)
-          if (stashView) setStashView(null)
-        }
+        // Every overlay owns its own Escape/focus lifecycle (shared dialog
+        // hook or the host modal), so the board must not close them twice.
         return
       }
       const root = rootRef.current
@@ -261,13 +300,17 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
         return
       }
       if (!typing && !e.metaKey && !e.ctrlKey && e.key.toLowerCase() === 'n') { e.preventDefault(); openPublish(); return }
-      if (!typing && e.key === '[') { e.preventDefault(); setRailHidden((v: boolean) => !v); return }
-      if (!typing && e.key === ']') { e.preventDefault(); setInspectorHidden((v: boolean) => !v); return }
+      if (e.key === 'Escape' && narrow) {
+        const next = dismissDrawer({ railHidden, inspectorHidden }, narrow, !!selectedTask)
+        if (next.closed) { e.preventDefault(); setDrawers(next.state); return }
+      }
+      if (!typing && e.key === '[') { e.preventDefault(); toggleSide('rail'); return }
+      if (!typing && e.key === ']') { e.preventDefault(); toggleSide('inspector'); return }
       if (e.key === 'Escape' && active === searchRef.current && query) setQuery('')
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [query, publishOpen, addOpen, confirm, stashView, busy, selectedProjectId, views])
+  }, [query, publishOpen, addOpen, confirm, stashView, busy, selectedProjectId, views, narrow, railHidden, inspectorHidden, selectedTaskId])
 
   const selectTask = (id: string, projectId?: string) => {
     const found = views.flatMap((v: ProjectView) => v.tasks).find((x: TaskView) => x.task.id === id)
@@ -275,6 +318,11 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     setSelectedTaskId(id)
     if (owner) setSelectedProjectId(owner)
     setTab('overview')
+    if (narrow && !railHidden) {
+      drawerReturn.current = null
+      focusStage.current = true
+      setRailHidden(true)
+    }
   }
   const selectProject = (id: string) => {
     setSelectedProjectId(id)
@@ -505,7 +553,18 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
         onToggleTheme: toggleTheme,
         searchRef,
         environment,
+        narrow,
+        onClose: closeDrawers,
       }),
+      narrow && (railHidden === false || (inspectorHidden === false && !!selectedTask))
+        ? h('button', {
+          type: 'button',
+          className: 'dshwd-scrim',
+          'aria-label': t.close,
+          tabIndex: -1,
+          onClick: closeDrawers,
+        })
+        : null,
 
       selectedTask && projectOfTask && cta
         ? h(Stage, {
@@ -545,9 +604,11 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           promptBusy: !!busy,
           baseSha,
           headSha,
-          onToggleRail: () => setRailHidden((v: boolean) => !v),
-          onToggleInspector: () => setInspectorHidden((v: boolean) => !v),
+          onToggleRail: () => toggleSide('rail'),
+          onToggleInspector: () => toggleSide('inspector'),
           narrow,
+          railHidden,
+          inspectorHidden,
           notice,
           onDismissNotice: () => setNotice(null),
           partial: partialNotice && selectedTask && partialNotice.taskId === selectedTask.task.id ? partialNotice : null,
@@ -566,8 +627,8 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
                 railHidden,
                 inspectorHidden,
                 narrow,
-                onToggleRail: () => setRailHidden((v: boolean) => !v),
-                onToggleInspector: () => setInspectorHidden((v: boolean) => !v),
+                onToggleRail: () => toggleSide('rail'),
+                onToggleInspector: () => toggleSide('inspector'),
                 notify: say,
                 onChanged: refresh,
                 onPublish: () => openPublish(selectedProject.project.id),
@@ -577,7 +638,13 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           : h('main', { className: 'dshwd-stage' },
             h('div', { className: 'dshwd-topbar' },
               h('div', { className: 'dshwd-topbar-left' },
-                h('button', { className: 'dshwd-btn dshwd-btn-ghost', onClick: () => setRailHidden((v: boolean) => !v) }, '◧'),
+                h('button', {
+                  className: 'dshwd-btn dshwd-btn-ghost',
+                  title: t.boardCollapseLeft,
+                  'aria-label': t.boardCollapseLeft,
+                  'aria-expanded': railHidden ? 'false' : 'true',
+                  onClick: () => toggleSide('rail'),
+                }, '◧'),
                 h('span', { className: 'dshwd-breadcrumb' }, err || (loaded ? t.boardSelectTask : t.loading)))),
             h('div', { className: 'dshwd-empty', style: { flex: '1' } },
               h('div', { className: 'dshwd-empty-title' }, err ? t.connectionLost : loaded ? t.boardSelectTask : t.loading),
@@ -603,7 +670,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           running: runningOf(selectedTask.task),
           pending: pendingOf(selectedTask.task),
           narrow,
-          onClose: () => setInspectorHidden(true),
+          onClose: () => setDrawers(closeDrawer({ railHidden, inspectorHidden }, 'inspector')),
           onCopy: (text: string) => { copyText(text); say(t.copied) },
           onSyncBaseline: actions.runSyncBaseline,
           onArchive: () => actions.archiveTask(false),

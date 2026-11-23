@@ -195,7 +195,13 @@ export function AddProjectModal(props: AddProjectModalProps) {
         h('div', { className: 'dshwd-modal-title-group' },
           h('div', { className: 'dshwd-modal-title' }, t.addProject),
           h('span', { className: 'dshwd-modal-badge dshwd-mono' }, 'git repo')),
-        h('button', { className: 'dshwd-btn dshwd-btn-ghost', title: t.close, disabled: busy, onClick: props.onClose }, '×')),
+        h('button', {
+          className: 'dshwd-btn dshwd-btn-ghost',
+          title: t.close,
+          'aria-label': t.close,
+          disabled: busy,
+          onClick: props.onClose,
+        }, '×')),
 
       h('div', { className: 'dshwd-modal-body' },
         h('div', { className: 'dshwd-hint' }, t.addProjectSub),

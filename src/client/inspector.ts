@@ -92,12 +92,16 @@ export function Inspector(props: InspectorProps) {
   const liveCwd = liveData && liveData.cwd ? displayPath(liveData.cwd) : ''
   const normPath = (value: string) => value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
   const cwdOff = !!liveCwd && !!task.worktreePath && normPath(liveCwd) !== normPath(worktree)
-  return h('aside', { className: 'dshwd-inspector' },
+  return h('aside', {
+    className: 'dshwd-inspector',
+    'aria-label': t.boardInspector,
+    ...(props.narrow && props.onClose ? { role: 'dialog', 'aria-modal': 'true' } : null),
+  },
     props.narrow && props.onClose
       ? h('div', { className: 'dshwd-insp-narrow-head' },
         h('span', { className: 'dshwd-insp-narrow-title' }, t.boardInspector),
         h('button', {
-          className: 'dshwd-btn dshwd-btn-ghost',
+          className: 'dshwd-btn dshwd-btn-ghost dshwd-drawer-close',
           title: t.close,
           'aria-label': t.close,
           onClick: props.onClose,
@@ -190,37 +194,43 @@ export function Inspector(props: InspectorProps) {
             onClick: props.onRestore,
           }, t.restoreOriginalBranch))
         : null,
-      h('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' } },
+      // Archive is reversible and stays a normal action; the destructive pair
+      // is grouped under its own heading with graded weight (outline cleanup vs
+      // solid delete), so the two never read as equal-weight neighbours.
+      h('div', { style: { marginTop: '8px' } },
         h('button', {
           className: 'dshwd-btn',
           disabled: props.busy !== '' || (!props.canArchive && !props.archived),
           title: !props.canArchive && !props.archived ? props.archiveReason : undefined,
           onClick: props.archived ? props.onUnarchive : props.onArchive,
-        }, props.archived ? t.unarchive : t.archive),
-        h('button', {
-          className: 'dshwd-btn dshwd-btn-danger',
-          disabled: props.busy !== '' || snap.status === 'cleaned' || agentBusy || reviewing || hasStashes,
-          title: props.running
-            ? t.acceptAgentRunning
-            : props.pending
-              ? t.acceptAgentPending
-              : reviewing
-                ? t.reviewingBlockTitle
-                : hasStashes ? t.stashBlocksLifecycle : undefined,
-          onClick: props.onCleanup,
-        }, t.cleanup),
-        h('button', {
-          className: 'dshwd-btn dshwd-btn-danger',
-          disabled: props.busy !== '' || agentBusy || reviewing || hasStashes,
-          title: props.running
-            ? t.acceptAgentRunning
-            : props.pending
-              ? t.acceptAgentPending
-              : reviewing
-                ? t.reviewingBlockTitle
-                : hasStashes ? t.stashBlocksLifecycle : undefined,
-          onClick: props.onDelete,
-        }, t.deleteRecord))),
+        }, props.archived ? t.unarchive : t.archive)),
+      h('div', { className: 'dshwd-insp-danger' },
+        h('div', { className: 'dshwd-insp-title' }, t.dangerZone),
+        h('div', { className: 'dshwd-danger-stack' },
+          h('button', {
+            className: 'dshwd-btn dshwd-btn-danger-ghost',
+            disabled: props.busy !== '' || snap.status === 'cleaned' || agentBusy || reviewing || hasStashes,
+            title: props.running
+              ? t.acceptAgentRunning
+              : props.pending
+                ? t.acceptAgentPending
+                : reviewing
+                  ? t.reviewingBlockTitle
+                  : hasStashes ? t.stashBlocksLifecycle : undefined,
+            onClick: props.onCleanup,
+          }, t.cleanup),
+          h('button', {
+            className: 'dshwd-btn dshwd-btn-danger',
+            disabled: props.busy !== '' || agentBusy || reviewing || hasStashes,
+            title: props.running
+              ? t.acceptAgentRunning
+              : props.pending
+                ? t.acceptAgentPending
+                : reviewing
+                  ? t.reviewingBlockTitle
+                  : hasStashes ? t.stashBlocksLifecycle : undefined,
+            onClick: props.onDelete,
+          }, t.deleteRecord)))),
 
     Array.isArray(props.stashes) && props.stashes.length
       ? h('section', { className: 'dshwd-insp-sec' },
