@@ -188,6 +188,12 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-notes-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .dshw-board .dshwd-notes-input { width: 100%; }
 .dshw-board .dshwd-meta-notes .dshwd-btn { margin-top: 4px; }
+.dshw-board .dshwd-lifecycle-list { list-style: none; margin: 0; padding: 0; }
+.dshw-board .dshwd-lifecycle-item { position: relative; display: flex; align-items: baseline; gap: 8px; padding: 3px 0 3px 18px; border-left: 1px solid var(--line); font-size: 12px; color: var(--text-2); }
+.dshw-board .dshwd-lifecycle-dot { position: absolute; left: -4px; top: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); box-shadow: 0 0 0 2px var(--bg-stage); }
+.dshw-board .dshwd-lifecycle-label { color: var(--text-1); }
+.dshw-board .dshwd-lifecycle-sha { color: var(--text-3); font-size: 10.5px; }
+.dshw-board .dshwd-lifecycle-time { margin-left: auto; color: var(--text-3); font-size: 11px; font-variant-numeric: tabular-nums; }
 .dshw-board .dshwd-tabs { display: flex; gap: 22px; }
 .dshw-board .dshwd-tab { position: relative; padding: 8px 0 11px; border: none; background: transparent; color: var(--text-3); font-size: 13px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; transition: color .12s; }
 .dshw-board .dshwd-tab:hover { color: var(--text-2); }

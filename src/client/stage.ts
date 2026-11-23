@@ -4,6 +4,7 @@ import type { TaskDiff, TaskView } from '../models'
 import { QUICK_PROMPTS, quickPromptDisabledReason, quickPromptReasonKey, quickPromptText } from './quick-prompts'
 import { acceptanceHintFor, criteria, criteriaProgress, boardStatus, boardStatusLabel, commitRangeText, diffCount, diffHeadSha, diffLineKind, shortSha, type BoardAction, type BoardCta } from './model'
 import { pendingLabel } from './status'
+import { buildTaskLifecycle, lifecycleCycleDays, lifecycleLabelKey } from './task-lifecycle'
 import type { SessionHealth } from './task-attention'
 import { fallbackEntries, type TimelineEntry } from './timeline'
 import { entryTag, entryTitle, liveStatsText, modelLabel, modelLabelFull, pressurePercent, readLive, stepStatusLabel, tokenSummary } from './live-session'
@@ -273,6 +274,7 @@ function Overview(props: StageProps) {
       h('div', { className: 'dshwd-block-label' }, t.taskDescription),
       h('div', { className: 'dshwd-prose' }, props.taskView.task.description || '—')),
     h(TaskMetaSection, props),
+    h(TaskLifecycleSection, props),
     h('section', { className: 'dshwd-block' },
       h('div', { className: 'dshwd-block-head' },
         h('div', { className: 'dshwd-block-label' }, items.length ? `${t.acceptanceCriteria} · ${progressText}` : t.acceptanceCriteria),
@@ -338,6 +340,36 @@ function TaskMetaSection(props: StageProps) {
       h('div', { className: 'dshwd-meta-row' },
         h('div', { className: 'dshwd-meta-label' }, t.taskNotes),
         h('div', { className: 'dshwd-prose dshwd-notes' }, task.notes || t.taskNotesEmpty))))
+}
+
+/**
+ * Derived lifecycle timeline: publish, pin, merge, clean, archive and a
+ * "last updated" row only when it is clearly later than the rest.
+ * Read-only: no storage field, no request, no state machine change.
+ */
+function TaskLifecycleSection(props: StageProps) {
+  const { t } = props
+  const task = props.taskView.task
+  const events = buildTaskLifecycle(task)
+  const days = lifecycleCycleDays(task)
+  const cycle = days == null ? null : String(t.lifecycleCycle).replace('{n}', days.toFixed(1))
+  return h('section', { className: 'dshwd-block dshwd-lifecycle' },
+    h('div', { className: 'dshwd-block-head' },
+      h('div', { className: 'dshwd-block-label' }, t.taskLifecycle),
+      cycle ? h('span', { className: 'dshwd-chip dshwd-chip-sm' }, cycle) : null),
+    events.length
+      ? h('ul', { className: 'dshwd-lifecycle-list' }, events.map((event) => h('li', {
+        key: event.kind,
+        className: 'dshwd-lifecycle-item',
+      },
+      h('span', { className: 'dshwd-lifecycle-dot', 'aria-hidden': 'true' }),
+      h('span', { className: 'dshwd-lifecycle-label' }, t[lifecycleLabelKey(event.kind)]),
+      event.commit ? h('span', { className: 'dshwd-lifecycle-sha dshwd-mono' }, shortSha(event.commit)) : null,
+      h('span', {
+        className: 'dshwd-lifecycle-time',
+        title: new Date(event.at).toLocaleString(),
+      }, relTime(event.at, t)))))
+      : h('div', { className: 'dshwd-hint' }, t.lifecycleEmpty))
 }
 
 /**

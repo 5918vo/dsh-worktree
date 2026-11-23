@@ -431,3 +431,72 @@ test('metadata is placed before the criteria so the head stays scannable', () =>
   const report = buildAcceptanceReport(makeInput({ task: makeTask({ tags: ['ui'] }) }))
   assert.ok(report.indexOf('- 标签: ui') < report.indexOf('## 任务描述'))
 })
+
+test('the report has a lifecycle section between notes and commits', () => {
+  const report = buildAcceptanceReport(makeInput({
+    task: makeTask({
+      createdAt: new Date(2026, 0, 1, 8, 30).getTime(),
+      pinnedAt: new Date(2026, 0, 2, 9, 0).getTime(),
+      mergedAt: new Date(2026, 0, 3, 10, 15).getTime(),
+      mergedCommit: 'deadbeefcafe',
+      updatedAt: new Date(2026, 0, 4, 11, 0).getTime(),
+    }),
+  }))
+  const lifecycleAt = report.indexOf(`## ${zh.reportLifecycle}`)
+  assert.ok(lifecycleAt >= 0)
+  assert.ok(lifecycleAt > report.indexOf(`## ${zh.reportNotes}`))
+  assert.ok(lifecycleAt < report.indexOf(`## ${zh.reportCommits}`))
+  assert.ok(report.includes('- 2026-01-01 08:30 · 发布任务'))
+  assert.ok(report.includes('- 2026-01-02 09:00 · 置顶任务'))
+  assert.ok(report.includes('- 2026-01-03 10:15 · 合并到基线 (deadbee)'))
+  assert.ok(report.includes('- 2026-01-04 11:00 · 最近更新'))
+  assert.ok(report.includes('发布 → 合并 2.1 天'))
+})
+
+test('an unmerged task has no cycle line and no merge row', () => {
+  const report = buildAcceptanceReport(makeInput({
+    task: makeTask({ createdAt: new Date(2026, 0, 1, 8, 30).getTime() }),
+  }))
+  assert.ok(report.includes('- 2026-01-01 08:30 · 发布任务'))
+  assert.ok(!report.includes('合并到基线'))
+  assert.ok(!report.includes('发布 → 合并'))
+})
+
+test('a task without a usable timeline falls back to the empty text', () => {
+  const report = buildAcceptanceReport(makeInput({ task: makeTask({ createdAt: 0 }) }))
+  assert.ok(report.includes(`## ${zh.reportLifecycle}`))
+  assert.ok(report.includes(zh.lifecycleEmpty))
+})
+
+test('the overview renders the lifecycle timeline with labels, short sha and cycle', () => {
+  const task = makeTask({
+    createdAt: new Date(2026, 0, 1, 8, 30).getTime(),
+    mergedAt: new Date(2026, 0, 3, 10, 15).getTime(),
+    mergedCommit: 'deadbeefcafe',
+    updatedAt: new Date(2026, 0, 4, 11, 0).getTime(),
+  })
+  const nodes = flatten(Stage(stageProps({
+    taskView: { task, snapshot: makeSnapshot({ status: 'merged' }) },
+  })))
+  const labels = nodes
+    .filter((node) => node.props && node.props.className === 'dshwd-lifecycle-label')
+    .map((node) => node.children[0])
+  assert.deepEqual(labels, [zh.lifecycleCreated, zh.lifecycleMerged, zh.lifecycleUpdated])
+  const sha = nodes.find((node) => node.props && node.props.className === 'dshwd-lifecycle-sha dshwd-mono')
+  assert.equal(sha && sha.children[0], 'deadbee')
+  const times = nodes.filter((node) => node.props && node.props.className === 'dshwd-lifecycle-time')
+  assert.equal(times.length, 3)
+  assert.ok(times.every((node) => typeof node.props.title === 'string' && node.props.title.length > 0))
+  const cycle = nodes.find((node) => (node.children || [])[0] === '发布 → 合并 2.1 天')
+  assert.ok(cycle, 'the merged task shows the publish → merge cycle')
+})
+
+test('the overview timeline degrades to the empty text and hides the cycle', () => {
+  const nodes = flatten(Stage(stageProps({
+    taskView: { task: makeTask({ createdAt: 0 }), snapshot: makeSnapshot() },
+  })))
+  assert.ok(nodes.some((node) => node.children && node.children.includes(zh.lifecycleEmpty)))
+  assert.ok(!nodes.some((node) => node.props && node.props.className === 'dshwd-lifecycle-item'))
+  const texts = nodes.flatMap((node) => (node.children || []).filter((child) => typeof child === 'string'))
+  assert.ok(!texts.some((text) => text.includes('发布 → 合并')))
+})

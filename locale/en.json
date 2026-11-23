@@ -737,5 +737,15 @@
   "insightsAcceptanceValue": "{n}%",
   "insightsDaily": "Last 7 days",
   "insightsDailyTip": "{date}: created {created} · merged {merged}",
-  "insightsEmpty": "No task data yet"
+  "insightsEmpty": "No task data yet",
+  "taskLifecycle": "Task timeline",
+  "lifecycleCreated": "Task published",
+  "lifecyclePinned": "Pinned",
+  "lifecycleMerged": "Merged into base",
+  "lifecycleCleaned": "Worktree cleaned",
+  "lifecycleArchived": "Archived",
+  "lifecycleUpdated": "Last updated",
+  "lifecycleEmpty": "No timeline yet",
+  "lifecycleCycle": "Published → merged in {n} days",
+  "reportLifecycle": "Task timeline"
 }

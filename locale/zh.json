@@ -737,5 +737,15 @@
   "insightsAcceptanceValue": "{n}%",
   "insightsDaily": "最近 7 天",
   "insightsDailyTip": "{date}：新建 {created} · 合并 {merged}",
-  "insightsEmpty": "还没有任务数据"
+  "insightsEmpty": "还没有任务数据",
+  "taskLifecycle": "任务时间线",
+  "lifecycleCreated": "发布任务",
+  "lifecyclePinned": "置顶任务",
+  "lifecycleMerged": "合并到基线",
+  "lifecycleCleaned": "清理 worktree",
+  "lifecycleArchived": "归档任务",
+  "lifecycleUpdated": "最近更新",
+  "lifecycleEmpty": "暂无时间线记录",
+  "lifecycleCycle": "发布 → 合并 {n} 天",
+  "reportLifecycle": "任务时间线"
 }
