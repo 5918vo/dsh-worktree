@@ -370,6 +370,19 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-management .dshw-stage-body { flex: 1; min-height: 0; }
 .dshw-board .dshwd-management .dshw-measure { max-width: none; }
 .dshw-board .dshwd-management .dshw-inspector { position: static; align-self: stretch; overflow: auto; }
+
+/* ---------- project insights: 7-day throughput bars ------------------------- */
+.dshw-board .dshwd-insights { margin-top: 12px; }
+.dshw-board .dshwd-insights-days { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: 6px; align-items: end; padding: 4px 0 2px; }
+.dshw-board .dshwd-insights-day { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.dshw-board .dshwd-insights-day-bars { display: flex; align-items: flex-end; justify-content: center; gap: 3px; width: 100%; height: 48px; border-bottom: 1px solid var(--line); }
+.dshw-board .dshwd-insights-bar { width: 6px; min-height: 0; border-radius: 2px 2px 0 0; background: var(--accent); }
+.dshw-board .dshwd-insights-bar--merged { background: var(--ok); }
+.dshw-board .dshwd-insights-day-label { font-size: 10px; color: var(--text-3); white-space: nowrap; }
+.dshw-board .dshwd-insights-legend { display: flex; gap: 14px; margin-top: 8px; font-size: 11px; color: var(--text-3); }
+.dshw-board .dshwd-insights-legend > span { display: inline-flex; align-items: center; gap: 5px; }
+.dshw-board .dshwd-insights-swatch { width: 8px; height: 8px; border-radius: 2px; background: var(--accent); }
+.dshw-board .dshwd-insights-swatch--merged { background: var(--ok); }
 @container dshwboard (max-width: 980px) {
   .dshw-board .dshwd-app { grid-template-columns: 248px minmax(0,1fr) 0; }
   .dshw-board .dshwd-app.dshwd-hide-left { grid-template-columns: 0 minmax(0,1fr) 0; }

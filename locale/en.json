@@ -722,5 +722,20 @@
   "projectReportColActivity": "Last activity",
   "projectReportTaskHead": "Task {n}: {title}",
   "projectReportMergedCommit": "Merged commit",
-  "projectReportHead": "Current HEAD"
+  "projectReportHead": "Current HEAD",
+  "projectInsights": "Project insights",
+  "insightsCycle": "Avg cycle",
+  "insightsCycleValue": "{n} days",
+  "insightsCycleMedian": "Median cycle {n} days",
+  "insightsNoData": "—",
+  "insightsMerged7": "Merged in 7d",
+  "insightsCreated": "Created",
+  "insightsMerged": "Merged",
+  "insightsAcceptance": "Criteria checked",
+  "insightsOldest": "Oldest open",
+  "insightsOldestValue": "{n} days",
+  "insightsAcceptanceValue": "{n}%",
+  "insightsDaily": "Last 7 days",
+  "insightsDailyTip": "{date}: created {created} · merged {merged}",
+  "insightsEmpty": "No task data yet"
 }

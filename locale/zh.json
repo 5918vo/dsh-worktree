@@ -722,5 +722,20 @@
   "projectReportColActivity": "最近活动",
   "projectReportTaskHead": "任务 {n}：{title}",
   "projectReportMergedCommit": "合并提交",
-  "projectReportHead": "当前 HEAD"
+  "projectReportHead": "当前 HEAD",
+  "projectInsights": "项目洞察",
+  "insightsCycle": "平均周期",
+  "insightsCycleValue": "{n} 天",
+  "insightsCycleMedian": "中位周期 {n} 天",
+  "insightsNoData": "—",
+  "insightsMerged7": "近 7 天合并",
+  "insightsCreated": "新建",
+  "insightsMerged": "合并",
+  "insightsAcceptance": "验收核对率",
+  "insightsOldest": "最久未完成",
+  "insightsOldestValue": "{n} 天",
+  "insightsAcceptanceValue": "{n}%",
+  "insightsDaily": "最近 7 天",
+  "insightsDailyTip": "{date}：新建 {created} · 合并 {merged}",
+  "insightsEmpty": "还没有任务数据"
 }
