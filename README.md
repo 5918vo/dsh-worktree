@@ -383,6 +383,22 @@ C:\Users\liang\dsh-worktree
 
 公共 npm 包名为 `@5318vo/dsh-worktree`，`publishConfig.access` 已设为 `public`。
 
+### 打 tag 自动发布（推荐）
+
+仓库自带 `.github/workflows/publish.yml`：推送 `v*` tag 后自动在 GitHub Actions 里跑 `npm ci` → tag 与 `package.json` 版本校验 → `npm run verify` → `npm publish --provenance`。
+
+```bash
+npm version patch   # 或 minor / major，同时生成 vX.Y.Z tag 和版本提交
+git push --follow-tags
+```
+
+- 发布前需在仓库 Settings → Secrets and variables → Actions 里配置 `NPM_TOKEN`：npm 上的 **Granular Access Token**，Packages 权限选 `@5318vo/dsh-worktree` 的 **Read and write**；若账号开了 2FA，token 必须是可绕过 OTP 的类型（Granular 默认支持，Classic 需选 Automation）。
+- tag 与 `package.json` 版本不一致会直接失败，不会误发。
+- 也可在 Actions 里手动 `Publish to npm` → Run workflow，默认 **dry-run**（只校验 tarball，不上传），把 `dry_run` 改成 false 才会真正发布。
+- `--provenance` 依赖公开仓库 + `id-token: write`，npm 页面会显示构建来源；仓库若转私有需去掉该参数。
+
+### 本地手动发布
+
 ```bash
 npm login
 npm run typecheck

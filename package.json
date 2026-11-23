@@ -32,6 +32,14 @@
   ],
   "author": "5318vo",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/5918vo/dsh-worktree.git"
+  },
+  "homepage": "https://github.com/5918vo/dsh-worktree#readme",
+  "bugs": {
+    "url": "https://github.com/5918vo/dsh-worktree/issues"
+  },
   "engines": {
     "node": ">=20"
   },
