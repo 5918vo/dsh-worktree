@@ -7,7 +7,6 @@
  */
 import type { TaskPriority } from '../task-meta'
 import { parseTagText } from '../task-meta'
-import { matchesSearch } from './model'
 
 export type SearchStatus =
   | 'ready' | 'developing' | 'review' | 'reviewing' | 'merged' | 'cleaned' | 'broken'
@@ -21,6 +20,16 @@ export interface ParsedSearchQuery {
   statuses: SearchStatus[]
   /** 已知 key 但值非法的原始 token；仍会作为纯文本参与匹配。 */
   invalid: string[]
+}
+
+/**
+ * Local copy of the plain-text matcher (model.ts imports this module, so it
+ * must not import model.ts back). Same case-insensitive contains rule.
+ */
+function textMatches(text: string, fields: Array<string | null | undefined>): boolean {
+  const q = String(text || '').trim().toLowerCase()
+  if (!q) return true
+  return fields.some((field) => String(field || '').toLowerCase().includes(q))
 }
 
 const PRIORITIES: TaskPriority[] = ['low', 'normal', 'high']
@@ -145,7 +154,7 @@ export function matchesStructuredQuery(
   extraFields?: Array<string | null | undefined>,
 ): boolean {
   if (!query) return true
-  if (query.text && !matchesSearch(query.text, extraFields || [])) return false
+  if (query.text && !textMatches(query.text, extraFields || [])) return false
 
   if (query.tags.length) {
     const values = task && Array.isArray(task.tags) ? task.tags : []
