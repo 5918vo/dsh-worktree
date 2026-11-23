@@ -10,7 +10,8 @@ import { fallbackEntries, type TimelineEntry } from './timeline'
 import { entryTag, entryTitle, liveStatsText, modelLabel, modelLabelFull, nearBottom, pressurePercent, readLive, shouldFollowLive, stepStatusLabel, tokenSummary } from './live-session'
 import { postMergeCount, reviewStaleCount } from './review-surfaces'
 import { NOTES_MAX_LENGTH, dueInputValue, dueStateOf, parseDueAt, parseEstimate, parseTagText, TASK_ESTIMATES, validateTags } from '../task-meta'
-import { elapsedWorkMs, formatWorkDuration, hasWorkRecord, isWorkTiming } from '../task-timer'
+import { isWorkTiming } from '../task-timer'
+import { workTotalText } from './work-format'
 import { DEPENDENCY_LIMIT } from '../task-deps'
 import { fill } from './markdown'
 
@@ -401,7 +402,7 @@ function TaskWorkRow(props: {
     return () => clearInterval(id)
   }, [timing, task.id])
   const onTimer = props.onTimer
-  const total = hasWorkRecord(task) ? formatWorkDuration(elapsedWorkMs(task)) : t.taskWorkEmpty
+  const total = workTotalText(t, task)
   return h('div', { className: 'dshwd-meta-row' },
     h('div', { className: 'dshwd-meta-label' }, t.taskWork),
     h('div', { className: 'dshwd-meta-value' },

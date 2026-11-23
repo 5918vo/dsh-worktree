@@ -6,7 +6,7 @@
 
 import type { Project, TaskView, WorktreeTask } from '../models'
 import { compareTaskOrder, dueInputValue, parseEstimate } from '../task-meta'
-import { elapsedWorkMs, formatWorkDuration, hasWorkRecord, isWorkTiming } from '../task-timer'
+import { workTimingText } from './work-format'
 import { pad2 } from './format'
 import { fill, mdBlock, mdCell, mdCodeCell, mdInline, reportTimestamp, safeSlug } from './markdown'
 import { branchHeadSha, criteria, criteriaProgress } from './model'
@@ -59,8 +59,7 @@ function estimateText(t: Record<string, any>, value: unknown): string {
  * keeps the table cell and the detail line identical.
  */
 function workText(t: Record<string, any>, task: WorktreeTask, now: number): string {
-  const total = hasWorkRecord(task) ? formatWorkDuration(elapsedWorkMs(task, now)) : String(t.taskWorkEmpty)
-  return isWorkTiming(task) ? total + '（' + String(t.taskWorkTiming) + '）' : total
+  return workTimingText(t, task, now)
 }
 
 function activityAt(view: TaskView): number {

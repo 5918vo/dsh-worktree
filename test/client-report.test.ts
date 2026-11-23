@@ -559,6 +559,20 @@ test('the report shows the accumulated work time and marks a running clock', () 
   )
 })
 
+test('an English report localizes work units and the running marker', () => {
+  const now = new Date(2026, 0, 5, 9, 7).getTime()
+  const line = (over: Partial<WorktreeTask>) =>
+    buildAcceptanceReport(makeInput({ task: makeTask(over), t: en, now }))
+      .split('\n')
+      .find((l) => l.startsWith('- Work time:'))
+
+  assert.equal(line({ workMs: 45 * 60 * 1000 }), '- Work time: 45 min')
+  assert.equal(
+    line({ workMs: 45 * 60 * 1000, workStartedAt: now - 90 * 60 * 1000 }),
+    '- Work time: 2 h 15 m (Timing)',
+  )
+})
+
 const workButtons = (tree: any) => flatten(tree).filter((node) =>
   node.type === 'button'
   && (String(node.props?.['aria-label'] || '').startsWith(zh.taskWorkStart)

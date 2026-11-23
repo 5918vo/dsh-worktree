@@ -11,7 +11,7 @@ import { fill, mdBlock, mdCodeCell, mdInline, reportTimestamp } from './markdown
 import { branchHeadSha, criteria, criteriaProgress } from './model'
 import { buildTaskLifecycle, lifecycleCycleDays, lifecycleLabelKey } from './task-lifecycle'
 import { dueInputValue, dueStateOf, parseEstimate } from '../task-meta'
-import { elapsedWorkMs, formatWorkDuration, hasWorkRecord, isWorkTiming } from '../task-timer'
+import { workTimingText } from './work-format'
 
 export interface ReportInput {
   task: WorktreeTask
@@ -116,8 +116,7 @@ export function buildAcceptanceReport(input: ReportInput): string {
   lines.push(metaLine(t.reportDue, dueText))
   // Hand-timed work, in the same words as the board; a running timer is marked
   // so a printed report never looks like a finished stretch.
-  const workTotal = hasWorkRecord(task) ? formatWorkDuration(elapsedWorkMs(task, now)) : t.taskWorkEmpty
-  lines.push(metaLine(t.taskWork, isWorkTiming(task) ? workTotal + '（' + t.taskWorkTiming + '）' : workTotal))
+  lines.push(metaLine(t.taskWork, workTimingText(t, task, now)))
   const head = branchHeadSha(task, snapshot)
   lines.push(metaLine(t.reportHead, mdCodeCell(head || '—')))
   if (task.mergedCommit) lines.push(metaLine(t.reportMergedCommit, mdCodeCell(task.mergedCommit)))

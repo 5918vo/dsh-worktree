@@ -699,7 +699,7 @@ export function saveSavedViews(views: SavedView[], storage?: Storage | null): { 
 - [ ] 截止日期、依赖、估算、工时、注意力筛选、标签筛选、归档开关互相兼容；组合结果正确。
 - [ ] 旧任务记录（无新字段）加载不报错，排序与状态不变。
 - [ ] `npm run check:locale` 通过；中英文 key 完全一致。
-- [ ] `npm run verify`（typecheck + locale + 测试 + 构建）通过，测试数量不少于当前基线的 **560** 项并有所增加（目标 600–640 项；实际 643 项）。
+- [ ] `npm run verify`（typecheck + locale + 测试 + 构建）通过，测试数量不少于当前基线的 **560** 项并有所增加（目标 600–640 项；实际 645 项）。
 - [ ] README、CHANGELOG、docs/frontend-design.md、docs/i18n-terminology.md、package.json、package-lock.json 由主线程更新到 1.15.0。
 - [ ] 不引入新依赖；只新增 `task/timer` 路由；现有接口语义只做可选字段扩展。
 
@@ -747,6 +747,7 @@ export function saveSavedViews(views: SavedView[], storage?: Storage | null): { 
 | `src/client/publish-state.ts` | 草稿增加 `estimate` |
 | `src/client/publish.ts` | 高级区规模估算下拉 |
 | `src/client/stage.ts` | 任务信息增加工时行与规模估算行；计时 30 秒刷新 |
+| `src/client/work-format.ts` | 新增：把当前语言字典映射为工时单位模板（界面与报告共用） |
 | `src/client/rail.ts` | 计时中 chip、估算 chip、保存视图下拉 / 对话框 |
 | `src/client/board.ts` | 计时回调、保存视图状态与持久化接线 |
 | `src/client/project-insights.ts` | 负载口径（进行中点数 / 已估算 / 覆盖率） |
@@ -803,16 +804,25 @@ export function saveSavedViews(views: SavedView[], storage?: Storage | null): { 
 - **任务信息与左栏**：`stage.ts` 与 `rail.ts` 的导入合并估算、计时与保存视图依赖；任务信息保留「估算 → 截止 → 工时」顺序，左栏同时显示计时 chip、估算 chip 与保存视图下拉。
 - **报告**：单任务报告同时输出「规模估算」与「工时」行；项目报告任务表列顺序统一为 `序号 / 状态 / 任务 / 分支 / 验收 / 优先级 / 估算 / 截止 / 工时 / 标签 / 最近活动`，表头、分隔行、数据行与每任务详情同步调整。
 - **测试**：`test/http-flow.test.ts` 拼接估算与计时的 publish / meta / timer 用例；`test/client-project-report.test.ts` 的期望表头与行数据加入估算 / 工时两列，并修正前缀匹配顺序。
-- **文案**：locale 自动合并为 `zh=848` / `en=848`；`docs/i18n-terminology.md` 的键名与占位符按实际 locale 修正（`taskWorkEmpty` / `taskWorkTiming` / `taskEstimateEmpty` / `depGraphHasCycle` / `riskRadar` / `savedViewSelect` 等，移除不存在的 `{points}`）。
+- **文案**：locale 自动合并后统一为 `zh=855` / `en=855`；`docs/i18n-terminology.md` 的键名与占位符按实际 locale 修正（`taskWorkEmpty` / `taskWorkTiming` / `taskEstimateEmpty` / `depGraphHasCycle` / `riskRadar` / `savedViewSelect` 等，移除不存在的 `{points}`）。
+- **独立复核修正（英文工时单位）**：复核发现英文报告仍输出中文「分 / 小时 / 天」。`formatWorkDuration` 改为接受 `WorkDurationUnits` 模板，新增 `src/client/work-format.ts` 把当前字典映射为模板；新增 7 个 locale 键（`taskWorkUnderMinute` / `taskWorkMinutes` / `taskWorkHours` / `taskWorkHoursMinutes` / `taskWorkDays` / `taskWorkDaysHours` / `taskWorkTimingSuffix`），界面与两份报告共用。英文报告现在输出 `45 min` / `2 h 15 m (Timing)`，并有单任务与项目报告双侧测试。
+- **独立复核修正（依赖图可访问性）**：依赖图 SVG 原同时带 `role="img"` / `aria-label` 与 `aria-hidden="true"`，语义矛盾；改为纯装饰 SVG（仅 `aria-hidden`），图摘要移到卡片可见提示行，键盘与读屏入口仍是下方按层任务列表。
+- 复核提出的其余 nit（保存视图对话框同步 busy 状态、项目详情纯函数未 memo、`upsertSavedView` 对纯空白名字的回退）不影响正确性或性能，留待后续清理。
 
 ### 10.3 验证结果
 
 - `npm run typecheck`：通过。
-- `npm run check:locale`：通过，`zh=848 en=848`，客户端引用 618 个键。
-- `npm test`：643 项全部通过，0 失败；基线 560 项，净增 83 项。
-- `npm run build`：通过，`dist/index.js` 与 `dist/client.js`（648.2kb）生成。
-- `npm run verify`：通过（typecheck + locale + 643 项测试 + 构建）。
+- `npm run check:locale`：通过，`zh=855 en=855`，客户端引用 625 个键。
+- `npm test`：645 项全部通过，0 失败；基线 560 项，净增 85 项。
+- `npm run build`：通过，`dist/index.js` 与 `dist/client.js`（649.5kb）生成。
+- `npm run verify`：通过（typecheck + locale + 645 项测试 + 构建）。
 - 集成提交后工作区无冲突标记，`git diff --check` 无空白错误。
+
+### 10.4 验收审批
+
+- 独立 reviewer：`delegate_task` + `role: review`，模型 `mm/workbuddy/glm-5.3[1m]`（实际运行 `mm/workbuddy/glm-5.3`），只读，不共享主线程推理。
+- 复核结论：**可合并**，未发现 blocker / major；1 个 minor（英文报告工时单位仍为中文）已在合并前修复，1 个可访问性 nit（依赖图 SVG 语义矛盾）已修复，其余 3 个 nit 记录在 10.2 并留待后续。
+- reviewer 在复核时独立运行 `typecheck`、`check:locale`、643 项测试、构建与 `git diff --check`，并对风险雷达、依赖图、保存视图、工时格式化做了定向验证；修复后主线程复跑 `npm run verify`，645 项测试通过。
 
 ### 10.5 PR
 

@@ -229,7 +229,7 @@ test('the task table carries a work-time column and repeats it per task', () => 
 test('English locale produces the same structure', () => {
   const text = buildProjectReport({
     project: project(),
-    views: [view({ title: 'Alpha', notes: 'n' })],
+    views: [view({ title: 'Alpha', notes: 'n', workMs: 45 * 60 * 1000 })],
     t: en,
     statusLabel: () => 'review',
     now: 0,
@@ -237,4 +237,7 @@ test('English locale produces the same structure', () => {
   assert.match(text, /^# Project acceptance report/)
   assert.match(text, /## Task list/)
   assert.match(text, /\*\*Notes\*\*: n/)
+  // Duration units follow the English dictionary instead of leaking 分 / 小时.
+  assert.match(text, /\| 45 min \|/)
+  assert.match(text, /- Work time: 45 min/)
 })

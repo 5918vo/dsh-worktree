@@ -113,3 +113,21 @@ test('durations format in whole minutes, hours and days', () => {
   // Sub-minute remainders are dropped, not rounded up.
   assert.equal(formatWorkDuration(HOUR + 59 * SECOND), '1 小时')
 })
+
+const EN_UNITS = {
+  underMinute: 'under 1 min',
+  minutes: '{n} min',
+  hours: '{n} h',
+  hoursMinutes: '{h} h {m} m',
+  days: '{n} d',
+  daysHours: '{d} d {h} h',
+}
+
+test('duration units follow the supplied templates without changing the arithmetic', () => {
+  assert.equal(formatWorkDuration(59 * SECOND, EN_UNITS), 'under 1 min')
+  assert.equal(formatWorkDuration(45 * MINUTE, EN_UNITS), '45 min')
+  assert.equal(formatWorkDuration(2 * HOUR, EN_UNITS), '2 h')
+  assert.equal(formatWorkDuration(2 * HOUR + 15 * MINUTE, EN_UNITS), '2 h 15 m')
+  assert.equal(formatWorkDuration(3 * DAY, EN_UNITS), '3 d')
+  assert.equal(formatWorkDuration(3 * DAY + 4 * HOUR, EN_UNITS), '3 d 4 h')
+})

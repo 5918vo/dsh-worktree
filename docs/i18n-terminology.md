@@ -41,7 +41,7 @@
 | 结构化搜索 | 结构化搜索 | structured search | `searchSyntaxHint`；语法 `tag:` / `priority:` / `status:`，解析器 `src/client/search-query.ts` |
 | 停滞 | 停滞 | stalled | `attentionStalled`；行内「停滞 {n} 天」`attentionStalledDays`，汇总 `attentionSummaryStalled` |
 | 项目验收报告 | 项目验收报告 | project acceptance report | `projectReport`；文件名 `project-<slug>-<YYYYMMDD>-<HHmm>.md`，与单任务 `acceptance report` 区分 |
-| 工时 | 工时 | work time | `taskWork`；未记录 `taskWorkEmpty`，计时中 `taskWorkTiming`，按钮 `taskWorkStart` / `taskWorkStop`；报告复用 `taskWork` |
+| 工时 | 工时 | work time | `taskWork`；未记录 `taskWorkEmpty`，计时中 `taskWorkTiming`，按钮 `taskWorkStart` / `taskWorkStop`；单位模板 `taskWorkUnderMinute` / `taskWorkMinutes` / `taskWorkHours` / `taskWorkHoursMinutes` / `taskWorkDays` / `taskWorkDaysHours`，计时中后缀 `taskWorkTimingSuffix`；报告复用这些键 |
 | 规模估算 | 规模估算 | estimate | `taskEstimate`；点数 `{n} 点` / "{n} pt"，下拉空选项 `taskEstimateEmpty` / `taskEstimatePoints`；项目负载 `insightsWorkload` |
 | 依赖关系图 | 依赖关系图 | dependency graph | `depGraphTitle`；层 `depGraphLayer`，缺失 `depGraphMissing`，循环 `depGraphHasCycle` / `depGraphNoCycle` / `depGraphCycles`，截断 `depGraphTruncated` |
 | 风险雷达 | 风险雷达 | risk radar | `riskRadar`；高 / 中 / 低 `riskHigh` / `riskMedium` / `riskLow`，原因 `riskReasonOverdue` 等 |

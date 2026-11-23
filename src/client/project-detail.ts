@@ -351,8 +351,6 @@ export function ProjectDetail(props: any) {
           viewBox: '0 0 ' + depGraph.width + ' ' + depGraph.height,
           width: depGraph.width,
           height: depGraph.height,
-          role: 'img',
-          'aria-label': depSummary,
           'aria-hidden': 'true',
           focusable: 'false',
         },
@@ -440,7 +438,7 @@ export function ProjectDetail(props: any) {
             h('i', { className: 'dshwd-depgraph-swatch dshwd-depgraph-swatch--' + item.mod, 'aria-hidden': 'true' }),
             item.label))),
       }),
-      h('div', { className: 'dshw-hint', style: { marginBottom: '8px' } }, t.depGraphHint),
+      h('div', { className: 'dshw-hint', style: { marginBottom: '8px' } }, t.depGraphHint + ' · ' + depSummary),
       depGraphBody)
 
     // Risk radar: a sortable, explainable hint derived from the rows on screen.

@@ -5,9 +5,9 @@
  * helpers, so a duration is computed and rendered identically everywhere. The
  * clock is injectable so no test depends on the real time.
  *
- * Units are deliberately locale-free (`分` / `小时` / `天`): the label around a
- * duration is translated by the caller, but the number itself must not differ
- * between the interface, the tools and the reports.
+ * The default units are Chinese so host callers and tests keep one stable
+ * output; the board and both reports pass the active dictionary's templates
+ * through `workDurationUnits`, so an English interface never renders `分` / `天`.
  */
 
 export interface TimerSnapshot {
@@ -75,23 +75,58 @@ export function stopWorkTimer(task: TimerSnapshot, now?: number): { workMs: numb
   return { workMs: Math.min(recorded + intervalMs(startedAt, now), MAX_MS), workStartedAt: undefined }
 }
 
+/** Locale-specific duration templates; this module carries no locale data itself. */
+export interface WorkDurationUnits {
+  underMinute: string
+  /** `{n}` = whole minutes. */
+  minutes: string
+  /** `{n}` = whole hours. */
+  hours: string
+  /** `{h}` hours and `{m}` minutes. */
+  hoursMinutes: string
+  /** `{n}` = whole days. */
+  days: string
+  /** `{d}` days and `{h}` hours. */
+  daysHours: string
+}
+
+/** Default Chinese templates, used by host callers and tests. */
+export const ZH_WORK_DURATION_UNITS: WorkDurationUnits = {
+  underMinute: '不足 1 分',
+  minutes: '{n} 分',
+  hours: '{n} 小时',
+  hoursMinutes: '{h} 小时 {m} 分',
+  days: '{n} 天',
+  daysHours: '{d} 天 {h} 小时',
+}
+
+function fillUnits(template: string, values: Record<string, number>): string {
+  return String(template).replace(/\{(n|h|m|d)\}/g, (_match: string, key: string) => String(values[key] ?? 0))
+}
+
 /**
  * Human readable duration: `不足 1 分` / `45 分` / `2 小时 15 分` / `3 天 4 小时`.
  *
- * 0, negative, NaN and Infinity all render as `不足 1 分` — never `NaN`; the
- * caller decides whether "no record" is a better label.
+ * 0, negative, NaN and Infinity all render as the units' `underMinute` text —
+ * never `NaN`; the caller decides whether "no record" is a better label.
  */
-export function formatWorkDuration(ms: unknown): string {
+export function formatWorkDuration(ms: unknown, units: WorkDurationUnits = ZH_WORK_DURATION_UNITS): string {
   const total = typeof ms === 'number' && Number.isFinite(ms) && ms > 0 ? Math.min(ms, MAX_MS) : 0
-  if (total < MINUTE) return '不足 1 分'
+  if (total < MINUTE) return String(units.underMinute)
   const minutes = Math.floor(total / MINUTE)
-  if (minutes < 60) return `${minutes} 分`
+  if (minutes < 60) return fillUnits(units.minutes, { n: minutes })
   const hours = Math.floor(minutes / 60)
   const restMinutes = minutes % 60
-  if (hours < 24) return restMinutes ? `${hours} 小时 ${restMinutes} 分` : `${hours} 小时`
+  if (hours < 24) {
+    return restMinutes
+      ? fillUnits(units.hoursMinutes, { h: hours, m: restMinutes })
+      : fillUnits(units.hours, { n: hours })
+  }
   const days = Math.floor(hours / 24)
   const restHours = hours % 24
-  return restHours ? `${days} 天 ${restHours} 小时` : `${days} 天`
+  return restHours
+    ? fillUnits(units.daysHours, { d: days, h: restHours })
+    : fillUnits(units.days, { n: days })
 }
 
 /** Whether the task currently has a running timer (shared by the store and the client). */
