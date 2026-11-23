@@ -816,4 +816,4 @@ case 'stalled': return String(t.attentionStalledDays).replace('{n}', String(/* d
 - **验证**：`npm run verify` 通过（typecheck + locale zh/en 各 723 键 + 408 tests / 0 fail + build 成功，`dist/index.js` 159.6kb、`dist/client.js` 524.0kb）。
 - **测试数量**：408（1.12.0 为 338，新增 70）。
 - **遗留**：无已知阻塞。项目报告体量随任务数增长，长项目建议直接下载 `.md` 查看。
-- **PR**：待创建后补充编号与链接。
+- **PR**：[#24](https://github.com/5918vo/dsh-worktree/pull/24)（`t3/daily-five-features-pr-workflow` → `master`）。
