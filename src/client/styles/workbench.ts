@@ -68,6 +68,7 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-search::placeholder { color: var(--text-3); }
 .dshw-board .dshwd-search:focus { border-color: var(--line-strong); }
 .dshw-board .dshwd-search-kbd { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); font-size: 10px; color: var(--text-3); padding: 1px 4px; border: 1px solid var(--line); border-radius: 4px; }
+.dshw-board .dshwd-search-hint { font-size: 10.5px; line-height: 1.4; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 2px; }
 .dshw-board .dshwd-tag-filter-wrap { position: relative; }
 .dshw-board .dshwd-tag-filter { width: 100%; height: 28px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg-stage); color: var(--text-2); font-size: 11.5px; outline: none; }
 .dshw-board .dshwd-tag-filter:focus { border-color: var(--line-strong); }

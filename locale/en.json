@@ -544,6 +544,7 @@
   "boardPublishShortcut": "Publish task (shortcut N)",
   "boardReady": "Ready",
   "boardSearch": "Search tasks or branches…",
+  "searchSyntaxHint": "Try tag:frontend priority:high status:review; quote values with spaces, e.g. tag:\"needs design\".",
   "boardSelectTask": "Select a task",
   "boardSelectTaskHint": "Pick a task on the left, or publish a new worktree task.",
   "boardStartAfterPublish": "Start an agent session after publishing",

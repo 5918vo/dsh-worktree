@@ -102,9 +102,12 @@ export function Rail(props: RailProps) {
           value: props.query,
           placeholder: t.boardSearch,
           'aria-label': t.boardSearch,
+          'aria-description': t.searchSyntaxHint,
+          title: t.searchSyntaxHint,
           onInput: (e: any) => props.onQuery(e.target.value),
         }),
         h('span', { className: 'dshwd-search-kbd dshwd-mono' }, '/')),
+      props.query ? null : h('div', { className: 'dshwd-search-hint' }, t.searchSyntaxHint),
       props.tags && props.tags.length
         ? h('div', { className: 'dshwd-tag-filter-wrap' },
           h('select', {

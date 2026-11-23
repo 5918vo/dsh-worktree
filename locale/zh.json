@@ -544,6 +544,7 @@
   "boardPublishShortcut": "发布任务（快捷键 N）",
   "boardReady": "待开始",
   "boardSearch": "搜索任务或分支…",
+  "searchSyntaxHint": "支持 tag:前端 priority:high status:review；含空格用引号，如 tag:\"需要设计\"。",
   "boardSelectTask": "选择一个任务",
   "boardSelectTaskHint": "从左侧选择任务，或发布一个新的 Worktree 任务。",
   "boardStartAfterPublish": "发布后立即启动 Agent 会话",
