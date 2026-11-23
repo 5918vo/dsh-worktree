@@ -8,6 +8,7 @@ import { boardStatus, boardStatusLabel } from './model'
 import { buildProjectReport, projectReportFilename } from './project-report'
 import { buildProjectInsights } from './project-insights'
 import { buildDependencyGraph, DEP_GRAPH_LIMIT } from './dependency-graph'
+import { buildProjectRisk } from './project-risk'
 import { fill } from './markdown'
 import { DEFAULT_WORKTREE_DIR } from '../worktree-layout'
 
@@ -442,6 +443,56 @@ export function ProjectDetail(props: any) {
       h('div', { className: 'dshw-hint', style: { marginBottom: '8px' } }, t.depGraphHint),
       depGraphBody)
 
+    // Risk radar: a sortable, explainable hint derived from the rows on screen.
+    // The card never writes, never reorders the board and never changes status.
+    const risk = buildProjectRisk(v.tasks, Date.now())
+    const riskReasonLabel = (reason: any): string => {
+      switch (reason && reason.code) {
+        case 'broken': return t.riskReasonBroken
+        case 'overdue': return fill(t.riskReasonOverdue, { n: reason.n })
+        case 'due-soon': return t.riskReasonDueSoon
+        case 'stalled': return fill(t.riskReasonStalled, { n: reason.n })
+        case 'blocked': return fill(t.riskReasonBlocked, { n: reason.n })
+        case 'criteria': return fill(t.riskReasonCriteria, { n: reason.n })
+        default: return ''
+      }
+    }
+    const riskStat = (key: string, label: string, value: number, tone: string) => h('div', {
+      key,
+      className: 'dshwd-risk-stat dshwd-risk-stat--' + tone,
+    },
+      h('span', { className: 'dshwd-risk-stat-num' }, value),
+      h('span', { className: 'dshwd-risk-stat-label' }, label))
+    const riskCard = h(Card, null,
+      h(CardHead, { icon: 'alert', title: t.riskRadar }),
+      h('div', { className: 'dshw-hint' }, t.riskRadarHint),
+      risk.open === 0
+        ? h('div', { className: 'dshw-hint' }, t.riskEmptyOpen)
+        : [
+          h('div', { key: 'stats', className: 'dshwd-risk-stats' },
+            riskStat('high', t.riskHigh, risk.high, 'err'),
+            riskStat('medium', t.riskMedium, risk.medium, 'warn'),
+            riskStat('low', t.riskLow, risk.low, 'ok')),
+          risk.high + risk.medium + risk.low === 0
+            ? h('div', { key: 'clear', className: 'dshw-hint' }, t.riskEmptyClear)
+            : h('div', { key: 'list', className: 'dshwd-risk-list', role: 'group', 'aria-label': t.riskRadar },
+              risk.top.map((item: any) => {
+                const reasons = item.reasons.map(riskReasonLabel).filter(Boolean)
+                const label = fill(t.riskItemLabel, { title: item.title, score: item.score, reasons: reasons.join(' · ') })
+                return h('button', {
+                  key: item.taskId,
+                  type: 'button',
+                  className: 'dshwd-risk-item',
+                  'aria-label': label,
+                  onClick: () => { if (props.onSelectTask) props.onSelectTask(item.taskId) },
+                },
+                  h('span', { className: 'dshwd-risk-item-title' }, item.title),
+                  h('span', { className: 'dshwd-risk-score dshwd-risk-score--' + item.level, 'aria-hidden': 'true' }, item.score),
+                  h('span', { className: 'dshwd-risk-reasons' },
+                    reasons.map((reason: string, index: number) => h('span', { key: index, className: 'dshwd-risk-chip' }, reason))))
+              })),
+        ])
+
     // The project report is generated locally from the views already on screen;
     // copying and downloading must never disagree, so both share one text.
     const projectReportText = () => buildProjectReport({
@@ -511,6 +562,7 @@ export function ProjectDetail(props: any) {
           : null,
         insightsCard,
         depGraphCard,
+        riskCard,
         h(Card, null,
           h(CardHead, { icon: 'file', title: t.projectReport }),
           h('div', { className: 'dshw-hint', style: { marginBottom: '10px' } }, t.projectReportHint),

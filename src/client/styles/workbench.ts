@@ -459,6 +459,29 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-depgraph-item--cycle { border-color: var(--err-line); color: var(--err); }
 .dshw-board .dshwd-depgraph-item-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dshw-board .dshwd-depgraph-item-status { flex: none; font-size: 10.5px; color: var(--text-3); }
+
+/* ---------- risk radar: sortable heuristic signals -------------------------- */
+.dshw-board .dshwd-risk-stats { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin-top: 12px; }
+.dshw-board .dshwd-risk-stat { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg-elevated); }
+.dshw-board .dshwd-risk-stat-num { font-family: "JetBrains Mono", "Cascadia Code", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 18px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.dshw-board .dshwd-risk-stat-label { font-size: 11px; color: var(--text-3); }
+.dshw-board .dshwd-risk-stat--err { border-color: var(--err-line); background: var(--err-soft); }
+.dshw-board .dshwd-risk-stat--err .dshwd-risk-stat-num { color: var(--err); }
+.dshw-board .dshwd-risk-stat--warn { border-color: var(--warn-line); background: var(--warn-soft); }
+.dshw-board .dshwd-risk-stat--warn .dshwd-risk-stat-num { color: var(--warn); }
+.dshw-board .dshwd-risk-stat--ok { border-color: var(--ok-line); background: var(--ok-soft); }
+.dshw-board .dshwd-risk-stat--ok .dshwd-risk-stat-num { color: var(--ok); }
+.dshw-board .dshwd-risk-list { display: flex; flex-direction: column; margin-top: 12px; border-top: 1px solid var(--line); }
+.dshw-board .dshwd-risk-item { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 3px 10px; align-items: center; width: 100%; padding: 9px 2px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; }
+.dshw-board .dshwd-risk-item:hover { background: var(--bg-hover); }
+.dshw-board .dshwd-risk-item:focus-visible { outline: 2px solid var(--accent-line); outline-offset: -2px; }
+.dshw-board .dshwd-risk-item-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.dshw-board .dshwd-risk-score { min-width: 22px; height: 20px; padding: 0 6px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); background: var(--bg-elevated); font-family: "JetBrains Mono", "Cascadia Code", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 700; }
+.dshw-board .dshwd-risk-score--high { color: var(--err); border-color: var(--err-line); background: var(--err-soft); }
+.dshw-board .dshwd-risk-score--medium { color: var(--warn); border-color: var(--warn-line); background: var(--warn-soft); }
+.dshw-board .dshwd-risk-score--low { color: var(--ok); border-color: var(--ok-line); background: var(--ok-soft); }
+.dshw-board .dshwd-risk-reasons { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 5px; }
+.dshw-board .dshwd-risk-chip { padding: 1px 6px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg-elevated); color: var(--text-2); font-size: 10.5px; }
 @container dshwboard (max-width: 980px) {
   .dshw-board .dshwd-app { grid-template-columns: 248px minmax(0,1fr) 0; }
   .dshw-board .dshwd-app.dshwd-hide-left { grid-template-columns: 0 minmax(0,1fr) 0; }
