@@ -68,6 +68,9 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-search::placeholder { color: var(--text-3); }
 .dshw-board .dshwd-search:focus { border-color: var(--line-strong); }
 .dshw-board .dshwd-search-kbd { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); font-size: 10px; color: var(--text-3); padding: 1px 4px; border: 1px solid var(--line); border-radius: 4px; }
+.dshw-board .dshwd-tag-filter-wrap { position: relative; }
+.dshw-board .dshwd-tag-filter { width: 100%; height: 28px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg-stage); color: var(--text-2); font-size: 11.5px; outline: none; }
+.dshw-board .dshwd-tag-filter:focus { border-color: var(--line-strong); }
 .dshw-board .dshwd-rail-tools { display: flex; align-items: center; gap: 6px; }
 .dshw-board .dshwd-archive-toggle { margin-left: auto; height: 27px; padding: 0 7px; font-size: 11px; flex: none; }
 .dshw-board .dshwd-filter { position: relative; flex: 1; min-width: 0; }
@@ -169,6 +172,21 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-chip.dshwd-accent { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
 .dshw-board .dshwd-chip.dshwd-ok { background: var(--ok-soft); border-color: var(--ok-line); color: var(--ok); }
 .dshw-board .dshwd-chip.dshwd-err { background: var(--err-soft); border-color: var(--err-line); color: var(--err); }
+.dshw-board .dshwd-chip.dshwd-tag { background: var(--bg-stage); border-color: var(--line); color: var(--text-3); font-family: var(--mono, ui-monospace, SFMono-Regular, Consolas, monospace); }
+.dshw-board .dshwd-chip.dshwd-weak { opacity: .7; }
+.dshw-board .dshwd-meta-grid { display: flex; flex-direction: column; gap: 12px; }
+.dshw-board .dshwd-meta-row { display: grid; grid-template-columns: 92px minmax(0, 1fr); align-items: start; gap: 12px; }
+.dshw-board .dshwd-meta-label { font-size: 12px; color: var(--text-3); padding-top: 4px; }
+.dshw-board .dshwd-meta-value { min-width: 0; }
+.dshw-board .dshwd-meta-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.dshw-board .dshwd-meta-chips .dshwd-btn { margin-left: auto; }
+.dshw-board .dshwd-meta-editor { display: flex; flex-direction: column; gap: 6px; }
+.dshw-board .dshwd-meta-editor-actions { display: flex; gap: 4px; }
+.dshw-board .dshwd-meta-select { height: 28px; max-width: 200px; }
+.dshw-board .dshwd-notes { font-size: 13px; }
+.dshw-board .dshwd-notes-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.dshw-board .dshwd-notes-input { width: 100%; }
+.dshw-board .dshwd-meta-notes .dshwd-btn { margin-top: 4px; }
 .dshw-board .dshwd-tabs { display: flex; gap: 22px; }
 .dshw-board .dshwd-tab { position: relative; padding: 8px 0 11px; border: none; background: transparent; color: var(--text-3); font-size: 13px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; transition: color .12s; }
 .dshw-board .dshwd-tab:hover { color: var(--text-2); }
@@ -371,6 +389,8 @@ export const WORKBENCH_CSS = `
   .dshw-board .dshwd-stage-head { padding: 14px 14px 0; }
   .dshw-board .dshwd-stage-body { padding: 16px 14px 28px; }
   .dshw-board .dshwd-topbar { padding: 0 14px; }
+  /* Metadata rows stack label over value once the stage is narrow. */
+  .dshw-board .dshwd-meta-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
 }
 /* Below ~720px the board is one column: rail and inspector become overlay
    sheets, stage/task view keeps the full width, and nothing may overflow. */

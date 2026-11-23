@@ -1,6 +1,6 @@
 # DeepSeek Worktree 任务插件
 
-`@5318vo/dsh-worktree` · v1.12.0 · 最后更新：2026-11-22
+`@5318vo/dsh-worktree` · v1.13.0 · 最后更新：2026-11-22
 
 每个任务对应一个真实的 DSH 会话。发布任务时创建独立的 Git worktree 和任务分支，会话以 worktree 为工作目录出现在左侧工作区。任务对话、审批、追问、中止和继续均使用 DSH 原生能力，工作台负责发布、查看状态和验收。
 
@@ -19,7 +19,12 @@
 - **验收清单逐项勾选**：待验收任务的每条验收标准可点击核对 / 取消，进度随任务记录持久化，并在概览标题与合并确认中显示。
 - **项目级合并门禁**：项目可开启「验收标准未全部核对时禁止合并」；开启后合并预检与执行都会以 `criteria-incomplete` 拦截，并给出还差几项。没有验收标准的任务不受影响。
 - **发布模板**：设置页维护可复用的发布模板（名称、标题、描述、验收标准），发布弹窗选择后自动填充，验收标准只采用库中已有条目，其余进入手动标准。
-- **任务置顶**：左栏任务行可置顶 / 取消置顶，置顶任务始终排在项目分组最前，再按创建时间倒序。
+- **任务置顶**：左栏任务行可置顶 / 取消置顶，置顶任务始终排在项目分组最前，其后按优先级、再按创建时间倒序。
+- **任务标签**：发布弹窗与任务详情都可维护标签（最多 8 个、每个 24 字符，中英文逗号分隔并自动去重）；左栏可按标签筛选，任务行显示标签 chip，搜索同时命中标签。
+- **任务优先级**：`low` / `normal` / `high` 三档，发布与详情都可选择；高优先级显示告警色 chip，列表按「置顶 → 优先级 → 创建时间倒序」统一排序。
+- **任务备注**：任务详情提供带字数计数的备注区（最长 2000 字符，空串即清除），搜索命中备注，报告会带上备注内容。
+- **停滞任务检测**：待开始 / 待验收 / 验收中超过 3 天、进行中超过 7 天没有活动（含提交）即标记为停滞，进入「停滞」筛选并在行内显示「停滞 N 天」；已合并 / 已清理 / 异常 / 已归档任务不参与判定。
+- **项目验收报告**：项目详情一键复制或下载整项目 Markdown 报告，包含项目元数据、状态统计、任务表与逐任务验收 / 备注，文件名 `project-<slug>-<YYYYMMDD>-<HHmm>.md`。
 - **会话快捷指令**：实时会话提供「继续 / 跑测试 / 总结进展 / 提交改动」四个快捷 chip 和指令输入框，`Ctrl/Cmd+Enter` 发送；运行中的会话自动排队，等待审批 / 回答时禁用。
 - **验收查看改动**：任务处于「待验收 / 验收中」时，任务详情展示相对基线分支的改动文件列表与逐文件 diff，包含已提交、未提交和未跟踪文件。
 - **验收报告复制与下载**：「验收标准」分区标题右侧提供「复制报告」「下载 .md」，把任务信息、验收进度、提交、改动文件汇总和工作区状态导出为当前界面语言的 Markdown，适合贴到 PR 或走查记录里；报告只含文件路径与行数统计，不含 diff 正文。
@@ -151,6 +156,11 @@ Git 状态与会话状态分开显示：`review` 只表示 worktree 有待验收
 - 概览中的验收标准可逐项点击核对：标题显示「已核对 n/total」，全部核对后显示完成态；勾选状态写入任务记录，刷新或重启后保持。已合并 / 已清理任务保持只读并显示全部完成。合并确认弹窗会列出验收进度；项目开启合并门禁时，未核对项会同时阻止合并并提示还差几项。
 - 「验收标准」标题右侧的「复制报告」把 Markdown 报告写入剪贴板，「下载 .md」保存为 `acceptance-<id8>-<YYYYMMDD>-<HHmm>.md`；两者内容完全一致，复制或写入失败以 Toast 报错，任一操作进行中时两个按钮禁用。
 - 左栏任务行提供置顶按钮（`aria-pressed`），置顶任务显示图钉标记并固定在分组顶部；重复置顶保留首次时间，不会因为再点一次而重新排序。
+- 搜索下方在有标签时出现「按标签筛选」下拉，选项来自当前看板的全部标签（忽略大小写去重、按字母序）；任务行显示最多 2 个 `#tag` chip 与 `+N`，悬停可看完整列表。筛选无匹配时左栏给出说明和「全部标签」入口，不会只剩空白。
+- 任务行按优先级显示 chip：高优先级为告警色，低优先级为弱化色，普通优先级不显示；项目分组与发布后的增量列表都使用同一套排序规则。
+- 任务「概览」在描述与验收标准之间新增「任务信息」：标签可编辑（保存前校验数量与长度）、优先级选择后立即保存、备注输入框带 `n/2000` 计数并在切换任务时重置；没有保存回调时保持只读展示。
+- 停滞任务在行内显示「停滞 N 天」，并进入「停滞」筛选与汇总条；当看板只剩停滞任务时，汇总条使用停滞专属文案而不是「待验收」。
+- 项目详情新增「项目验收报告」卡片：复制与下载共用同一份纯函数输出，报告按「置顶 → 优先级 → 创建时间」排序，验收标准用 `[x]` / `[ ]` 标记，空项目 / 无标准 / 无备注都有本地化说明。
 - 实时会话底部提供快捷指令：chip 只负责填充输入框，发送前可修改；`Ctrl/Cmd+Enter` 或「发送」提交。会话运行中提示「指令会排队执行」，等待审批 / 回答时输入区禁用并说明原因。
 - 发布弹窗支持选择项目/基线、标题与描述（均必填）、从全局验收标准库勾选 + 手动补充、高级选项里的自定义分支与模型选择；提交中禁用关闭与重复提交。续作任务会预填「原标题（续）」和原合并目标，并可选择「作为普通任务发布」或带上合并后新增的提交。
 - 「切到主仓库验收」仅在任务进入待验收（`review`）后可用；待开始、进行中（`developing`）时在概览页说明原因，避免在开发完成前进入验收。
@@ -201,7 +211,10 @@ src/client/
 ├─ i18n.ts                    # 直接引用 locale/*.json
 ├─ icons.ts
 ├─ format.ts                  # 时间、路径、文本、diff、复制、下载
+├─ markdown.ts               # 报告共用的 Markdown 转义、占位符、时间戳、slug
 ├─ report.ts                  # 验收报告 Markdown 纯函数
+├─ project-report.ts         # 项目验收报告 Markdown 纯函数
+├─ staleness.ts              # 停滞任务判定（阈值、最近活动、停滞天数）
 ├─ quick-prompts.ts           # 会话快捷指令文本与禁用原因
 ├─ timeline.ts                # 会话时间线与稳定 key
 ├─ status.ts                  # 状态到 tone / 文案的映射
@@ -257,12 +270,14 @@ POST task/merge-preview
 POST task/cleanup
 POST task/delete
 POST task/pin
+POST task/meta
 ```
 
 - `publish`、`projects/*`、`tasks`、`bind`、`task/*`、`templates/save`、`templates/delete` 需要 `x-dsh-worktree-token`。
 - `templates` 只读接口返回全部发布模板；保存与删除在 Store 的跨进程锁内读改写，响应始终是完整的 `{ templates }` 列表。
 - `projects/update` 可带 `mergeGate: 'off' | 'criteria'`；其他取值返回 400。
 - `task/pin` 请求体 `{ id, pinned }`，只写入展示字段 `pinnedAt`，不改变任务状态与 Git。
+- `task/meta` 请求体 `{ id, tags?, priority?, notes? }`：只处理实际出现的键，`tags: []` / `priority: 'normal'` / `notes: ''` 才是清空；标签或备注超限、优先级非法返回 400，任务不存在返回 404。
 - `session` 用于申请工作台 token；`config`、`recents`、`branches` 是本地查询接口。
 - `cleanup` 可带 `force`、`deleteBranch`。
 - `publish` 未传 `branchName` 时使用 Hash 命名规则。
@@ -272,15 +287,15 @@ POST task/pin
 ## 模型工具
 
 ```text
-worktree_publish { repository, base_branch?, title, task, branch_name?, parent_id?, start? }
+worktree_publish { repository, base_branch?, title, task, branch_name?, parent_id?, start?, tags?, priority? }
 worktree_tasks   {}
-worktree_act     { id, action, force?, delete_branch? }
+worktree_act     { id, action, force?, delete_branch?, tags?, priority?, notes? }
 ```
 
 `worktree_act.action` 取值：
 
 ```text
-checkout | back | merge | cleanup | delete | pin | unpin
+checkout | back | merge | cleanup | delete | pin | unpin | meta
 ```
 
 ## 配置

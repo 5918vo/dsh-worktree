@@ -6,6 +6,7 @@ import {
   contentText,
   diffCounts,
   dirLabel,
+  downloadText,
   firstLine,
   fmtDuration,
   fmtK,
@@ -153,4 +154,40 @@ test('pathParts breaks long paths at separators', () => {
   assert.deepEqual(pathParts('C:/a/b/c.txt'), ['C:\\', 'a\\', 'b\\', 'c.txt'])
   assert.deepEqual(pathParts('/home/u/x'), ['/', 'home/', 'u/', 'x'])
   assert.deepEqual(pathParts(''), [''])
+})
+
+test('downloadText reports false when the browser APIs are missing', () => {
+  // Node has no `document`, so the helper must decline instead of throwing.
+  assert.equal(downloadText('# report', 'a.md'), false)
+})
+
+test('downloadText clicks a hidden link with the requested file name', () => {
+  const globals: any = globalThis as any
+  const originalUrl = globals.URL
+  const originalDoc = globals.document
+  const clicked: string[] = []
+  const link: any = {
+    style: {},
+    remove() {},
+    click() {
+      clicked.push(String(this.download))
+      assert.equal(this.href, 'blob:fake')
+      assert.equal(this.style.display, 'none')
+    },
+  }
+  try {
+    globals.URL = { createObjectURL: () => 'blob:fake', revokeObjectURL() {} }
+    globals.document = {
+      createElement: (tag: string) => {
+        assert.equal(tag, 'a')
+        return link
+      },
+      body: { appendChild() {} },
+    }
+    assert.equal(downloadText('# report', 'project-demo-20260102-0304.md'), true)
+    assert.deepEqual(clicked, ['project-demo-20260102-0304.md'])
+  } finally {
+    globals.URL = originalUrl
+    globals.document = originalDoc
+  }
 })

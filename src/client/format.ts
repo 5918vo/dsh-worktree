@@ -249,3 +249,23 @@ export function copyText(text: string): Promise<boolean> {
   }
   return Promise.resolve(fallbackCopy(text))
 }
+
+/** Save text as a local file. Returns false when the browser blocks it. */
+export function downloadText(text: string, filename: string): boolean {
+  try {
+    if (typeof Blob === 'undefined' || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') return false
+    const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' })
+    const href = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = href
+    link.download = filename
+    link.style.display = 'none'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    setTimeout(() => { try { URL.revokeObjectURL(href) } catch { /* ignore */ } }, 1000)
+    return true
+  } catch {
+    return false
+  }
+}

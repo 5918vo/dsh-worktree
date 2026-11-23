@@ -15,6 +15,7 @@ import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { normalizeCriteria } from './criteria.js'
+import { NOTES_MAX_LENGTH, normalizePriority, normalizeTags, validateTags } from './task-meta.js'
 import { Project, TaskTemplate, WorktreeTask } from './models.js'
 
 /** Outcome of an atomic session binding; callers translate conflicts into 409s. */
@@ -36,6 +37,21 @@ export type PinResult =
 export type TemplateResult =
   | { ok: true; item: TaskTemplate; templates: TaskTemplate[] }
   | { ok: false; reason: 'missing' }
+
+/** Presentation fields updated together by the meta endpoint. */
+export type TaskMetaPatch = {
+  tags?: unknown
+  priority?: unknown
+  notes?: unknown
+}
+
+/** Outcome of an atomic metadata update; callers map reasons to 404 / 400. */
+export type TaskMetaResult =
+  | { ok: true; task: WorktreeTask }
+  | {
+    ok: false
+    reason: 'missing' | 'tags-too-many' | 'tags-too-long' | 'priority-invalid' | 'notes-too-long'
+  }
 
 /**
  * One global task store for every DSH process on this machine.
@@ -551,6 +567,53 @@ export class Store {
         if (!task.pinnedAt) task.pinnedAt = Date.now()
       } else {
         delete task.pinnedAt
+      }
+      task.updatedAt = Date.now()
+      this.saveTasks()
+      return { ok: true, task }
+    })
+  }
+
+  /**
+   * Update tags / priority / notes under the store lock.
+   *
+   * One critical section for all three fields: refresh, validate, then save,
+   * so two DSH processes editing different fields cannot overwrite each other.
+   * Keys absent from the patch — or present with `undefined`, as an HTTP body
+   * may deliver — are left untouched; only an explicit empty value clears.
+   */
+  updateTaskMeta(taskId: string, patch: TaskMetaPatch): TaskMetaResult {
+    return this.withLock(() => {
+      this.refreshTasks()
+      const task = this.tasks.get(taskId)
+      if (!task) return { ok: false, reason: 'missing' }
+      const has = (key: keyof TaskMetaPatch) =>
+        Object.prototype.hasOwnProperty.call(patch, key) && patch[key] !== undefined
+
+      // Normalize and validate everything before touching the record, so a
+      // rejected field cannot leave a half-applied in-memory mutation.
+      const tags = has('tags') ? normalizeTags(patch.tags) : null
+      if (tags) {
+        const check = validateTags(tags)
+        if (!check.ok) return { ok: false, reason: check.error === 'too-many' ? 'tags-too-many' : 'tags-too-long' }
+      }
+      const priority = has('priority') ? normalizePriority(patch.priority) : null
+      if (has('priority') && !priority) return { ok: false, reason: 'priority-invalid' }
+      const notes = has('notes') ? String(patch.notes == null ? '' : patch.notes).trim() : null
+      if (notes !== null && notes.length > NOTES_MAX_LENGTH) return { ok: false, reason: 'notes-too-long' }
+      if (!tags && !priority && notes === null) return { ok: true, task }
+
+      if (tags) {
+        if (tags.length) task.tags = tags
+        else delete task.tags
+      }
+      if (priority) {
+        if (priority === 'normal') delete task.priority
+        else task.priority = priority
+      }
+      if (notes !== null) {
+        if (notes) task.notes = notes
+        else delete task.notes
       }
       task.updatedAt = Date.now()
       this.saveTasks()

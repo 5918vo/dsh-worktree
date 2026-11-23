@@ -320,3 +320,106 @@ test('task/archive hides a merged task from the default listing and unarchive re
   const def2 = await call('tasks', { method: 'GET', headers: auth })
   assert.equal(def2.body.tasks.some((v: any) => v.task.id === task.id), true, 'unarchive restores the default listing')
 })
+
+test('task/meta saves tags, priority and notes without clearing the other fields', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
+  const projectId = added.body.project.id
+  const published = await call('publish', {
+    body: { projectId, title: 'meta task', description: 'd' },
+    headers: auth,
+  })
+  assert.equal(published.status, 200, JSON.stringify(published.body))
+  const id = published.body.task.id
+
+  const seeded = await call('task/meta', {
+    body: { id, tags: ['ui', 'UI', 'api'], priority: 'high', notes: 'first note' },
+    headers: auth,
+  })
+  assert.equal(seeded.status, 200, JSON.stringify(seeded.body))
+  assert.deepEqual(seeded.body.view.task.tags, ['ui', 'api'])
+  assert.equal(seeded.body.view.task.priority, 'high')
+  assert.equal(seeded.body.view.task.notes, 'first note')
+
+  // Notes-only: the HTTP layer must not forward tags/priority as cleared.
+  const notesOnly = await call('task/meta', { body: { id, notes: 'second note' }, headers: auth })
+  assert.equal(notesOnly.status, 200, JSON.stringify(notesOnly.body))
+  assert.deepEqual(notesOnly.body.view.task.tags, ['ui', 'api'])
+  assert.equal(notesOnly.body.view.task.priority, 'high')
+  assert.equal(notesOnly.body.view.task.notes, 'second note')
+
+  // Explicit empty values clear the fields.
+  const cleared = await call('task/meta', { body: { id, tags: [], priority: 'normal', notes: '' }, headers: auth })
+  assert.equal(cleared.status, 200, JSON.stringify(cleared.body))
+  assert.equal('tags' in cleared.body.view.task, false)
+  assert.equal('priority' in cleared.body.view.task, false)
+  assert.equal('notes' in cleared.body.view.task, false)
+})
+
+test('task/meta rejects unauthenticated, unknown and invalid requests', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const anonymous = await call('task/meta', { body: { id: 'x', notes: 'n' } })
+  assert.equal(anonymous.status, 403)
+
+  const unknown = await call('task/meta', { body: { id: 'missing', notes: 'n' }, headers: auth })
+  assert.equal(unknown.status, 404)
+  assert.match(unknown.body.error, /任务不存在：missing/)
+
+  const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
+  const published = await call('publish', {
+    body: { projectId: added.body.project.id, title: 'meta invalid', description: 'd' },
+    headers: auth,
+  })
+  const id = published.body.task.id
+
+  const priority = await call('task/meta', { body: { id, priority: 'urgent' }, headers: auth })
+  assert.equal(priority.status, 400)
+  assert.equal(priority.body.error, '优先级只能是 low、normal 或 high')
+
+  const tooMany = await call('task/meta', {
+    body: { id, tags: Array.from({ length: 9 }, (_, i) => 't' + i) },
+    headers: auth,
+  })
+  assert.equal(tooMany.status, 400)
+  assert.equal(tooMany.body.error, '标签最多 8 个')
+
+  const tooLong = await call('task/meta', { body: { id, notes: 'x'.repeat(2001) }, headers: auth })
+  assert.equal(tooLong.status, 400)
+  assert.equal(tooLong.body.error, '备注最多 2000 个字符')
+})
+
+test('publish accepts tags and priority and rejects invalid values', async () => {
+  const auth = { 'x-dsh-worktree-token': token }
+  const added = await call('projects/add', { body: { repoPath: repo }, headers: auth })
+  const projectId = added.body.project.id
+
+  const published = await call('publish', {
+    body: { projectId, title: 'tagged', description: 'd', tags: ['ui', 'api'], priority: 'high' },
+    headers: auth,
+  })
+  assert.equal(published.status, 200, JSON.stringify(published.body))
+  assert.deepEqual(published.body.task.tags, ['ui', 'api'])
+  assert.equal(published.body.task.priority, 'high')
+
+  // normal is the default and stays out of the record.
+  const normal = await call('publish', {
+    body: { projectId, title: 'normal', description: 'd', priority: 'normal' },
+    headers: auth,
+  })
+  assert.equal(normal.status, 200, JSON.stringify(normal.body))
+  assert.equal('priority' in normal.body.task, false)
+
+  const badTags = await call('publish', {
+    body: { projectId, title: 'bad tags', description: 'd', tags: Array.from({ length: 9 }, (_, i) => 't' + i) },
+    headers: auth,
+  })
+  assert.equal(badTags.status, 400)
+  assert.equal(badTags.body.error, '标签最多 8 个')
+
+  const badPriority = await call('publish', {
+    body: { projectId, title: 'bad priority', description: 'd', priority: 'urgent' },
+    headers: auth,
+  })
+  assert.equal(badPriority.status, 400)
+  assert.equal(badPriority.body.error, '优先级只能是 low、normal 或 high')
+})

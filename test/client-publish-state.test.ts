@@ -101,3 +101,27 @@ test('isDetachedBranchLabel recognises git pseudo entries only', () => {
   assert.equal(isDetachedBranchLabel('main'), false)
   assert.equal(isDetachedBranchLabel(''), false)
 })
+
+test('initialPublishForm restores tags and priority from the draft', () => {
+  const form = initialPublishForm(draft({ tags: 'ui, api', priority: 'high' }))
+  assert.equal(form.tags, 'ui, api')
+  assert.equal(form.priority, 'high')
+})
+
+test('initialPublishForm defaults the priority to normal and drops unknown values', () => {
+  assert.equal(initialPublishForm(undefined).priority, 'normal')
+  assert.equal(initialPublishForm(draft({ priority: 'low' })).priority, 'low')
+  assert.equal(initialPublishForm(draft({ priority: 'urgent' })).priority, 'normal')
+  assert.equal(initialPublishForm(draft({ tags: undefined })).tags, '')
+})
+
+test('publishDraftDirty notices tag and priority edits', () => {
+  const base = draft({ title: 't' })
+  assert.equal(publishDraftDirty(base, draft({ title: 't' })), false)
+  assert.equal(publishDraftDirty(base, draft({ title: 't', tags: 'ui' })), true)
+  assert.equal(publishDraftDirty(base, draft({ title: 't', priority: 'high' })), true)
+  assert.equal(
+    publishDraftDirty(draft({ title: 't', tags: 'ui', priority: 'high' }), draft({ title: 't', tags: 'ui', priority: 'high' })),
+    false,
+  )
+})

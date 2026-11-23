@@ -2,6 +2,28 @@
 
 本文件记录 `@5318vo/dsh-worktree` 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.13.0] - 2026-11-22
+
+### 新增
+
+- 任务标签：任务记录新增可选 `tags`。发布弹窗高级区可填写标签（中英文逗号分隔、自动去 `#`、忽略大小写去重，最多 8 个、每个 24 字符），任务详情新增「任务信息」区可随时编辑；左栏新增按标签筛选（仅在存在标签时出现），任务行显示最多 2 个标签 chip 与 `+N` 剩余数，搜索同时命中标签。
+- 任务优先级：新增可选 `priority`（`low` / `normal` / `high`，`normal` 不落盘）。发布与详情都可选择，列表统一按「置顶 → 优先级 → 创建时间倒序」排序；高优先级显示告警色 chip，低优先级显示弱化 chip。
+- 任务备注：新增可选 `notes`（最长 2000 字符，空串即清除）。任务详情提供带字数计数的备注编辑区，搜索命中备注，单任务验收报告新增「备注」章节，`worktree_act` 新增 `meta` 动作。
+- 项目验收报告：项目详情新增报告卡片，一键复制或下载 Markdown。报告包含项目元数据、按状态统计、任务表（状态 / 分支 / 验收进度 / 优先级 / 标签 / 最近活动）与逐任务块（状态、分支、合并提交、验收标准、备注），文件名 `project-<slug>-<YYYYMMDD>-<HHmm>.md`。
+- 停滞任务检测：按状态阈值（待开始 / 待验收 / 验收中 3 天，进行中 7 天）识别长时间无活动的任务，最近一次提交也算活动。停滞任务进入「停滞」注意力分类与筛选，Rail 行显示「停滞 N 天」，汇总条在只剩停滞任务时使用专属文案；已合并 / 已清理 / 异常 / 已归档的任务不参与判定。
+
+### 接口
+
+- `WorktreeTask` 新增可选 `tags?: string[]`、`priority?: TaskPriority`、`notes?: string`，旧记录无需迁移，读取时按「无标签 / 普通 / 无备注」处理。
+- 新增纯函数模块 `src/task-meta.ts`（`parseTagText` / `normalizeTags` / `validateTags` / `normalizePriority` / `priorityRank` / `compareTaskOrder`）与 `src/client/staleness.ts`（`lastActivityAt` / `stalledDays`），宿主、客户端与测试共用同一套规则。
+- Store 新增原子方法 `updateTaskMeta(taskId, patch)`：在同一把账本锁内 refresh、校验、写入；键存在但值为 `undefined` 视为未提供，只有显式 `[]` / `normal` / `''` 才会清空。
+- 新增 `POST /dsh-worktree/api/task/meta`（`{ id, tags?, priority?, notes? }`，404 任务不存在；400 标签 / 优先级 / 备注校验失败），`worktree_publish` 接受 `tags` 与 `priority`，`worktree_act` 新增 `meta` 动作。
+- 报告生成拆分为纯函数模块 `src/client/markdown.ts`（转义、占位符、时间戳、slug）与 `src/client/project-report.ts`；`downloadText` 统一了浏览器下载行为。
+
+### 测试
+
+- 新增 `task-meta` / `client-staleness` / `client-project-report` / `client-attention-summary` 用例，并扩展 Store、HTTP、Runtime、发布草稿、客户端模型、报告与工具动作测试；覆盖标签解析与上限、备注清空、元数据部分更新、优先级排序、报告转义与文件名、停滞阈值与边界、注意力计数去重。
+
 ## [1.12.0] - 2026-11-22
 
 ### 变更

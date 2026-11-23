@@ -2,8 +2,10 @@ import { React, h } from './ui'
 import { Banner, Btn, Card, CardHead, Checkbox, CopyBtn, Icon, KV, MenuItem, Modal, Spinner, Stat, BranchCombobox, TextInput } from './primitives'
 import { useBranchInfo } from './hooks'
 import { post } from './context'
-import { copyText, cx, relTime } from './format'
+import { copyText, cx, downloadText, relTime } from './format'
 import { resolveStatus, pendingLabel } from './status'
+import { boardStatus, boardStatusLabel } from './model'
+import { buildProjectReport, projectReportFilename } from './project-report'
 import { DEFAULT_WORKTREE_DIR } from '../worktree-layout'
 
 export function ProjectDetail(props: any) {
@@ -231,6 +233,44 @@ export function ProjectDetail(props: any) {
       .sort((a: any, b: any) => ((b.task.updatedAt || b.task.createdAt || 0) - (a.task.updatedAt || a.task.createdAt || 0)))
       .slice(0, 6)
 
+    // The project report is generated locally from the views already on screen;
+    // copying and downloading must never disagree, so both share one text.
+    const projectReportText = () => buildProjectReport({
+      project,
+      views: v.tasks,
+      t,
+      statusLabel: (item: any) => boardStatusLabel(t, boardStatus(item.snapshot.status, isRunning(item.task))),
+    })
+    const copyProjectReport = async () => {
+      if (actionRef.current || busy) return
+      actionRef.current = true
+      setBusy('report')
+      try {
+        const ok = await copyText(projectReportText())
+        if (!ok) throw new Error(t.reportFailed)
+        if (props.notify) props.notify(t.projectReportCopied)
+      } catch (e: any) {
+        if (props.notify) props.notify(String((e && e.message) || t.reportFailed), true)
+      } finally {
+        actionRef.current = false
+        setBusy('')
+      }
+    }
+    const downloadProjectReport = () => {
+      if (actionRef.current || busy) return
+      actionRef.current = true
+      setBusy('report')
+      try {
+        if (!downloadText(projectReportText(), projectReportFilename(project))) throw new Error(t.reportFailed)
+        if (props.notify) props.notify(t.projectReportDownloaded)
+      } catch (e: any) {
+        if (props.notify) props.notify(String((e && e.message) || t.reportFailed), true)
+      } finally {
+        actionRef.current = false
+        setBusy('')
+      }
+    }
+
     const overviewBody = h('div', { className: 'dshw-stage-body' },
       h('div', { className: 'dshw-measure' },
         err ? h('div', { className: 'dshw-err', role: 'alert', style: { marginBottom: '16px' } }, h(Icon, { name: 'alert' }), h('span', null, err)) : null,
@@ -260,6 +300,12 @@ export function ProjectDetail(props: any) {
               h('span', { className: 'dshw-act-title' }, item.task.title),
               h('span', { className: 'dshw-act-time dshw-mono' }, pendingLabel(t, props.pendingMap[item.task.sessionId]))))))
           : null,
+        h(Card, null,
+          h(CardHead, { icon: 'file', title: t.projectReport }),
+          h('div', { className: 'dshw-hint', style: { marginBottom: '10px' } }, t.projectReportHint),
+          h('div', { style: { display: 'flex', gap: '8px' } },
+            h(Btn, { variant: 'ghost', size: 'sm', icon: 'copy', disabled: busy === 'report', onClick: () => void copyProjectReport() }, t.projectReportCopy),
+            h(Btn, { variant: 'ghost', size: 'sm', icon: 'file', disabled: busy === 'report', onClick: downloadProjectReport }, t.projectReportDownload))),
         h(Card, null,
           h(CardHead, { title: t.lastActivity }),
           recent.length

@@ -34,6 +34,7 @@ import {
   boardCta,
   boardStatus,
   boardStatusLabel,
+  collectTags,
   diffBaseSha,
   filterProjectViews,
   mergeGateMissing,
@@ -41,6 +42,7 @@ import {
   themeFor,
   type BoardFilter,
 } from './model'
+import { stalledDays } from './staleness'
 
 const THEME_KEY = 'dshw-board:theme'
 let boardStyleEl: HTMLStyleElement | null = null
@@ -83,6 +85,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
 
   const [query, setQuery] = React.useState('')
   const [filter, setFilter] = React.useState('all' as BoardFilter)
+  const [tagFilter, setTagFilter] = React.useState('')
   const [showArchived, setShowArchived] = React.useState(false)
   const [selectedTaskId, setSelectedTaskId] = React.useState('')
   const [selectedProjectId, setSelectedProjectId] = React.useState('')
@@ -368,6 +371,12 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     return out
   }, [views])
   const shownViews = React.useMemo(() => visibleProjectViews(views, showArchived), [views, showArchived])
+  // Tag options come from every task, archived or not, so the dropdown does not
+  // flicker while the archive toggle changes what the list shows.
+  const tagOptions = React.useMemo(() => collectTags(views), [views])
+  React.useEffect(() => {
+    if (tagFilter && tagOptions.indexOf(tagFilter) < 0) setTagFilter('')
+  }, [tagFilter, tagOptions])
   const pendingOf = (task: any) => task && task.sessionId ? (pendingMap[task.sessionId] || '') : ''
   const healthOf = (task: any) => task && task.sessionId ? (healthMap[task.sessionId] || null) : null
   const attentionMap = React.useMemo(() => {
@@ -381,6 +390,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
         running: sid ? !!sessionMap[sid] : false,
         health: sid ? healthMap[sid] || null : null,
         stale: !!err,
+        stalledDays: stalledDays(tv.task, tv.snapshot),
       }))
     }
     return map
@@ -399,11 +409,12 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     query,
     attentionOf,
     (task: any) => pendingLabel(t, pendingOf(task)),
+    tagFilter,
   )
   // Only an actually empty result may own the rail; a search or filter that
   // still matched rows must keep rendering them. While the first load is in
   // flight, show nothing rather than claiming there are no projects.
-  const emptyKind = loaded ? railEmptyKind(views, filtered, query, filter) : ''
+  const emptyKind = railEmptyKind(views, filtered, query, filter, loaded, tagFilter)
 
   const runQuick = (action: QuickAction, tv: TaskView, projectId: string) => {
     if (action === 'handle' || action === 'open-session') {
@@ -428,6 +439,9 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
         selectedProjectId,
         query,
         filter,
+        tags: tagOptions,
+        tagFilter,
+        onTagFilter: setTagFilter,
         showArchived,
         archivedCount,
         theme,
@@ -471,6 +485,8 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           onAction: actions.runAction,
           criteriaBusy: !!busy,
           onToggleCriterion: actions.runCriterion,
+          onSaveMeta: actions.runSaveMeta,
+          metaBusy: !!busy,
           onCopyReport: actions.runCopyReport,
           onDownloadReport: actions.runDownloadReport,
           // Any in-flight action freezes the snapshot the report would read.

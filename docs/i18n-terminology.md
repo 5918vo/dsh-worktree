@@ -29,6 +29,12 @@
 | 会话 | 会话 | session | `session` / `openSessionBtn` |
 | 执行清单 | 执行清单 | Todos | `liveTodos`（工具标签同为 "Todos"，不再用 "Tasks"） |
 | 处理（待处理时按钮） | 去处理 | Respond | `handlePending`（不再用 "Review"，避免与状态 review 混淆） |
+| 任务信息 | 任务信息 | Task info | `taskInfo`；标签 / 优先级 / 备注三个字段的容器 |
+| 标签 | 标签 | tag | `taskTags`；行内 chip `#tag`，筛选 `taskTagFilter`，全部 `taskTagAll` |
+| 优先级 | 优先级 | priority | `taskPriority`；三档 `priorityHigh` / `priorityNormal` / `priorityLow`，普通为默认且不落盘 |
+| 备注 | 备注 | notes | `taskNotes`；计数 `n/2000`，报告章节 `reportNotes`，空值 `taskNoNotes` |
+| 停滞 | 停滞 | stalled | `attentionStalled`；行内「停滞 {n} 天」`attentionStalledDays`，汇总 `attentionSummaryStalled` |
+| 项目验收报告 | 项目验收报告 | project acceptance report | `projectReport`；文件名 `project-<slug>-<YYYYMMDD>-<HHmm>.md`，与单任务 `acceptance report` 区分 |
 
 ## 2. 单位规则
 
@@ -36,6 +42,7 @@
 - 提交：中文「个领先提交」；英文 "{n} commit(s) ahead"。
 - 文件：中文「个文件」；英文 "{n} file(s)"。
 - 目录/任务：中文「个目录」「个任务」。
+- 标签 / 备注：长度限制用「个字符」，不写「位」；标签数量用「个」。
 
 ## 3. 占位符规则
 
