@@ -2,6 +2,33 @@
 
 本文件记录 `@5318vo/dsh-worktree` 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.14.0] - 2026-11-23
+
+### 新增
+
+- 任务截止日期：任务记录新增可选 `dueAt`（本地日历日零点毫秒）。发布弹窗高级区与任务详情都可设置 / 清除日期，非法日期在提交前拦截；任务行显示「逾期 N 天 / 今天到期 / N 天后到期」，新增「逾期」注意力分类与筛选、专属汇总文案；验收报告与项目报告同步输出截止日期，逾期时附天数。
+- 前置任务依赖：任务记录新增可选 `dependsOn`（最多 8 个同项目任务）。任务详情可添加 / 移除前置，服务端在同一把账本锁内校验数量、自依赖、任务是否存在、跨项目与循环依赖；未完成前置在任务行显示「等待 N 项前置」，前置合并或清理后自动解除。依赖是建议性提示，不阻止合并 / 清理，也不参与排序。
+- 项目洞察：项目详情新增「项目洞察」卡片，由已有任务时间戳派生平均 / 中位周期、近 7 天新建与合并、验收核对率、最久未完成天数，以及最近 7 天新建 / 合并双柱图；无样本时显示空态，不额外请求 Git、不写任务记录。
+- 结构化搜索：左栏搜索支持 `tag:` / `tags:`、`priority:` / `prio:`、`status:` 结构化条件，键名大小写不敏感，含空格的值用双引号；多个标签取 AND，多个优先级 / 状态取 OR，不同类别取 AND。未知或非法值回落为纯文本，空查询时显示语法提示。
+- 任务时间线：任务概览与验收报告把发布、置顶、合并（附短 SHA）、清理、归档与最近更新串成升序时间线，已合并任务显示「发布 → 合并 N 天」周期；异常时间戳忽略，纯派生不写记录。
+
+### 接口
+
+- `WorktreeTask` 新增可选 `dueAt?: number` 与 `dependsOn?: string[]`，旧记录无需迁移；`ProjectView` / `TaskView` 结构不变。
+- 新增纯函数模块 `src/task-deps.ts`（`normalizeDependencyIds` / `validateDependencyIds` / `dependencyStatus` / `isDependencyDone` / `isSameProject`，`DEPENDENCY_LIMIT = 8`）、`src/client/search-query.ts`（`parseSearchQuery` / `matchesStructuredQuery` / `hasStructuredFilters`）、`src/client/project-insights.ts`（`buildProjectInsights`，7 天窗口）、`src/client/task-lifecycle.ts`（`buildTaskLifecycle` / `lifecycleCycleDays`），以及 `src/task-meta.ts` 的日期工具（`parseDueAt` / `startOfLocalDay` / `dueDayOffset` / `dueStateOf` / `dueInputValue`，`DUE_SOON_DAYS = 3`）。
+- Store 的 `updateTaskMeta` 扩展 `dueAt` 与 `dependsOn`：任何字段校验失败都在写入前返回，新增 `due-invalid` / `deps-too-many` / `deps-self` / `deps-missing` / `deps-cross-project` / `deps-cycle` 原因；`dueAt: null` 与 `dependsOn: []` 才是清空。
+- `POST task/meta` 接受 `dueAt?` 与 `dependsOn?`；`POST publish` 接受 `dueAt`（`YYYY-MM-DD` 或毫秒时间戳，归一到本地日历日零点，非法值 400）；发布时不接受 `dependsOn`，创建后在详情维护。
+- `worktree_publish` 新增 `due_at`，`worktree_act` 新增 `due_at` 与 `depends_on`，任务 briefing 返回 `dueAt`。
+- `filterProjectViews` 内部解析结构化查询，项目名 / 仓库路径仍可触发整项目命中；Rail 新增 `depsOf`，Stage 新增 `dependencyItems` / `dependencyOptions` 与 `onSaveMeta.dueAt`。
+
+### 测试
+
+- 新增 `task-deps` / `client-search-query` / `client-project-insights` / `client-task-lifecycle` 用例，并扩展 Store、HTTP、工具动作、任务注意力、发布草稿、单任务报告与项目报告测试；覆盖日期解析与本地日历边界、逾期分类、依赖校验与循环检测、搜索语法与非法 token、洞察周期 / 吞吐 / 核对率、时间线排序与周期。`npm run verify` 全部通过。
+
+### 文档
+
+- `README.md`、`docs/frontend-design.md`、`docs/i18n-terminology.md` 与 `feature.md` 同步更新；`locale/zh.json` 与 `locale/en.json` 新增截止日期、依赖、洞察、搜索语法与任务时间线系列文案，`npm run check:locale` 通过。
+
 ## [1.13.0] - 2026-11-22
 
 ### 新增
