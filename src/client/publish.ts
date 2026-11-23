@@ -3,6 +3,7 @@ import { appCtx, getJson, postLong, bindSession } from './context'
 import { useBranchInfo } from './hooks'
 import { normalizeCriteria, parseCriteriaText } from '../criteria'
 import { applyPublishTemplate, branchChoices, initialPublishForm, publishDraftDirty, type PublishCheckInfo, type PublishDraft } from './publish-state'
+import { worktreePreviewRoot } from '../worktree-layout'
 import type { ProjectView, TaskView, TaskTemplate } from '../models'
 
 export interface PublishModalProps {
@@ -591,7 +592,7 @@ function validBranch(value: string) {
 
 function pathPreview(project: any) {
   if (!project) return ''
-  return `${project.name} → ${project.dirName || '.dsh-worktrees'}/<auto>`
+  return `${project.name} → ${worktreePreviewRoot(project)}/<auto>`
 }
 
 /** Footer path without the "→ worktree" arrow that reads as "will start". */

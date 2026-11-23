@@ -4,6 +4,7 @@ import { useBranchInfo } from './hooks'
 import { post } from './context'
 import { copyText, cx, relTime } from './format'
 import { resolveStatus, pendingLabel } from './status'
+import { DEFAULT_WORKTREE_DIR } from '../worktree-layout'
 
 export function ProjectDetail(props: any) {
     const t = props.t
@@ -318,7 +319,7 @@ export function ProjectDetail(props: any) {
                     id: 'dshw-project-dir',
                     className: 'dshw-input dshw-mono',
                     value: dirName,
-                    placeholder: '.dsh-worktrees',
+                    placeholder: cfg.dirName || DEFAULT_WORKTREE_DIR,
                     onChange: (e: any) => setDirName(e.target.value),
                   }),
                   h('div', { className: 'dshw-hint' }, t.worktreeDirHint))),

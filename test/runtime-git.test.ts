@@ -16,14 +16,14 @@ interface Fixture {
   runtime: Runtime
 }
 
-async function fixture(): Promise<Fixture> {
+async function fixture(configFor?: (root: string) => Partial<typeof CONFIG>): Promise<Fixture> {
   const root = await mkTempDir()
   const repo = join(root, 'repo')
   await fs.mkdir(repo, { recursive: true })
   await initRepo(repo)
   const store = new Store(join(root, 'state'))
   await store.load()
-  const runtime = new Runtime({ store, config: CONFIG })
+  const runtime = new Runtime({ store, config: { ...CONFIG, ...(configFor ? configFor(root) : {}) } })
   return { root, repo, store, runtime }
 }
 
@@ -42,6 +42,7 @@ test('publish creates a worktree + hashed branch and a startable task record', a
     const task = await f.runtime.publish({ repoPath: f.repo, title: '中文标题', description: '实现一个功能' })
     const id8 = task.id.replace(/-/g, '').slice(0, 8)
     assert.equal(task.branch, 'dsh-wt/' + id8)
+    assert.equal(task.worktreePath, join(f.repo, '.dsh-worktrees', id8), 'relative dirName keeps the in-repo layout')
     assert.equal(task.sessionId, null)
     assert.equal(task.startOnBind, true)
     assert.ok(await exists(task.worktreePath), 'worktree directory should exist')
@@ -53,6 +54,21 @@ test('publish creates a worktree + hashed branch and a startable task record', a
     assert.equal(view.snapshot.status, 'ready')
     assert.equal(view.snapshot.worktree.exists, true)
     assert.equal(view.snapshot.branchExists, true)
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('publish puts worktrees under an external root as <root>/<project>/<id8>', async () => {
+  const f = await fixture((root) => ({ dirName: join(root, 'worktrees') }))
+  try {
+    const task = await f.runtime.publish({ repoPath: f.repo, title: 'external', description: 'd' })
+    const id8 = task.id.replace(/-/g, '').slice(0, 8)
+    assert.equal(task.worktreePath, join(f.root, 'worktrees', 'repo', id8))
+    assert.ok(await exists(task.worktreePath), 'worktree directory should exist outside the repo')
+    assert.equal(await exists(join(f.repo, '.dsh-worktrees')), false, 'nothing is created inside the repo')
+    const exclude = await fs.readFile(join(f.repo, '.git', 'info', 'exclude'), 'utf8').catch(() => '')
+    assert.ok(!exclude.includes('/.dsh-worktrees/'), 'external worktrees do not add an exclude entry')
   } finally {
     await teardown(f)
   }

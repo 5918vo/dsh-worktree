@@ -252,7 +252,8 @@ test('themeFor prefers a stored override, otherwise host or OS preference', () =
 
 test('pathPreview uses the project worktree directory', () => {
   assert.equal(pathPreview({ name: 'repo', dirName: '.wt' }), 'repo → .wt/<auto-id>')
-  assert.equal(pathPreview(null), 'worktree → .dsh-worktrees/…')
+  assert.equal(pathPreview({ name: 'repo', dirName: '~/.dsh/worktrees' }), 'repo → ~/.dsh/worktrees/repo/<auto-id>')
+  assert.equal(pathPreview(null), 'worktree → ~/.dsh/worktrees/…')
 })
 
 test('snapshot-less task rows still resolve their CTA', () => {

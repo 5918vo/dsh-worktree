@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { normalizeConfig } from '../src/config.js'
 
-const DEFAULTS = { dirName: '.dsh-worktrees', branchPrefix: 'dsh-wt/', gitPath: 'git' }
+const DEFAULTS = { dirName: '~/.dsh/worktrees', branchPrefix: 'dsh-wt/', gitPath: 'git' }
 
 test('normalizeConfig falls back to defaults for missing input', () => {
   assert.deepEqual(normalizeConfig(undefined), DEFAULTS)

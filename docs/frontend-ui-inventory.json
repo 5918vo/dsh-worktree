@@ -1820,7 +1820,7 @@
             [
               "键值",
               "KV 列表",
-              "仓库路径（+复制）/ 默认基线分支（defaultBase）/ 分支前缀（branchPrefix, code）/ Worktree 目录（worktreeDirName, code）",
+              "仓库路径（+复制）/ 默认基线分支（defaultBase）/ 分支前缀（branchPrefix, code）/ Worktree 根目录（worktreeDirName, code）",
               "复制仓库路径",
               "常驻"
             ]
@@ -1865,11 +1865,11 @@
               "占位 dsh-wt/"
             ],
             [
-              "Worktree 目录",
+              "Worktree 根目录",
               "输入框 mono",
-              "Worktree 目录（worktreeDirName）+ 提示：相对仓库根目录，并写入 .git/info/exclude。（worktreeDirHint）",
+              "Worktree 根目录（worktreeDirName）+ 提示：默认为 ~/.dsh/worktrees，放在 <根目录>/<项目名>/ 下；相对路径仍放在仓库内，并写入 .git/info/exclude。（worktreeDirHint）",
               "编辑",
-              "占位 .dsh-worktrees"
+              "占位 ~/.dsh/worktrees"
             ],
             [
               "保存",
@@ -2066,7 +2066,7 @@
             [
               "键值",
               "KV 列表",
-              "Worktree 目录（worktreeDirName）/ 分支前缀（branchPrefix）/ Git（gitPath），均为只读 code",
+              "Worktree 根目录（worktreeDirName）/ 分支前缀（branchPrefix）/ Git（gitPath），均为只读 code",
               "只读",
               "常驻"
             ]
@@ -2489,7 +2489,7 @@
       "projectSettings": "项目设置",
       "projectName": "项目名称",
       "defaultBase": "默认基线分支",
-      "worktreeDirName": "Worktree 目录",
+      "worktreeDirName": "Worktree 根目录",
       "gitPath": "Git",
       "branchPrefix": "分支前缀",
       "save": "保存",
@@ -2644,7 +2644,7 @@
       "previewDir": "目录",
       "projectSettingsHint": "覆盖全局的分支与 worktree 命名规则，只影响此后发布的任务。",
       "projectNameHint": "只影响看板显示，不会改写仓库。",
-      "worktreeDirHint": "相对仓库根目录，并写入 .git/info/exclude。",
+      "worktreeDirHint": "默认为 ~/.dsh/worktrees，放在 <根目录>/<项目名>/ 下；相对路径仍放在仓库内，并写入 .git/info/exclude。",
       "branchPrefixHint": "自动分支为前缀加 8 位任务 ID。",
       "statusSyncFailed": "状态同步失败",
       "mergeConfirm": "确认合并",
@@ -2898,7 +2898,7 @@
       "projectSettings": "Project settings",
       "projectName": "Name",
       "defaultBase": "Default base branch",
-      "worktreeDirName": "Worktree directory",
+      "worktreeDirName": "Worktree root",
       "gitPath": "Git",
       "branchPrefix": "Branch prefix",
       "save": "Save",
@@ -3053,7 +3053,7 @@
       "previewDir": "Directory",
       "projectSettingsHint": "Override branch and worktree naming. Applies to future tasks only.",
       "projectNameHint": "Display name only; the repository is untouched.",
-      "worktreeDirHint": "Relative to the repository root; added to .git/info/exclude.",
+      "worktreeDirHint": "Defaults to ~/.dsh/worktrees as <root>/<project>/. A relative path stays inside the repo and is added to .git/info/exclude.",
       "branchPrefixHint": "Auto branches use the prefix plus the 8-character task ID.",
       "statusSyncFailed": "Status sync failed",
       "mergeConfirm": "Merge",

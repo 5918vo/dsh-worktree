@@ -6,8 +6,9 @@
     - id: deepseek-worktree
       name: '@5318vo/dsh-worktree'
       config:
-        # worktree 父目录名（相对目标仓库根）
-        dirName: .dsh-worktrees
+        # worktree 根目录：~ 或绝对路径放在仓库外（<根>/<项目名>/<id8>），
+        # 相对路径则保留旧的仓库内布局（<仓库>/<目录>/<id8>）
+        dirName: "~/.dsh/worktrees"
         # 自动生成的任务分支前缀
         branchPrefix: dsh-wt/
         # git 可执行文件

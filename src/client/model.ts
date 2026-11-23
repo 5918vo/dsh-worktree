@@ -1,5 +1,6 @@
 import type { ProjectView, TaskDiff, TaskSnapshot, TaskStatus, TaskView, WorktreeTask } from '../models'
 import type { AttentionCategory } from './task-attention'
+import { DEFAULT_WORKTREE_DIR, worktreePreviewRoot } from '../worktree-layout'
 
 /** The rail filter is an attention category, never a lifecycle status. */
 export type BoardFilter = AttentionCategory | 'all'
@@ -385,8 +386,8 @@ export function themeFor(stored: string | null | undefined, hostDark: boolean, p
 }
 
 export function pathPreview(project: any): string {
-  if (!project) return 'worktree → .dsh-worktrees/…'
-  return `${project.name} → ${project.dirName || '.dsh-worktrees'}/<auto-id>`
+  if (!project) return `worktree → ${DEFAULT_WORKTREE_DIR}/…`
+  return `${project.name} → ${worktreePreviewRoot(project)}/<auto-id>`
 }
 
 export function diffCount(diff: TaskDiff | null): number {
