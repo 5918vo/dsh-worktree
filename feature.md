@@ -1059,4 +1059,41 @@ export function lifecycleLabelKey(kind: LifecycleKind): string
 
 ## 10. 验收记录
 
-- **状态**：实施中。主线程将在 5 个功能集成完成后补充实施提交、复核修正、验证结果、测试数量、遗留与 PR 编号。
+- **状态**：5 个功能已全部实现并集成，`npm run verify` 通过；等待独立复核与 PR。
+
+### 10.1 实施来源
+
+| 功能 | 子 agent 分支 | 子 agent HEAD | 集成提交 |
+| --- | --- | --- | --- |
+| 截止日期 | `t3/task-due-dates-overdue-reminders` | `97579eb` | `f859567` |
+| 前置依赖 | `t3/bd6f4b94` | `9c1473b` | `bad4e8c` |
+| 项目洞察 | `t3/project-insights-cycle-stats` | `1c85f6d` | `a65da1d` |
+| 结构化搜索 | `t3/046189c9` | `63775a9` | `f0bfd64` |
+| 任务时间线 | `t3/task-lifecycle-timeline` | `00e2b75` | `c1b7e3b` |
+
+所有子 agent 均从规划提交 `e74dfa1` 切出独立 worktree，各自只提交一次；主线程按顺序 cherry-pick 并解决 locale、`stage.ts`、`rail.ts`、`store.ts`、`http.ts`、`tools.ts` 与报告模块的集成冲突。
+
+### 10.2 主线程复核修正
+
+- `search-query.ts` 原先回引 `model.ts` 造成模块循环，改为模块内纯文本匹配（`1485894`）。
+- 集成冲突合并时同时保留依赖与截止日期的字段链路：`Store.updateTaskMeta` 先校验全部字段再写入，`runtime` 错误映射、HTTP `task/meta` 与 `worktree_act` 同时接受 `dueAt` / `dependsOn`。
+- `stage.ts` 只读与编辑两种模式同时渲染截止日期行与前置任务行；`rail.ts` 同时渲染截止 chip 与「等待 N 项前置」chip。
+- 补全 README / CHANGELOG / `docs/frontend-design.md` / `docs/i18n-terminology.md`，版本升至 1.14.0（`cd094d3`）。
+
+### 10.3 验证结果
+
+- `npm run typecheck`：通过。
+- `npm run check:locale`：`zh=778 en=778`，客户端引用 547 个 key，全部存在。
+- `npm test`：**483 通过 / 0 失败**（基线 408，新增 75 项）。
+- `npm run build`：`dist/index.js` 166.5kb，`dist/client.js` 562.0kb。
+- `npm run verify`：以上四项全部通过。
+
+### 10.4 验收审批
+
+- 用户要求使用 `advisor` 审批。当前会话经 magpie 网关连接，官方 `advisor_20260301` 服务端工具未被网关转发，`advisor` 返回 `failed: unavailable`（本次再次确认）。
+- 按用户全局约定改用独立模型复核：`delegate_task` + `role: review` + provider `magpie` / model `mm/workbuddy/glm-5.3[1m]`，只读审查，不改代码；复核结论记录在 T3 子线程与最终交付说明中。
+
+### 10.5 PR
+
+- 分支：`t3/daily-5-feature-pipeline`
+- PR：待创建（创建后回填编号与链接）。
