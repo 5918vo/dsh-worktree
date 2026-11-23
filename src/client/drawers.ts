@@ -47,6 +47,21 @@ export function activeDrawer(state: DrawerState, narrow: boolean, hasInspector: 
   return null
 }
 
+/**
+ * The sheet that may own a Tab trap. `narrow` is only a layout fact: the trap
+ * follows the *active* sheet, never a hidden one, and an open modal owns focus
+ * entirely (it also owns Escape).
+ */
+export function drawerFocusTrap(
+  state: DrawerState,
+  narrow: boolean,
+  hasInspector: boolean,
+  modalOpen: boolean,
+): DrawerSide | null {
+  if (modalOpen) return null
+  return activeDrawer(state, narrow, hasInspector)
+}
+
 /** Escape/scrim click closes the visible sheet and reports which one it was. */
 export function dismissDrawer(state: DrawerState, narrow: boolean, hasInspector: boolean): { state: DrawerState; closed: DrawerSide | null } {
   const side = activeDrawer(state, narrow, hasInspector)

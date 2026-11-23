@@ -15,7 +15,8 @@ import { WORKBENCH_CSS } from './styles'
 import { Rail } from './rail'
 import { Stage, type BoardTab } from './stage'
 import { Inspector } from './inspector'
-import { activeDrawer, closeAllDrawers, closeDrawer, dismissDrawer, toggleDrawer, type DrawerState, type DrawerSide } from './drawers'
+import { activeDrawer, closeAllDrawers, closeDrawer, dismissDrawer, drawerFocusTrap, toggleDrawer, type DrawerState, type DrawerSide } from './drawers'
+import { attachFocusTrap } from './dialog-focus'
 import { PublishModal } from './publish'
 import { AddProjectModal } from './add-project'
 import { openNativeSession } from './actions'
@@ -233,6 +234,14 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
   // Drawer state is derived once so the rail and inspector can never both be
   // open as sheets; the wide layout keeps its independent hide toggles.
   const drawerState: DrawerState = { railHidden, inspectorHidden }
+  // The sheet that may contain Tab. `narrow` alone is not enough: only the
+  // active sheet traps, and an open modal owns focus + Escape by itself.
+  const drawerTrapSide = drawerFocusTrap(
+    drawerState,
+    narrow,
+    !!selectedTask,
+    !!(publishOpen || addOpen || confirm || stashView),
+  )
   const drawerReturn = React.useRef(null as any)
   const setDrawers = (next: DrawerState) => {
     setRailHidden(next.railHidden)
@@ -263,6 +272,23 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     const btn: any = scope && scope.querySelector('.dshwd-drawer-close')
     if (btn && typeof btn.focus === 'function') btn.focus()
   }, [narrow, railHidden, inspectorHidden, selectedTaskId])
+
+  // Tab/Shift+Tab stay inside the active narrow sheet. Escape is intentionally
+  // not handled here: the board keydown handler below closes the top drawer
+  // once, and dialogs keep their own Escape/focus lifecycle.
+  React.useEffect(() => {
+    if (!drawerTrapSide) return undefined
+    const root: any = rootRef.current
+    const scope: any = root && root.querySelector(drawerTrapSide === 'rail' ? '.dshwd-rail' : '.dshwd-inspector')
+    if (!scope) return undefined
+    return attachFocusTrap({
+      doc: document as any,
+      root: scope,
+      // The stage belongs to this board, so Tab there returns to the sheet;
+      // host chat/widgets outside keep their own order.
+      owns: (active: any) => !!root && typeof root.contains === 'function' && root.contains(active),
+    })
+  }, [drawerTrapSide])
 
   React.useEffect(() => {
     if (!focusStage.current) return

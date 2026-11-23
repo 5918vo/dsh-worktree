@@ -152,6 +152,51 @@ export function attachDialogFocus(options: AttachDialogFocusOptions): () => void
   }
 }
 
+export interface AttachFocusTrapOptions {
+  doc: FocusDoc
+  root: FocusRoot | null | undefined
+  /**
+   * Optional guard for focus that already left the sheet: recover it only when
+   * it is still inside the owner (the board). Host widgets and host modals keep
+   * their own Tab order instead of being pulled back into a drawer.
+   */
+  owns?: (active: any) => boolean
+}
+
+/**
+ * Tab-only containment for a non-modal sheet (the narrow rail/inspector).
+ * Escape is deliberately left alone: the board's global handler owns closing
+ * the top drawer once, and open modals keep their own Escape lifecycle. No
+ * initial focus or restore either — the caller already owns those.
+ */
+export function attachFocusTrap(options: AttachFocusTrapOptions): () => void {
+  const { doc } = options
+  const onKey = (event: any) => {
+    if (!event || event.key !== 'Tab') return
+    const items = focusablesIn(options.root)
+    const activeIndex = items.indexOf(doc.activeElement)
+    if (activeIndex < 0 && options.owns && !options.owns(doc.activeElement)) return
+    const plan = planDialogKey({
+      key: 'Tab',
+      shift: !!event.shiftKey,
+      activeIndex,
+      count: items.length,
+    })
+    if (!plan || plan.type !== 'focus') return
+    if (typeof event.preventDefault === 'function') event.preventDefault()
+    const el = items[plan.index]
+    if (el && typeof el.focus === 'function') {
+      try {
+        el.focus()
+      } catch {
+        /* detached node; the next Tab retries */
+      }
+    }
+  }
+  doc.addEventListener('keydown', onKey, true)
+  return () => doc.removeEventListener('keydown', onKey, true)
+}
+
 export interface UseDialogFocusOptions {
   rootRef: { current: FocusRoot | null }
   initialRef?: { current: FocusableLike | null }
