@@ -8,6 +8,7 @@ import type { SessionHealth } from './task-attention'
 import { fallbackEntries, type TimelineEntry } from './timeline'
 import { entryTag, entryTitle, liveStatsText, modelLabel, modelLabelFull, pressurePercent, readLive, stepStatusLabel, tokenSummary } from './live-session'
 import { postMergeCount, reviewStaleCount } from './review-surfaces'
+import { NOTES_MAX_LENGTH, parseTagText, validateTags } from '../task-meta'
 
 export type BoardTab = 'overview' | 'live' | 'diff'
 
@@ -37,6 +38,10 @@ export interface StageProps {
   onDownloadReport?: () => void
   /** A report action is in flight; both report buttons stay disabled. */
   reportBusy?: boolean
+  /** Persist tags / priority / notes; omitted keeps the info block read-only. */
+  onSaveMeta?: (patch: { tags?: string[]; priority?: string; notes?: string }) => Promise<void>
+  /** A metadata write is in flight; the editors stay disabled. */
+  metaBusy?: boolean
   entries: TimelineEntry[]
   entriesReady: boolean
   /** Raw session projections `values` for the selected session, when available. */
@@ -267,6 +272,7 @@ function Overview(props: StageProps) {
     h('section', { className: 'dshwd-block' },
       h('div', { className: 'dshwd-block-label' }, t.taskDescription),
       h('div', { className: 'dshwd-prose' }, props.taskView.task.description || '—')),
+    h(TaskMetaSection, props),
     h('section', { className: 'dshwd-block' },
       h('div', { className: 'dshwd-block-head' },
         h('div', { className: 'dshwd-block-label' }, items.length ? `${t.acceptanceCriteria} · ${progressText}` : t.acceptanceCriteria),
@@ -306,6 +312,180 @@ function Overview(props: StageProps) {
             h('span', null, item.text)))))
         : h('div', { className: 'dshwd-hint' }, t.boardNoCriteria),
       hint ? h('div', { className: 'dshwd-hint', style: { marginTop: '6px' } }, hint) : null))
+}
+
+/**
+ * Read-only task info. Deliberately hook-free so the shallow-render tests can
+ * walk it; the editable variant is only created when a save callback exists.
+ */
+function TaskMetaSection(props: StageProps) {
+  if (props.onSaveMeta) return h(TaskMetaEditor, props)
+  const { t } = props
+  const task = props.taskView.task
+  const tags: string[] = Array.isArray(task.tags) ? task.tags : []
+  const priority = task.priority === 'high' || task.priority === 'low' ? task.priority : 'normal'
+  return h('section', { className: 'dshwd-block dshwd-task-meta' },
+    h('div', { className: 'dshwd-block-label' }, t.taskInfo),
+    h('div', { className: 'dshwd-meta-grid' },
+      h('div', { className: 'dshwd-meta-row' },
+        h('div', { className: 'dshwd-meta-label' }, t.taskTags),
+        h('div', { className: 'dshwd-meta-chips' }, tags.length
+          ? tags.map((tag) => h('span', { key: tag, className: 'dshwd-chip dshwd-chip-sm dshwd-tag' }, '#' + tag))
+          : h('span', { className: 'dshwd-hint' }, t.taskTagsEmpty))),
+      h('div', { className: 'dshwd-meta-row' },
+        h('div', { className: 'dshwd-meta-label' }, t.taskPriority),
+        h('div', { className: 'dshwd-meta-value' }, h('span', { className: 'dshwd-chip dshwd-chip-sm' }, priority === 'high' ? t.priorityHigh : priority === 'low' ? t.priorityLow : t.priorityNormal))),
+      h('div', { className: 'dshwd-meta-row' },
+        h('div', { className: 'dshwd-meta-label' }, t.taskNotes),
+        h('div', { className: 'dshwd-prose dshwd-notes' }, task.notes || t.taskNotesEmpty))))
+}
+
+/**
+ * Editable task info: tags, priority and notes.
+ *
+ * All three write through the same `task/meta` endpoint, which owns the atomic
+ * read-modify-write on the server; this component only keeps the edit buffers.
+ * Choosing a different task resets the buffers from that task's saved values.
+ */
+function TaskMetaEditor(props: StageProps) {
+  const { t } = props
+  const task = props.taskView.task
+  const save = props.onSaveMeta
+  const busy = !!props.metaBusy
+  const tags: string[] = Array.isArray(task.tags) ? task.tags : []
+  const priority = task.priority === 'high' || task.priority === 'low' ? task.priority : 'normal'
+  const [editingTags, setEditingTags] = React.useState(false)
+  const [tagText, setTagText] = React.useState('')
+  const [tagError, setTagError] = React.useState('')
+  const [notes, setNotes] = React.useState(task.notes || '')
+  const [notesOpen, setNotesOpen] = React.useState(false)
+  const [notesError, setNotesError] = React.useState('')
+  const editingRef = React.useRef(false)
+  editingRef.current = notesOpen
+  // Refresh may replace the task while the user is typing; never overwrite the
+  // open editor, only a closed one. Switching tasks always resets.
+  React.useEffect(() => {
+    if (!editingRef.current) setNotes(task.notes || '')
+  }, [task.id, task.notes])
+  React.useEffect(() => {
+    setEditingTags(false)
+    setTagError('')
+    setNotesError('')
+  }, [task.id])
+
+  const startEditTags = () => {
+    setTagText(tags.join(', '))
+    setTagError('')
+    setEditingTags(true)
+  }
+  const saveTags = async () => {
+    if (!save) return
+    const list = parseTagText(tagText)
+    const check = validateTags(list)
+    if (!check.ok) {
+      setTagError(check.error === 'too-many' ? t.taskTagsTooMany : t.taskTagsTooLong)
+      return
+    }
+    try {
+      await save({ tags: list })
+    } catch {
+      // The board already surfaced the server message; keep the editor open.
+      return
+    }
+    setEditingTags(false)
+  }
+  const saveNotes = async () => {
+    if (!save) return
+    const text = notes.trim()
+    if (text.length > NOTES_MAX_LENGTH) {
+      setNotesError(String(t.taskNotesTooLong).replace('{n}', String(NOTES_MAX_LENGTH)))
+      return
+    }
+    try {
+      await save({ notes: text })
+    } catch {
+      return
+    }
+    setNotesOpen(false)
+    setNotes('')
+  }
+
+  return h('section', { className: 'dshwd-block dshwd-task-meta' },
+    h('div', { className: 'dshwd-block-label' }, t.taskInfo),
+    h('div', { className: 'dshwd-meta-grid' },
+      h('div', { className: 'dshwd-meta-row' },
+        h('div', { className: 'dshwd-meta-label' }, t.taskTags),
+        h('div', { className: 'dshwd-meta-value' },
+          editingTags
+            ? h('div', { className: 'dshwd-meta-editor' },
+              h('input', {
+                className: 'dshwd-input' + (tagError ? ' dshwd-invalid' : ''),
+                value: tagText,
+                disabled: busy,
+                placeholder: t.taskTagsPlaceholder,
+                'aria-label': t.taskTags,
+                'aria-invalid': tagError ? 'true' : 'false',
+                onChange: (e: any) => { setTagText(e.target.value); setTagError('') },
+                onKeyDown: (e: any) => {
+                  if (e.key === 'Enter' && !e.shiftKey && !(e.nativeEvent && e.nativeEvent.isComposing)) { e.preventDefault(); void saveTags() }
+                  if (e.key === 'Escape') setEditingTags(false)
+                },
+              }),
+              h('div', { className: 'dshwd-meta-editor-actions' },
+                h('button', { type: 'button', className: 'dshwd-btn dshwd-btn-mini', disabled: busy, onClick: () => void saveTags() }, t.save),
+                h('button', { type: 'button', className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini', disabled: busy, onClick: () => setEditingTags(false) }, t.cancel)),
+              h('div', { className: 'dshwd-hint' }, t.taskTagsHint),
+              tagError ? h('div', { className: 'dshwd-alert', role: 'alert' }, tagError) : null)
+            : h('div', { className: 'dshwd-meta-chips' },
+              tags.length
+                ? tags.map((tag) => h('span', { key: tag, className: 'dshwd-chip dshwd-chip-sm dshwd-tag' }, '#' + tag))
+                : h('span', { className: 'dshwd-hint' }, t.taskTagsEmpty),
+              save
+                ? h('button', { type: 'button', className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini', disabled: busy, onClick: startEditTags }, tags.length ? t.edit : t.taskTagsAdd)
+                : null))),
+      h('div', { className: 'dshwd-meta-row' },
+        h('div', { className: 'dshwd-meta-label' }, t.taskPriority),
+        h('div', { className: 'dshwd-meta-value' },
+          save
+            ? h('select', {
+              className: 'dshwd-select dshwd-meta-select',
+              value: priority,
+              disabled: busy,
+              'aria-label': t.taskPriority,
+              onChange: (e: any) => { void save({ priority: e.target.value }).catch(() => {}) },
+            },
+              h('option', { value: 'low' }, t.priorityLow),
+              h('option', { value: 'normal' }, t.priorityNormal),
+              h('option', { value: 'high' }, t.priorityHigh))
+            : h('span', { className: 'dshwd-chip dshwd-chip-sm' }, priority === 'high' ? t.priorityHigh : priority === 'low' ? t.priorityLow : t.priorityNormal))),
+      h('div', { className: 'dshwd-meta-row' },
+        h('div', { className: 'dshwd-meta-label' }, t.taskNotes),
+        h('div', { className: 'dshwd-meta-value' },
+          notesOpen
+            ? h('div', { className: 'dshwd-meta-editor' },
+              h('textarea', {
+                className: 'dshwd-textarea dshwd-notes-input' + (notesError ? ' dshwd-invalid' : ''),
+                value: notes,
+                rows: 4,
+                maxLength: NOTES_MAX_LENGTH,
+                disabled: busy,
+                placeholder: t.taskNotesPlaceholder,
+                'aria-label': t.taskNotes,
+                'aria-invalid': notesError ? 'true' : 'false',
+                onChange: (e: any) => { setNotes(e.target.value); setNotesError('') },
+              }),
+              h('div', { className: 'dshwd-notes-foot' },
+                h('span', { className: 'dshwd-hint dshwd-mono' }, `${notes.length}/${NOTES_MAX_LENGTH}`),
+                h('div', { className: 'dshwd-meta-editor-actions' },
+                  h('button', { type: 'button', className: 'dshwd-btn dshwd-btn-mini', disabled: busy, onClick: () => void saveNotes() }, t.save),
+                  h('button', { type: 'button', className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini', disabled: busy, onClick: () => setNotesOpen(false) }, t.cancel))),
+              notesError ? h('div', { className: 'dshwd-alert', role: 'alert' }, notesError) : null)
+            : h('div', { className: 'dshwd-meta-notes' },
+              h('div', { className: 'dshwd-prose dshwd-notes' }, task.notes || t.taskNotesEmpty),
+              save
+                ? h('button', { type: 'button', className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini', disabled: busy, onClick: () => { setNotes(task.notes || ''); setNotesError(''); setNotesOpen(true) } }, t.edit)
+                : null))))
+  )
 }
 
 function Live(props: StageProps) {

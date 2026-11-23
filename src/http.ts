@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { App } from './app.js'
 import { TaskError } from './runtime.js'
 import { absPath } from './runtime/types.js'
+import { TaskMetaPatch } from './store.js'
 
 const PREFIX = '/dsh-worktree/api'
 const MAX_BODY = 64 * 1024
@@ -194,6 +195,8 @@ export function registerHttp(app: App): () => void {
         autoBind: false,
         model: body.model && typeof body.model === 'object' ? body.model : undefined,
         acceptanceCriteria: Array.isArray(body.acceptanceCriteria) ? body.acceptanceCriteria.map(String) : undefined,
+        tags: body.tags,
+        priority: body.priority,
       })
       send(res, 200, { task })
     } catch (error) {
@@ -397,6 +400,15 @@ export function registerHttp(app: App): () => void {
   act('unarchive', async (id) => app.runtime.unarchive(id))
   act('criteria', async (id, body) => app.runtime.setCriterionChecked(id, String(body.text || ''), body.checked === true))
   act('pin', async (id, body) => app.runtime.setTaskPinned(id, body.pinned === true))
+  // Build the patch from keys the body really carries: a blanket `{tags,
+  // priority, notes}` with undefined values would otherwise clear fields.
+  act('meta', async (id, body) => {
+    const patch: TaskMetaPatch = {}
+    if (Object.prototype.hasOwnProperty.call(body, 'tags')) patch.tags = body.tags
+    if (Object.prototype.hasOwnProperty.call(body, 'priority')) patch.priority = body.priority
+    if (Object.prototype.hasOwnProperty.call(body, 'notes')) patch.notes = body.notes
+    app.runtime.updateTaskMeta(id, patch)
+  })
   act('delete', async (id) => app.runtime.delete(id))
 
   const routes: RouteDef[] = []

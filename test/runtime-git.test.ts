@@ -920,3 +920,45 @@ test('archive also works for a cleaned task and persists across reload', async (
     await teardown(f)
   }
 })
+
+
+test('project views order high priority above newer normal and low tasks', async () => {
+  const f = await fixture()
+  try {
+    const normal = await f.runtime.publish({ repoPath: f.repo, title: 'normal', description: 'd' })
+    const high = await f.runtime.publish({ repoPath: f.repo, title: 'high', description: 'd', priority: 'high', tags: ['ui'] })
+    const low = await f.runtime.publish({ repoPath: f.repo, title: 'low', description: 'd', priority: 'low' })
+
+    assert.deepEqual(high.tags, ['ui'])
+    assert.equal(high.priority, 'high')
+    assert.equal(normal.priority, undefined, 'normal priority stays out of the record')
+
+    // Make the normal task the newest: priority must still outrank time.
+    f.store.putTask({ ...f.store.getTask(normal.id)!, createdAt: 900 })
+    f.store.putTask({ ...f.store.getTask(high.id)!, createdAt: 100 })
+    f.store.putTask({ ...f.store.getTask(low.id)!, createdAt: 800 })
+
+    const views = await f.runtime.projectViews()
+    const bucket = views.find((v) => v.tasks.some((tv) => tv.task.id === high.id))
+    assert.ok(bucket, 'the priority repo should be on the board')
+    assert.deepEqual(bucket!.tasks.map((v) => v.task.id), [high.id, normal.id, low.id])
+  } finally {
+    await teardown(f)
+  }
+})
+
+test('publish rejects invalid tags and priority before touching the repo', async () => {
+  const f = await fixture()
+  try {
+    await assert.rejects(
+      () => f.runtime.publish({ repoPath: f.repo, title: 'x', description: 'd', priority: 'urgent' }),
+      (e: any) => e instanceof TaskError && e.status === 400 && /优先级只能是/.test(e.message),
+    )
+    await assert.rejects(
+      () => f.runtime.publish({ repoPath: f.repo, title: 'x', description: 'd', tags: Array.from({ length: 9 }, (_, i) => 't' + i) }),
+      (e: any) => e instanceof TaskError && e.status === 400 && /标签最多 8 个/.test(e.message),
+    )
+  } finally {
+    await teardown(f)
+  }
+})

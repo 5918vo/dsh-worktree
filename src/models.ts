@@ -1,5 +1,7 @@
 /** Domain models for the worktree task plugin. */
 
+import type { TaskPriority } from './task-meta.js'
+
 export interface WorktreeConfig {
   /**
    * Worktree root. `~`/absolute: external layout `<root>/<project>/<id8>`;
@@ -64,6 +66,12 @@ export interface WorktreeTask {
   sessionId: string | null
   /** First message sent into the session when it is created. */
   firstPrompt: string
+  /** Optional free-form tags; normalized to at most 8, 24 chars each. */
+  tags?: string[]
+  /** Display order hint; omitted means normal. */
+  priority?: TaskPriority
+  /** Handover / acceptance notes shown in the detail view and reports. */
+  notes?: string
   /** Optional per-task acceptance criteria (one trimmed line per item). */
   acceptanceCriteria?: string[]
   /** Verified criterion texts; intersected with acceptanceCriteria for display. */

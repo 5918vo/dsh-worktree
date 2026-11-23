@@ -9,7 +9,7 @@ import { openNativeSession, sendSessionPrompt, startTask } from '../actions'
 import { SYNC_BUSY, syncPromptText } from '../review-surfaces'
 import type { BoardAction } from '../model'
 import { cleanupPrimaryLabel, criteria, criteriaProgress, mergeGateMissing, switchConfirmText } from '../model'
-import { copyText } from '../format'
+import { copyText, downloadText } from '../format'
 import { buildAcceptanceReport, reportFilename } from '../report'
 import type { ProjectView, TaskDiff, TaskView } from '../../models'
 import type { ConfirmState, StashViewState } from './dialogs'
@@ -319,6 +319,25 @@ export function useBoardActions(args: UseBoardActionsArgs) {
   }
 
   /**
+   * Persist task metadata (tags / priority / notes) through one endpoint so the
+   * server's atomic read-modify-write stays the only writer.
+   */
+  async function runSaveMeta(patch: { tags?: string[]; priority?: string; notes?: string }) {
+    if (!selectedTask || busy) return
+    const id = selectedTask.task.id
+    setBusy('meta')
+    try {
+      await post('task/meta', { id, ...patch })
+    } catch (e: any) {
+      say(String((e && e.message) || t.failed), true)
+      throw e
+    } finally {
+      setBusy('')
+      void refresh()
+    }
+  }
+
+  /**
    * The report is generated from the current snapshot and the diff already in
    * memory, in the interface language. Both entry points share this text so a
    * copy and a download never diverge.
@@ -352,28 +371,12 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     if (!selectedTask || busy) return
     const view = selectedTask
     setBusy('report')
-    let url = ''
     try {
-      const markdown = reportMarkdown(view)
-      if (typeof document === 'undefined' || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
-        throw new Error(t.reportFailed)
-      }
-      const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' })
-      url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = reportFilename(view.task)
-      link.style.display = 'none'
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
+      if (!downloadText(reportMarkdown(view), reportFilename(view.task))) throw new Error(t.reportFailed)
       say(t.reportDownloaded)
     } catch (e: any) {
       say(String((e && e.message) || t.reportFailed), true)
     } finally {
-      // Chromium copies the blob synchronously on click, but Safari can still be
-      // reading it; revoke on the next tick instead of pulling it away mid-flight.
-      if (url) setTimeout(() => { try { URL.revokeObjectURL(url) } catch { /* noop */ } }, 1000)
       setBusy('')
     }
   }
@@ -485,6 +488,7 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     runCriterion,
     runCopyReport,
     runDownloadReport,
+    runSaveMeta,
     runCleanup,
     runDeleteTask,
     runMergeRestore,

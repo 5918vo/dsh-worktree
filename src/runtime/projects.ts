@@ -8,6 +8,7 @@ import { basename, dirname, join } from 'node:path'
 import { normalizeCriteria } from '../criteria.js'
 import * as gitx from '../gitx.js'
 import { Project, ProjectView, TaskView, WorktreeTask } from '../models.js'
+import { compareTaskOrder, normalizePriority, normalizeTags, validateTags } from '../task-meta.js'
 import { assertTaskBranchName, buildFirstPrompt, id8, normalizeModelSelection } from './prompt.js'
 import { absPath, AddProjectInput, effectiveConfig, ParentPromptInfo, PublishInput, RuntimeContext, TaskError } from './types.js'
 import { isExternalWorktreeDir, worktreeProjectSegment } from '../worktree-layout.js'
@@ -172,9 +173,9 @@ export async function projectViews(ctx: RuntimeContext, opts: { includeArchived?
   }
   const out = [...byId.values()]
   for (const b of out) {
-    // Pinned tasks first, then newest-created: pinning is a presentation bit
-    // and must not reorder the rest of the group.
-    b.tasks.sort((x, y) => (Number(y.task.pinnedAt) || 0) - (Number(x.task.pinnedAt) || 0) || y.task.createdAt - x.task.createdAt)
+    // Pinned first, then priority, then newest-created: pinning and priority
+    // are presentation bits and must not reorder anything else.
+    b.tasks.sort((x, y) => compareTaskOrder(x.task, y.task))
     b.stats.tasks = b.tasks.length
     for (const v of b.tasks) {
       const s = v.snapshot.status
@@ -243,6 +244,17 @@ export async function publishTask(ctx: RuntimeContext, input: PublishInput): Pro
   const model = input.model === undefined ? undefined : normalizeModelSelection(input.model)
   if (input.model !== undefined && model === undefined) throw new TaskError('模型选择无效')
   const acceptanceCriteria = normalizeCriteria(input.acceptanceCriteria || [])
+  // Validate metadata before creating a project, branch or worktree: a bad
+  // tag must not leave a half-published task behind.
+  const tags = normalizeTags(input.tags === undefined ? [] : input.tags)
+  const tagCheck = validateTags(tags)
+  if (!tagCheck.ok) {
+    throw new TaskError(tagCheck.error === 'too-many' ? '标签最多 8 个' : '单个标签最多 24 个字符')
+  }
+  const priority = normalizePriority(input.priority)
+  if (input.priority !== undefined && priority === undefined) {
+    throw new TaskError('优先级只能是 low、normal 或 high')
+  }
 
   const project = await ensureProject(ctx, input)
   const repoPath = project.repoPath
@@ -301,6 +313,8 @@ export async function publishTask(ctx: RuntimeContext, input: PublishInput): Pro
     baseBranch: base,
     branch,
     worktreePath,
+    ...(tags.length ? { tags } : {}),
+    ...(priority && priority !== 'normal' ? { priority } : {}),
     sessionId: null,
     firstPrompt: '',
     startOnBind: input.start !== false && input.autoBind !== false,

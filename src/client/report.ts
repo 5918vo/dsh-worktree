@@ -7,6 +7,7 @@
 
 import type { TaskDiff, TaskSnapshot, WorktreeTask } from '../models'
 import { pad2 } from './format'
+import { fill, mdCodeCell, mdInline, reportTimestamp } from './markdown'
 import { branchHeadSha, criteria, criteriaProgress } from './model'
 
 export interface ReportInput {
@@ -69,34 +70,6 @@ export function reportFilename(task: WorktreeTask, now: number = Date.now()): st
 }
 
 /** Collapse every run of whitespace (including newlines) into one space. */
-function oneLine(value: any): string {
-  return String(value == null ? '' : value).replace(/\s+/g, ' ').trim()
-}
-
-/** Inline Markdown text: one line, backticks escaped so they cannot open a code span. */
-function mdInline(value: any): string {
-  return oneLine(value).replace(/`/g, '\\`')
-}
-
-/** Table cell: pipes escaped and line breaks collapsed, so a row cannot break. */
-function mdCell(value: any): string {
-  return mdInline(value).replace(/\|/g, '\\|')
-}
-
-/** Inline code span for a table cell; adapts the fence when the value has backticks. */
-function mdCodeCell(value: any): string {
-  const text = oneLine(value).replace(/\|/g, '\\|')
-  const fence = text.includes('`') ? '``' : '`'
-  return fence + text + fence
-}
-
-/** Fill `{name}` placeholders; unknown names stay verbatim. */
-function fill(template: any, values: Record<string, string | number>): string {
-  let text = String(template == null ? '' : template)
-  for (const key of Object.keys(values)) text = text.split('{' + key + '}').join(String(values[key]))
-  return text
-}
-
 function metaLine(label: any, value: string): string {
   return `- ${label}: ${value}`
 }
@@ -109,8 +82,7 @@ function metaLine(label: any, value: string): string {
 export function buildAcceptanceReport(input: ReportInput): string {
   const { task, snapshot, diff, projectName, statusLabel, t } = input
   const now = input.now == null ? Date.now() : input.now
-  const date = new Date(now)
-  const generatedAt = `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`
+  const generatedAt = reportTimestamp(now)
   const worktree = (snapshot && snapshot.worktree) || ({} as TaskSnapshot['worktree'])
   const lines: string[] = []
 
@@ -120,6 +92,11 @@ export function buildAcceptanceReport(input: ReportInput): string {
   lines.push(metaLine(t.reportTaskBranch, mdCodeCell(task.branch || '—')))
   lines.push(metaLine(t.reportBaseBranch, mdCodeCell(task.baseBranch || '—')))
   lines.push(metaLine(t.reportStatus, mdInline(statusLabel || '—')))
+  const tags = Array.isArray(task.tags) && task.tags.length ? task.tags.join(', ') : '—'
+  lines.push(metaLine(t.taskTags, mdInline(tags)))
+  lines.push(metaLine(t.taskPriority, mdInline(
+    task.priority === 'high' ? t.priorityHigh : task.priority === 'low' ? t.priorityLow : t.priorityNormal,
+  )))
   const head = branchHeadSha(task, snapshot)
   lines.push(metaLine(t.reportHead, mdCodeCell(head || '—')))
   if (task.mergedCommit) lines.push(metaLine(t.reportMergedCommit, mdCodeCell(task.mergedCommit)))
@@ -143,6 +120,10 @@ export function buildAcceptanceReport(input: ReportInput): string {
   } else {
     lines.push(String(t.boardNoCriteria))
   }
+  lines.push('')
+
+  lines.push(`## ${t.reportNotes}`)
+  lines.push(task.notes ? mdInline(task.notes) : String(t.taskNoNotes))
   lines.push('')
 
   const commits: Array<{ hash: string; subject: string }> = (worktree.commits || [])

@@ -26,7 +26,7 @@ function clean(value: unknown): Json {
   }
 }
 
-function brief(v: { task: { id: string; title: string; repoPath: string; baseBranch: string; branch: string; worktreePath: string; sessionId: string | null; parentId?: string; acceptanceCriteria?: string[] }; snapshot: { status: string; worktree: { ahead: number; dirtyCount: number }; repo: { currentBranch: string | null }; postMergeAhead?: number } }) {
+function brief(v: { task: { id: string; title: string; repoPath: string; baseBranch: string; branch: string; worktreePath: string; sessionId: string | null; parentId?: string; tags?: string[]; priority?: string; notes?: string; acceptanceCriteria?: string[] }; snapshot: { status: string; worktree: { ahead: number; dirtyCount: number }; repo: { currentBranch: string | null }; postMergeAhead?: number } }) {
   return {
     id: v.task.id,
     title: v.task.title,
@@ -36,6 +36,9 @@ function brief(v: { task: { id: string; title: string; repoPath: string; baseBra
     worktreePath: v.task.worktreePath,
     sessionId: v.task.sessionId,
     parentId: v.task.parentId || null,
+    tags: Array.isArray(v.task.tags) ? v.task.tags : [],
+    priority: v.task.priority || 'normal',
+    notes: v.task.notes || '',
     acceptanceCriteria: Array.isArray(v.task.acceptanceCriteria) ? v.task.acceptanceCriteria : [],
     status: v.snapshot.status,
     ahead: v.snapshot.worktree.ahead,
@@ -69,6 +72,8 @@ export function registerTools(app: App): () => void {
           carry_leftover: { type: 'boolean', description: 'When continuing: also migrate commits added to the old branch after its merge (default false).' },
           start: { type: 'boolean', description: 'Auto-start the bound session with the task prompt (default true).' },
           acceptance_criteria: { type: 'array', items: { type: 'string' }, description: 'Optional acceptance criteria, one checkable result per item.' },
+          tags: { type: 'array', items: { type: 'string' }, description: 'Optional free-form tags (max 8, 24 chars each).' },
+          priority: { type: 'string', enum: ['low', 'normal', 'high'], description: 'Optional display priority (default normal).' },
         },
         required: ['title', 'task'],
       },
@@ -86,6 +91,8 @@ export function registerTools(app: App): () => void {
             carryLeftover: args.carry_leftover === true,
             start: args.start === false ? false : true,
             acceptanceCriteria: Array.isArray(args.acceptance_criteria) ? args.acceptance_criteria.map(String) : undefined,
+            tags: Array.isArray(args.tags) ? args.tags.map(String) : undefined,
+            priority: args.priority !== undefined ? String(args.priority) : undefined,
           })
           return clean({
             ok: true,
@@ -143,7 +150,7 @@ export function registerTools(app: App): () => void {
         type: 'object',
         properties: {
           id: { type: 'string', description: 'Task id from worktree_tasks.' },
-          action: { type: 'string', enum: ['checkout', 'back', 'merge', 'merge-preflight', 'cleanup', 'archive', 'unarchive', 'pin', 'unpin', 'delete'], description: 'Operation.' },
+          action: { type: 'string', enum: ['checkout', 'back', 'merge', 'merge-preflight', 'cleanup', 'archive', 'unarchive', 'pin', 'unpin', 'meta', 'delete'], description: 'Operation.' },
           force: { type: 'boolean', description: 'For cleanup: remove even with uncommitted changes.' },
           delete_branch: { type: 'boolean', description: 'For cleanup: also delete the task branch.' },
           force_delete_branch: { type: 'boolean', description: 'For cleanup: delete an unmerged branch (data loss).' },
@@ -153,6 +160,9 @@ export function registerTools(app: App): () => void {
           expected_tip: { type: 'string', description: 'For merge: task branch tip SHA captured by a preflight (required for safety).' },
           expected_base: { type: 'string', description: 'For merge: base branch SHA captured by a preflight (required for safety).' },
           dirty_strategy: { type: 'string', enum: ['refuse', 'stash'], description: 'For merge: refuse (default) or stash when repo changes block switching.' },
+          tags: { type: 'array', items: { type: 'string' }, description: 'For meta: replace the tag list (max 8, 24 chars each; [] clears).' },
+          priority: { type: 'string', enum: ['low', 'normal', 'high'], description: 'For meta: set the priority; normal clears it.' },
+          notes: { type: 'string', description: 'For meta: set acceptance/handover notes (max 2000 chars; empty clears).' },
         },
         required: ['id', 'action'],
       },
@@ -164,6 +174,15 @@ export function registerTools(app: App): () => void {
           if (action === 'back') return clean({ ok: true, task: brief(await app.runtime.view(await app.runtime.back(id))) })
           if (action === 'pin' || action === 'unpin') {
             return clean({ ok: true, task: brief(await app.runtime.view(app.runtime.setTaskPinned(id, action === 'pin'))) })
+          }
+          if (action === 'meta') {
+            // Only keys the caller actually sent are patched; omitting a field
+            // must never clear it.
+            const patch: any = {}
+            for (const key of ['tags', 'priority', 'notes']) {
+              if (Object.prototype.hasOwnProperty.call(args, key) && args[key] !== undefined) patch[key] = args[key]
+            }
+            return clean({ ok: true, task: brief(await app.runtime.view(app.runtime.updateTaskMeta(id, patch))) })
           }
           if (action === 'merge-preflight') {
             return clean({ ok: true, preflight: await app.runtime.mergePreflight(id, { switchToBase: args.switch_to_base === true }) })

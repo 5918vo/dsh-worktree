@@ -149,9 +149,10 @@ export function matchesSearch(query: string, fields: Array<string | null | undef
 }
 
 /**
- * Filter project groups by attention category and search text, dropping groups
- * that lost every task. With no filter and no query every project stays, so a
- * freshly added repository remains selectable before its first task exists.
+ * Filter project groups by attention category, tag and search text, dropping
+ * groups that lost every task. With no filter, tag and query every project
+ * stays, so a freshly added repository remains selectable before its first task
+ * exists.
  */
 export function filterProjectViews(
   views: ProjectView[],
@@ -159,21 +160,45 @@ export function filterProjectViews(
   query: string,
   get: (view: TaskView) => { categories: Set<AttentionCategory> },
   pendingText: (task: WorktreeTask) => string,
+  tag: string = '',
 ): ProjectView[] {
   const q = String(query || '').trim()
-  const keepEmpty = filter === 'all' && !q
+  const wantedTag = String(tag || '').trim().toLowerCase()
+  const keepEmpty = filter === 'all' && !q && !wantedTag
   return views
     .map((view) => {
       const projectHit = matchesSearch(q, [view.project.name, view.project.repoPath])
       const tasks = view.tasks.filter((tv) => {
+        if (wantedTag) {
+          const tags = Array.isArray(tv.task.tags) ? tv.task.tags : []
+          if (!tags.some((item) => String(item || '').toLowerCase() === wantedTag)) return false
+        }
         const attention = get(tv)
         if (filter !== 'all' && !(attention && attention.categories.has(filter))) return false
         if (!q || projectHit) return true
-        return matchesSearch(q, [tv.task.title, tv.task.branch, pendingText(tv.task)])
+        const tags = Array.isArray(tv.task.tags) ? tv.task.tags.join(' ') : ''
+        return matchesSearch(q, [tv.task.title, tv.task.branch, tags, tv.task.notes, pendingText(tv.task)])
       })
       return { ...view, tasks }
     })
     .filter((view) => view.tasks.length > 0 || keepEmpty)
+}
+
+/** Every tag currently in use, first spelling wins, sorted for the rail. */
+export function collectTags(views: ProjectView[]): string[] {
+  const byKey = new Map<string, string>()
+  for (const view of views || []) {
+    for (const tv of view.tasks || []) {
+      const tags = tv.task && Array.isArray(tv.task.tags) ? tv.task.tags : []
+      for (const raw of tags) {
+        const text = String(raw || '').trim()
+        if (!text) continue
+        const key = text.toLowerCase()
+        if (!byKey.has(key)) byKey.set(key, text)
+      }
+    }
+  }
+  return [...byKey.values()].sort((a, b) => a.localeCompare(b))
 }
 
 /**

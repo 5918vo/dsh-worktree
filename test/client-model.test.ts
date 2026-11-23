@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { acceptanceHintFor, boardBranch, boardCta, boardStat, boardStatTitle, boardStatus, branchHeadSha, cleanupPrimaryLabel, commitRangeText, criteria, criteriaProgress, diffBaseSha, diffCount, diffHeadSha, diffLineKind, filterProjectViews, matchesSearch, mergeSummary, mergeSummaryText, pathPreview, railEmptyKind, railStatsText, shortSha, switchConfirmText, taskMergeSummary, themeFor, type BoardStatus } from '../src/client/model.js'
+import { acceptanceHintFor, boardBranch, boardCta, boardStat, boardStatTitle, boardStatus, branchHeadSha, cleanupPrimaryLabel, collectTags, commitRangeText, criteria, criteriaProgress, diffBaseSha, diffCount, diffHeadSha, diffLineKind, filterProjectViews, matchesSearch, mergeSummary, mergeSummaryText, pathPreview, railEmptyKind, railStatsText, shortSha, switchConfirmText, taskMergeSummary, themeFor, type BoardStatus } from '../src/client/model.js'
+import { compareTaskOrder } from '../src/task-meta.js'
 
 const T = {
   boardReady: '待开始',
@@ -326,4 +327,56 @@ test('mergeSummaryText reports a cleaned worktree', () => {
   const t = { ...T, boardPreviewCleaned: 'cleaned', boardPreviewCleanedMerged: 'cleaned+merged' }
   assert.equal(mergeSummaryText(t, { key: 'cleaned', tone: 'warn' }), 'cleaned')
   assert.equal(mergeSummaryText(t, { key: 'cleanedMerged', tone: 'ok' }), 'cleaned+merged')
+})
+
+test('collectTags dedupes case-insensitively, keeps the first spelling and sorts', () => {
+  assert.deepEqual(collectTags([]), [])
+  const views = [
+    { project: { id: 'p1' }, tasks: [{ task: task({ id: 'a', tags: ['UI', 'api'] }) }] },
+    { project: { id: 'p2' }, tasks: [{ task: task({ id: 'b', tags: ['ui', 'docs', ''] }) }] },
+    { project: { id: 'p3' }, tasks: [{ task: task({ id: 'c' }) }] },
+  ] as any
+  assert.deepEqual(collectTags(views), ['api', 'docs', 'UI'])
+})
+
+test('filterProjectViews filters by one tag and keeps the search intersection', () => {
+  const categoriesOf = () => ({ categories: new Set() } as any)
+  const views = [
+    {
+      project: { id: 'p1', name: 'Repo', repoPath: '/repo' },
+      tasks: [
+        { task: task({ id: 't1', tags: ['ui', 'api'] }), snapshot: { status: 'review' } },
+        { task: task({ id: 't2', tags: ['docs'] }), snapshot: { status: 'review' } },
+      ],
+    },
+    { project: { id: 'p2', name: 'Other', repoPath: '/other' }, tasks: [], stats: {} },
+  ] as any
+
+  const onlyUi = filterProjectViews(views, 'all', '', categoriesOf, () => '', 'UI')
+  assert.deepEqual(onlyUi.map((v: any) => v.project.id), ['p1'])
+  assert.deepEqual(onlyUi[0].tasks.map((v: any) => v.task.id), ['t1'])
+
+  // An empty tag is a no-op and does not drop empty projects.
+  assert.equal(filterProjectViews(views, 'all', '', categoriesOf, () => '', '').length, 2)
+  // Tag + text must both match.
+  assert.equal(filterProjectViews(views, 'all', 'docs', categoriesOf, () => '', 'ui').length, 0)
+  assert.equal(filterProjectViews(views, 'all', 'repo', categoriesOf, () => '', 'ui')[0].tasks.length, 1)
+})
+
+test('filterProjectViews search matches tags and notes', () => {
+  const categoriesOf = () => ({ categories: new Set() } as any)
+  const views = [{
+    project: { id: 'p1', name: 'Repo', repoPath: '/repo' },
+    tasks: [{ task: task({ id: 't1', title: 'Alpha', tags: ['billing'], notes: 'rotate the token' }), snapshot: { status: 'review' } }],
+  }] as any
+  assert.equal(filterProjectViews(views, 'all', 'billing', categoriesOf, () => '').length, 1)
+  assert.equal(filterProjectViews(views, 'all', 'rotate', categoriesOf, () => '').length, 1)
+  assert.equal(filterProjectViews(views, 'all', 'missing', categoriesOf, () => '').length, 0)
+})
+
+test('compareTaskOrder is the single order used by the board', () => {
+  const older = task({ id: 'old', createdAt: 10, priority: 'high' })
+  const newer = task({ id: 'new', createdAt: 20 })
+  const pinned = task({ id: 'pin', createdAt: 1, priority: 'low', pinnedAt: 5 })
+  assert.deepEqual([newer, older, pinned].sort(compareTaskOrder).map((t: any) => t.id), ['pin', 'old', 'new'])
 })

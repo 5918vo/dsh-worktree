@@ -402,3 +402,32 @@ test('report actions disappear without callbacks and disable while the board is 
   assert.equal(disabled.length, 2)
   assert.ok(disabled.every((button) => button.props.disabled === true))
 })
+
+test('the report lists tags and priority in the headline facts', () => {
+  const report = buildAcceptanceReport(makeInput({
+    task: makeTask({ tags: ['ui', 'api'], priority: 'high' }),
+  }))
+  assert.ok(report.includes('- 标签: ui, api'))
+  assert.ok(report.includes('- 优先级: 高'))
+
+  const fallback = buildAcceptanceReport(makeInput())
+  assert.ok(fallback.includes('- 标签: —'))
+  assert.ok(fallback.includes('- 优先级: 普通'))
+
+  const low = buildAcceptanceReport(makeInput({ task: makeTask({ priority: 'low' }) }))
+  assert.ok(low.includes('- 优先级: 低'))
+})
+
+test('the report has a notes section with the saved text or a fallback', () => {
+  const withNotes = buildAcceptanceReport(makeInput({ task: makeTask({ notes: 'rotate the token\nafter deploy' }) }))
+  assert.ok(withNotes.includes('## 备注'))
+  assert.ok(withNotes.includes('rotate the token after deploy'))
+
+  const without = buildAcceptanceReport(makeInput())
+  assert.ok(without.includes('## 备注\n无备注'))
+})
+
+test('metadata is placed before the criteria so the head stays scannable', () => {
+  const report = buildAcceptanceReport(makeInput({ task: makeTask({ tags: ['ui'] }) }))
+  assert.ok(report.indexOf('- 标签: ui') < report.indexOf('## 任务描述'))
+})

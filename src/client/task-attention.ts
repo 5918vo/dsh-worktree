@@ -7,8 +7,8 @@
  * session state — no new Git commands or polling.
  */
 
-export type AttentionCategory = 'pending' | 'review' | 'recovery' | 'broken'
-export type AlertKind = 'recovery' | 'pending' | 'broken' | 'post-merge' | 'session'
+export type AttentionCategory = 'pending' | 'review' | 'recovery' | 'broken' | 'stalled'
+export type AlertKind = 'recovery' | 'pending' | 'broken' | 'stalled' | 'post-merge' | 'session'
 export type QuickAction = 'recover' | 'handle' | 'review' | 'open-session'
 
 export interface TaskAttention {
@@ -22,6 +22,8 @@ export interface TaskAttention {
   quickAction: QuickAction | null
   /** Snapshot is stale (offline / refresh failed) — not broken. */
   stale: boolean
+  /** Days without activity when the task is stalled; absent otherwise. */
+  stalledDays?: number
 }
 
 export interface AttentionInput {
@@ -32,6 +34,8 @@ export interface AttentionInput {
   health?: { kind: string; message?: string } | null
   repoLockLabel?: string
   stale?: boolean
+  /** Whole days without activity, as derived by `staleness.ts`. */
+  stalledDays?: number | null
 }
 
 /** Live session health for one task: the last turn outcome, when it failed. */
@@ -69,7 +73,7 @@ export function parseTurnEndHealth(records: any[]): SessionHealth | null {
  */
 export const RECOVERY_UI_READY = true
 
-const ALERT_PRIORITY: AlertKind[] = ['recovery', 'pending', 'broken', 'post-merge', 'session']
+const ALERT_PRIORITY: AlertKind[] = ['recovery', 'pending', 'broken', 'stalled', 'post-merge', 'session']
 
 function isRecovery(task: any, repoLockLabel?: string): boolean {
   // While a Git action holds the repo the journal is "in flight", not stuck.
@@ -118,6 +122,14 @@ export function deriveTaskAttention(input: AttentionInput): TaskAttention {
   const healthActive = !!health && !running
   if (healthActive) alerts.push('session')
 
+  // stalled: no activity past the status threshold; the board passes the days
+  // it already computed so the chip, the filter and the summary agree.
+  const stalledDays = Math.floor(Number(input.stalledDays) || 0)
+  if (stalledDays > 0) {
+    categories.add('stalled')
+    alerts.push('stalled')
+  }
+
   // Deduplicate while preserving priority order.
   const uniq: AlertKind[] = []
   for (const kind of ALERT_PRIORITY) if (alerts.includes(kind)) uniq.push(kind)
@@ -131,6 +143,7 @@ export function deriveTaskAttention(input: AttentionInput): TaskAttention {
     extraAlerts,
     quickAction: quickActionFor(categories, !!(task && task.sessionId)),
     stale: !!input.stale,
+    ...(stalledDays > 0 ? { stalledDays } : {}),
   }
 }
 
@@ -169,6 +182,7 @@ export function categoryKey(category: AttentionCategory | 'all'): string {
     case 'review': return 'attentionReview'
     case 'recovery': return 'attentionRecovery'
     case 'broken': return 'attentionBroken'
+    case 'stalled': return 'attentionStalled'
   }
 }
 
@@ -182,10 +196,10 @@ export function filterCount(counts: Record<string, number> | null | undefined, f
   return Number((counts && counts[key]) || 0)
 }
 
-const SEVERITY: Record<AttentionCategory, number> = { recovery: 4, broken: 3, pending: 2, review: 1 }
+const SEVERITY: Record<AttentionCategory, number> = { recovery: 4, broken: 3, pending: 2, review: 1, stalled: 1 }
 
 /** Category order used by the summary bar: most severe first. */
-export const CATEGORY_ORDER: AttentionCategory[] = ['recovery', 'broken', 'pending', 'review']
+export const CATEGORY_ORDER: AttentionCategory[] = ['recovery', 'broken', 'pending', 'review', 'stalled']
 
 export function severityOf(category: AttentionCategory): number {
   return SEVERITY[category] || 0
@@ -200,7 +214,7 @@ export interface AttentionSummary {
 }
 
 export function summarizeAttention(views: any[], get: (v: any) => TaskAttention): AttentionSummary {
-  const counts: Record<AttentionCategory, number> = { pending: 0, review: 0, recovery: 0, broken: 0 }
+  const counts: Record<AttentionCategory, number> = { pending: 0, review: 0, recovery: 0, broken: 0, stalled: 0 }
   const hurting = new Set<string>()
   let maxSeverity = 0
   for (const view of views || []) {
@@ -243,13 +257,15 @@ export function computeFilterCounts(
     pending: visible.counts.pending,
     review: visible.counts.review,
     broken: visible.counts.broken,
+    stalled: visible.counts.stalled,
     recovery: recoveryReady ? all.counts.recovery : 0,
     total: 0,
   }
   const ids = new Set<string>()
+  const hurting: AttentionCategory[] = ['pending', 'review', 'broken', 'stalled']
   for (const view of visibleViews || []) {
     const attention = get(view)
-    if (attention && (attention.categories.has('pending') || attention.categories.has('review') || attention.categories.has('broken'))) {
+    if (attention && hurting.some((category) => attention.categories.has(category))) {
       if (view && view.task && view.task.id) ids.add(String(view.task.id))
     }
   }

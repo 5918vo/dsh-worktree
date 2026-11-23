@@ -270,3 +270,113 @@ test('bindSession is atomic across store instances and refuses duplicate binding
     await rmrf(dir)
   }
 })
+
+test('updateTaskMeta touches only the fields the patch actually carries', async () => {
+  const { store, dir } = await freshStore()
+  try {
+    store.putTask(task('m1', 'p1'))
+    const seeded = store.updateTaskMeta('m1', { tags: ['ui', 'api'], priority: 'high', notes: 'first' })
+    assert.equal(seeded.ok, true)
+
+    const notesOnly = store.updateTaskMeta('m1', { notes: 'second' })
+    assert.equal(notesOnly.ok, true)
+    if (!notesOnly.ok) return
+    assert.deepEqual(notesOnly.task.tags, ['ui', 'api'], 'a notes-only patch must not clear tags')
+    assert.equal(notesOnly.task.priority, 'high')
+    assert.equal(notesOnly.task.notes, 'second')
+
+    const tagsOnly = store.updateTaskMeta('m1', { tags: ['docs'] })
+    assert.equal(tagsOnly.ok, true)
+    if (!tagsOnly.ok) return
+    assert.deepEqual(tagsOnly.task.tags, ['docs'])
+    assert.equal(tagsOnly.task.priority, 'high', 'a tags-only patch must not clear priority')
+    assert.equal(tagsOnly.task.notes, 'second')
+  } finally {
+    await cleanup(store, dir)
+  }
+})
+
+test('updateTaskMeta treats an explicit undefined as not provided', async () => {
+  const { store, dir } = await freshStore()
+  try {
+    store.putTask(task('m2', 'p1'))
+    store.updateTaskMeta('m2', { tags: ['ui'], priority: 'low', notes: 'n' })
+    // The HTTP layer can forward all three keys even when the client sent one;
+    // undefined must read as "leave it alone", not as "clear it".
+    const res = store.updateTaskMeta('m2', { tags: undefined, priority: undefined, notes: 'changed' })
+    assert.equal(res.ok, true)
+    if (!res.ok) return
+    assert.deepEqual(res.task.tags, ['ui'])
+    assert.equal(res.task.priority, 'low')
+    assert.equal(res.task.notes, 'changed')
+  } finally {
+    await cleanup(store, dir)
+  }
+})
+
+test('updateTaskMeta clears tags, priority and notes only on explicit empty values', async () => {
+  const { store, dir } = await freshStore()
+  try {
+    store.putTask(task('m3', 'p1'))
+    store.updateTaskMeta('m3', { tags: ['ui'], priority: 'high', notes: 'n' })
+
+    const cleared = store.updateTaskMeta('m3', { tags: [], priority: 'normal', notes: '' })
+    assert.equal(cleared.ok, true)
+    if (!cleared.ok) return
+    assert.equal('tags' in cleared.task, false)
+    assert.equal('priority' in cleared.task, false)
+    assert.equal('notes' in cleared.task, false)
+
+    const reloaded = new Store(dir)
+    await reloaded.load()
+    const row = reloaded.getTask('m3')!
+    assert.equal('tags' in row, false)
+    assert.equal('priority' in row, false)
+    assert.equal('notes' in row, false)
+    reloaded.dispose()
+    await reloaded.flush()
+  } finally {
+    await cleanup(store, dir)
+  }
+})
+
+test('updateTaskMeta validates tags, priority and notes', async () => {
+  const { store, dir } = await freshStore()
+  try {
+    store.putTask(task('m4', 'p1'))
+    assert.deepEqual(store.updateTaskMeta('missing', { notes: 'n' }), { ok: false, reason: 'missing' })
+    assert.deepEqual(store.updateTaskMeta('m4', { priority: 'urgent' }), { ok: false, reason: 'priority-invalid' })
+    assert.deepEqual(
+      store.updateTaskMeta('m4', { tags: Array.from({ length: 9 }, (_, i) => 't' + i) }),
+      { ok: false, reason: 'tags-too-many' },
+    )
+    assert.deepEqual(store.updateTaskMeta('m4', { tags: ['x'.repeat(25)] }), { ok: false, reason: 'tags-too-long' })
+    assert.deepEqual(store.updateTaskMeta('m4', { notes: 'x'.repeat(2001) }), { ok: false, reason: 'notes-too-long' })
+    // A rejected patch must not half-apply.
+    assert.equal('tags' in store.getTask('m4')!, false)
+    assert.equal('notes' in store.getTask('m4')!, false)
+  } finally {
+    await cleanup(store, dir)
+  }
+})
+
+test('updateTaskMeta writes are visible to another store instance', async () => {
+  const dir = await fs.mkdtemp(join(tmpdir(), 'dshw-store-'))
+  const a = new Store(dir)
+  const b = new Store(dir)
+  await a.load()
+  await b.load()
+  try {
+    a.putTask(task('m5', 'p1'))
+    b.refreshTasks()
+    assert.equal(b.updateTaskMeta('m5', { notes: 'from-b' }).ok, true)
+    a.refreshTasks()
+    assert.equal(a.getTask('m5')!.notes, 'from-b')
+  } finally {
+    a.dispose()
+    b.dispose()
+    await a.flush()
+    await b.flush()
+    await rmrf(dir)
+  }
+})
