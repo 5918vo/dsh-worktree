@@ -2,6 +2,32 @@
 
 本文件记录 `@5318vo/dsh-worktree` 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.16.0] - 2026-11-24 · 项目复盘与交接
+
+### 新增
+
+- 项目周报：项目详情新增「项目周报」卡片，可选近 7 / 14 / 30 天窗口，汇总窗口内新建、合并、清理、归档任务数，窗口内合并任务的累计工时与估算点数，以及当前开放 / 逾期 / 停滞与验收核对进度；变化事件可点击跳到任务，支持复制或下载 Markdown（`digest-<slug>-<YYYYMMDD>-<HHmm>.md`）。周报只做时间窗口聚合，不输出逐任务验收正文、备注、diff 或文件列表。
+- 估算校准：项目详情新增「估算校准」卡片，把任务的规模估算与累计工时配对；样本达到 3 个后显示每点平均 / 中位工时，并展示估算覆盖率、计时覆盖率与最近 5 个样本。样本不足时只显示缺口，不计算均值；校准只读，不写回估算或工时。
+- 关键路径与可开始任务：项目详情新增「关键路径」卡片，按依赖跳数计算最长链，列出当前可立即开始的任务、被阻塞数与缺失前置数；循环依赖与超过 500 个节点时安全降级。关键路径只表达依赖顺序，不代表工期。
+- 任务交接摘要：任务「概览」新增交接区块，可复制或下载面向接手人或 Agent 的 Markdown（`handover-<id8>-<YYYYMMDD>-<HHmm>.md`），包含当前状态、分支、worktree、HEAD、领先 / 未提交数、优先级、标签、截止日期、估算、工时、备注、前置与后继任务、未核对验收项、最近 5 条提交与下一步建议；不包含 diff 正文与完整文件列表。
+- 自上次访问以来的变化：左栏在打开看板时显示上次访问后的新建、合并、待验收、逾期与新增工时摘要条，可关闭；首次访问、无变化、只发生归档 / 清理或 localStorage 不可用时不显示。新增工时按累计工时在 `since` 与 `now` 之间的增量计算，运行中的计时区间也能正确计入。
+
+### 接口
+
+- 新增纯函数模块 `src/client/project-digest.ts`（`DIGEST_WINDOWS` / `DIGEST_WINDOW_DEFAULT = 7` / `DIGEST_EVENT_LIMIT = 30` / `buildProjectDigest` / `buildProjectDigestReport` / `digestFilename`）、`src/client/estimate-calibration.ts`（`CALIBRATION_MIN_SAMPLES = 3` / `CALIBRATION_SAMPLE_LIMIT = 5` / `buildEstimateCalibration`）、`src/client/critical-path.ts`（`CRITICAL_PATH_LIMIT = 5` / `CRITICAL_PATH_MAX_NODES = 500` / `buildCriticalPath`）、`src/client/handover.ts`（`buildHandoverBrief` / `handoverFilename`）、`src/client/visit-digest.ts`（`VISIT_EVENT_LIMIT = 8` / `buildVisitDigest`）与 `src/client/visit-storage.ts`（`LAST_VISIT_KEY = 'dshw-board:last-visit:v1'` / `loadLastVisit` / `saveLastVisit`）。
+- `CriticalPath` 新增 `readyTotal`：可开始任务在截断前的总数，界面统计使用它而不是 `ready.length`。
+- `UseBoardActionsArgs` 新增 `views`，用于交接摘要反查后继任务；新增 `runCopyHandover` / `runDownloadHandover`。`StageProps` 新增 `onCopyHandover` / `onDownloadHandover` / `handoverBusy`。
+- `RailProps` 新增 `visitDigest` / `onDismissVisit`。
+- 不新增 HTTP 路由、不新增台账字段、不新增 npm 依赖；所有功能只读已有 `TaskView` / `TaskSnapshot`，访问摘要额外读写浏览器 `localStorage`。
+
+### 测试
+
+- 新增 `client-project-digest`（窗口边界、7/14/30 天、同任务多事件、交付工时 / 点数、当前状态、验收、排序截断、报告不含逐任务正文、文件名）、`client-estimate-calibration`（样本阈值、均值 / 中位、运行中计时、非法值、覆盖率、排序截断）、`client-critical-path`（线性链 / 菱形 / 多根 / 缺失 / 循环 / 归档 / `broken` / 截断 / 节点上限 / 确定性）、`client-handover`（六状态 + 归档、前置 / 后继、验收、备注、提交、文件名、无 `undefined` / `NaN`）、`client-visit-digest`（since 边界、四类事件、当前状态、工时增量、截断）与 `client-visit-storage`（往返、损坏内容、异常与配额降级）用例。`npm run verify` 全部通过。
+
+### 文档
+
+- `README.md`、`docs/frontend-design.md`、`docs/i18n-terminology.md` 与 `feature.md` 同步更新到 1.16.0；`locale/zh.json` 与 `locale/en.json` 新增周报、校准、关键路径、交接摘要与访问摘要系列文案，`npm run check:locale` 通过。
+
 ## [1.15.0] - 2026-11-23 · 执行节奏与风险可视化
 
 ### 新增

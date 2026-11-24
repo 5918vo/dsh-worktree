@@ -901,23 +901,28 @@ export function saveLastVisit(at: number, storage?: Storage | null): boolean
 
 | 功能 | 子 agent 分支 | 子 agent HEAD | 集成提交 |
 | --- | --- | --- | --- |
-| 项目周报 | 待填 | 待填 | 待填 |
-| 估算校准 | 待填 | 待填 | 待填 |
-| 关键路径与可开始任务 | 待填 | 待填 | 待填 |
-| 任务交接摘要 | 待填 | 待填 | 待填 |
-| 自上次访问以来的变化 | 待填 | 待填 | 待填 |
+| 项目周报 | `t3/client-project-digest` | `074b05f0eb84dd961e7d2fe55ff0b079df09272f` | `6d59dca` |
+| 估算校准 | `t3/estimate-calibration-feature` | `9bafc7715e62673493fc4a8ceb776438c888e43e` | `effe003` |
+| 关键路径与可开始任务 | `t3/critical-path-ready-tasks` | `8e312eb736b2619a30f667c69730943f24880648` | `66bea48` |
+| 任务交接摘要 | `t3/feat/handover-summary` | `41c26f4a938d396e8e61bec629cd5fd16420206f` | `41f7aa5` |
+| 自上次访问以来的变化 | `t3/visit-digest-since-last-visit` | `5c4c8c0e9035483afb5b5f56f88539299890a518` | `1401f00` |
+
+实际集成顺序：估算校准 → 关键路径 → 交接摘要 → 访问摘要 → 项目周报（估算校准先完成，先集成不冲突的卡片；其余按改动面从小到大）。
 
 ### 10.2 主线程复核修正
 
-待填。
+- **集成期修正（`e3cbed2`）**：关键路径 `CriticalPath` 新增 `readyTotal`，统计格显示截断前可开始任务总数，而不是 `ready.length`（最多 5）；访问摘要的显示条件改为 `created + merged + review + overdue + workMs === 0` 时隐藏，避免只发生归档 / 清理时出现「全 0」摘要条；移除访问摘要的 `aria-label`，让 `role="status"` 播报完整可见文本。
+- **cherry-pick 后去重**：功能 1 与功能 2 都在 `project-detail.ts` 引入 `formatWorkDuration` / `workDurationUnits`，自动合并后出现重复 import；主线程删除重复行，`typecheck` 通过。
+- **locale 合并**：功能 2 锚点 `insightsEmpty`、功能 3 锚点 `depGraphTruncated`、功能 4 锚点 `reportDownloaded`、功能 5 锚点 `savedViewDeleted`、功能 1 锚点 `projectReportDownloaded`；自动合并后中英各 973 个 key，`check:locale` 通过。
+- **未改动子 agent 实现**：估算校准的阈值与中位口径、交接摘要的 `{deps}` 占位符、访问摘要的累计工时差均按规格保留；如后续统一术语，再同步文案与测试。
 
 ### 10.3 验证结果
 
-- `npm run typecheck`：待填。
-- `npm run check:locale`：待填。
-- `npm test`：待填（基线 661 项，0 失败）。
-- `npm run build`：待填。
-- `npm run verify`：待填。
+- `npm run typecheck`：通过。
+- `npm run check:locale`：通过，`zh=973 en=973`，客户端引用 742 个 key。
+- `npm test`：756 项全部通过，0 失败；基线 661 项，净增 95 项。
+- `npm run build`：通过，`dist/index.js`（196.8kb）与 `dist/client.js`（726.3kb）生成。
+- `npm run verify`：待独立复核修正后、推送前执行；pre-push hook 会再跑一次完整 verify。
 
 ### 10.4 验收审批
 
