@@ -537,7 +537,10 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
   // refreshing therefore makes window B's next load report changes since A —
   // "since the board was last opened", not "since this tab was last opened".
   React.useEffect(() => {
-    if (!loaded || visitCaptured.current) return
+    // A failed first load must not stamp the visit: the user saw nothing, so the
+    // next successful visit should still report everything since the last good
+    // baseline. The retry re-runs this effect once `err` clears.
+    if (!loaded || err || visitCaptured.current) return
     visitCaptured.current = true
     const now = Date.now()
     const previous = loadLastVisit()
@@ -549,7 +552,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     // "0 new · 0 merged · 0 review · 0 overdue".
     if (digest.created + digest.merged + digest.review + digest.overdue + digest.workMs === 0) return
     setVisitDigest(digest)
-  }, [loaded, allViews])
+  }, [loaded, err, allViews])
   const shownViews = React.useMemo(() => visibleProjectViews(views, showArchived), [views, showArchived])
   // Tag options come from every task, archived or not, so the dropdown does not
   // flicker while the archive toggle changes what the list shows.

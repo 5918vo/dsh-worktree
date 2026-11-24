@@ -749,18 +749,18 @@ export function saveLastVisit(at: number, storage?: Storage | null): boolean
 
 - `board.ts`：
   - 新增 state `visitDigest`（`VisitDigest | null`）与 `visitDismissed`（boolean，或直接用 `visitDigest` 置空）。
-  - 新增 `visitCaptured` ref；在 `loaded` 为 true 且尚未捕获时执行一次：
+  - 新增 `visitCaptured` ref；在 `loaded` 为 true、`err` 为空且尚未捕获时执行一次（首次加载失败不盖章，重试成功后补算）：
     1. `const now = Date.now()`。
     2. `const previous = loadLastVisit()`。
     3. `saveLastVisit(now)`（先算后写；写失败不影响摘要）。
     4. `previous == null` → 不显示。
     5. `const digest = buildVisitDigest(allViews, previous, now)`；`digest` 为 `null` 或 `digest.created + digest.merged + digest.review + digest.overdue + digest.workMs === 0` → 不显示；否则 `setVisitDigest(digest)`。只发生归档 / 清理时摘要行没有可展示的数字，保持安静。
-  - 依赖数组使用 `[loaded, allViews]`，但 `visitCaptured` ref 保证每个挂载只执行一次；轮询刷新不会重置摘要。
+  - 依赖数组使用 `[loaded, err, allViews]`，但 `visitCaptured` ref 保证每个挂载只执行一次；轮询刷新不会重置摘要。
   - 给 `Rail` 传 `visitDigest` 与 `onDismissVisit: () => setVisitDigest(null)`。
 - `rail.ts`：
   - `RailProps` 新增 `visitDigest?: VisitDigest | null`、`onDismissVisit?: () => void`。
   - 在搜索 / 视图控件之后、注意力筛选之前渲染摘要条：
-    - `role="status"`，`aria-label` 为 `t.visitTitle`。
+    - `role="status"`，不设 `aria-label`：可见文本已以「自上次访问」开头，覆盖式 `aria-label` 反而会让屏幕阅读器读不到具体数字。
     - 文本使用 `t.visitSummary` 填充 `{created}` / `{merged}` / `{review}` / `{overdue}` / `{work}`；`workMs` 为 0 时使用 `t.visitSummaryNoWork`。
     - 工时使用 `formatWorkDuration(digest.workMs, workDurationUnits(t))`。
     - 关闭按钮 `aria-label` 为 `t.visitDismiss`，点击调用 `onDismissVisit`。

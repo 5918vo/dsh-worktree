@@ -158,7 +158,7 @@ export function buildVisitDigest(
 
   events.sort((a, b) => {
     if (b.at !== a.at) return b.at - a.at
-    const byTitle = a.title.localeCompare(b.title)
+    const byTitle = a.title < b.title ? -1 : a.title > b.title ? 1 : 0
     if (byTitle) return byTitle
     if (a.taskId !== b.taskId) return a.taskId < b.taskId ? -1 : 1
     return KIND_ORDER[a.kind] - KIND_ORDER[b.kind]

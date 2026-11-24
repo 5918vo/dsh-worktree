@@ -51,7 +51,7 @@
 | 关键路径 | 关键路径 | critical path | `critPathTitle`；可开始 `critPathReady`，被阻塞 `critPathBlocked`，缺失前置 `critPathMissing`，循环 `critPathCycle`；只表达依赖跳数，不代表工期 |
 | 可开始任务 | 可开始任务 | ready to start | `critPathReady` / `critPathReadyList`；指前置都已完成或没有前置的开放任务 |
 | 交接摘要 | 交接摘要 | handover brief | `handoverTitle`；下一步 `handoverSectionNext`，前置 / 后继 `handoverSectionDeps` / `handoverSectionDependents`，文件名 `handover-<id8>-<YYYYMMDD>-<HHmm>.md` |
-| 自上次访问 | 自上次访问 | since your last visit | `visitTitle`；摘要 `visitSummary` / `visitSummaryNoWork`，关闭 `visitDismiss`；localStorage key `dshw-board:last-visit:v1` |
+| 自上次访问 | 自上次访问 | since your last visit | 摘要 `visitSummary` / `visitSummaryNoWork`（可见文本自带「自上次访问」，不设标题 key），关闭 `visitDismiss`；localStorage key `dshw-board:last-visit:v1` |
 | 交付工时 | 交付工时 | delivered work | `digestDeliveredWork`；只指窗口内合并任务的累计工时，不是窗口内新增工时 |
 | 新增工时 | 新增工时 | work added | `visitSummary` 的 `{work}`；按累计工时在两次访问之间的增量计算 |
 

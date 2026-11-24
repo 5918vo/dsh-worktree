@@ -177,6 +177,17 @@ test('events sort by time desc, then title, id and fixed kind order', () => {
   ])
 })
 
+test('title ordering uses code points, not locale collation', () => {
+  // 'B' (0x42) sorts before 'a' (0x61) by code point, while most locale
+  // collations put "alpha" first. The digest must not depend on the ICU data
+  // available to the browser.
+  const views = [
+    view({ id: 'lower', title: 'alpha', createdAt: SINCE + 10 }),
+    view({ id: 'upper', title: 'Beta', createdAt: SINCE + 10 }),
+  ]
+  assert.deepEqual(digestOf(views).events.map((e) => e.taskId), ['upper', 'lower'])
+})
+
 test('more than the limit truncates events but keeps every count', () => {
   const views = Array.from({ length: 10 }, (_v, i) => view({
     id: 't' + String(i).padStart(2, '0'),

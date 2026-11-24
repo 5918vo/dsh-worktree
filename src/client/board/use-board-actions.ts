@@ -413,6 +413,17 @@ export function useBoardActions(args: UseBoardActionsArgs) {
   }
 
   /**
+   * Task views of the project the task belongs to. Dependencies never cross
+   * projects (the server rejects them), so resolving a foreign id here would
+   * disagree with the critical-path card, which counts it as missing.
+   */
+  function projectViewsOf(task: TaskView): TaskView[] {
+    const owner = (views || []).find((project) =>
+      !!project && (project.tasks || []).some((tv) => tv.task.id === task.task.id))
+    return owner ? owner.tasks : allProjectViews()
+  }
+
+  /**
    * Handover text for one task. Copy and download share this body so they can
    * never diverge; dependents read their status through the same board mapping
    * as the Stage chip.
@@ -422,7 +433,7 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     return buildHandoverBrief({
       task: view.task,
       snapshot: view.snapshot,
-      views: allProjectViews(),
+      views: projectViewsOf(view),
       projectName: projectOfTask ? projectOfTask.project.name : '',
       statusLabel: current ? statusLabel : boardStatusLabel(t, boardStatus(view.snapshot.status, false)),
       statusLabelOf: (tv: TaskView) => boardStatusLabel(t, boardStatus(tv.snapshot.status, false)),

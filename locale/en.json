@@ -964,7 +964,6 @@
   "savedViewStateInvalid": "The current filters cannot be saved",
   "savedViewSaved": "Saved view \"{name}\"",
   "savedViewDeleted": "Deleted view \"{name}\"",
-  "visitTitle": "Since your last visit",
   "visitSummary": "Since your last visit: {created} new · {merged} merged · {review} awaiting acceptance · {overdue} overdue · {work} of work added",
   "visitSummaryNoWork": "Since your last visit: {created} new · {merged} merged · {review} awaiting acceptance · {overdue} overdue",
   "visitDismiss": "Dismiss visit summary",
