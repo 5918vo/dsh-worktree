@@ -16,6 +16,7 @@ const T: any = {
   acceptNotOnBase: 'not-on-base {branch}',
   acceptanceHintRepoDirtyMerge: 'repo-dirty {n}',
   mergePreviewConflictHint: 'preview-conflict',
+  mergePreviewConflictManualHint: 'preview-conflict-manual',
   mergePreviewChecking: 'preview-checking',
   mergePrecheckBlocked: 'precheck-blocked',
 }
@@ -194,7 +195,29 @@ test('merge: a pending interaction blocks the merge', () => {
 })
 
 test('merge: a predicted conflict blocks the merge', () => {
-  const g = gate({ previewState: { phase: 'ready', checkedAt: 1, preview: { conflict: true, checked: true, supported: true } } })
+  const g = gate({
+    task: { ...TASK, sessionId: 'sess-1' },
+    previewState: { phase: 'ready', checkedAt: 1, preview: { conflict: true, checked: true, supported: true } },
+  })
+  assert.deepEqual(g.reasons.merge, ['preview-conflict'])
+})
+
+// A session-less task cannot "sync in the session", so the gate must point at the
+// manual worktree route the inspector offers instead of a missing capability.
+test('merge: a predicted conflict on a session-less task points at the manual route', () => {
+  const g = gate({
+    task: { ...TASK, sessionId: '' },
+    previewState: { phase: 'ready', checkedAt: 1, preview: { conflict: true, checked: true, supported: true } },
+  })
+  assert.deepEqual(g.reasons.merge, ['preview-conflict-manual'])
+  assert.equal(g.disabled.merge, 'preview-conflict-manual')
+})
+
+test('merge: a bound session keeps the in-session conflict hint', () => {
+  const g = gate({
+    task: { ...TASK, sessionId: 'sess-1' },
+    previewState: { phase: 'ready', checkedAt: 1, preview: { conflict: true, checked: true, supported: true } },
+  })
   assert.deepEqual(g.reasons.merge, ['preview-conflict'])
 })
 

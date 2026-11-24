@@ -3,7 +3,7 @@ import type { TaskView } from '../models'
 import { mergeSummaryText, shortSha, taskMergeSummary, type MergeSummary } from './model'
 import { displayPath, pathParts } from './format'
 import { readLive } from './live-session'
-import { SYNC_BUSY, mergePreviewFiles, mergeRiskChip, previewFilesText, previewNoCheck, syncApplicable } from './review-surfaces'
+import { SYNC_BUSY, manualSyncCommand, mergePreviewFiles, mergeRiskChip, previewFilesText, previewNoCheck, syncApplicable } from './review-surfaces'
 
 export interface InspectorProps {
   t: any
@@ -68,8 +68,14 @@ export function Inspector(props: InspectorProps) {
   const riskFiles = mergePreviewFiles(preview)
   const canSync = !merged && syncApplicable(preview)
   const syncing = props.busy === SYNC_BUSY
-  const syncDisabled = !task.sessionId || props.running === true || props.busy !== ''
-  const syncTitle = !task.sessionId ? t.syncNoSession : props.running === true ? t.acceptAgentRunning : undefined
+  // A task without a session has nobody to send the instruction to, so the only
+  // honest affordance is the manual one: copy the merge command for its
+  // worktree. A disabled button that says "create a session first" points at a
+  // capability this task does not have.
+  const manualSync = !task.sessionId
+  const syncCommand = manualSync ? manualSyncCommand(task) : ''
+  const syncDisabled = manualSync ? !syncCommand : props.running === true || props.busy !== ''
+  const syncTitle = manualSync ? t.syncManualHint : props.running === true ? t.acceptAgentRunning : undefined
   const riskNode = risk || canSync
     ? h('div', { style: { marginTop: '8px', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' } },
       risk
@@ -80,8 +86,15 @@ export function Inspector(props: InspectorProps) {
           className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini',
           disabled: syncDisabled,
           title: syncTitle,
-          onClick: () => props.onSyncBaseline(riskFiles),
-        }, syncing ? t.syncingBaseline : t.syncBaseline)
+          onClick: () => {
+            if (syncDisabled) return
+            if (manualSync) props.onCopy(syncCommand)
+            else props.onSyncBaseline(riskFiles)
+          },
+        }, manualSync ? t.syncManual : syncing ? t.syncingBaseline : t.syncBaseline)
+        : null,
+      canSync && manualSync
+        ? h('div', { style: { flexBasis: '100%', fontSize: '11px', color: 'var(--text-3)', lineHeight: '1.5' } }, t.syncManualHint)
         : null)
     : null
   const worktree = displayPath(task.worktreePath)

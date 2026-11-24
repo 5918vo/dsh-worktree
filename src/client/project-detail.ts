@@ -11,6 +11,7 @@ import { buildDependencyGraph, DEP_GRAPH_LIMIT } from './dependency-graph'
 import { buildProjectRisk } from './project-risk'
 import { fill } from './markdown'
 import { DEFAULT_WORKTREE_DIR } from '../worktree-layout'
+import { stageGridClass } from './detail-layout'
 
 /** Character-budget truncation for SVG labels (a pure render cannot measure text). */
 function graphLabel(text: string, maxWidth: number): string {
@@ -654,7 +655,7 @@ export function ProjectDetail(props: any) {
           : null,
         h(Btn, { variant: 'danger', icon: 'trash', disabled: busy !== '' || reviewingTasks.length > 0, onClick: openDelete }, t.deleteProject)))
 
-    return h('div', { className: 'dshw-detail-inner dshw-stage-grid' },
+    return h('div', { className: stageGridClass(!!props.inspectorHidden) },
       h('div', { className: 'dshw-stage' }, topbar, stageHead, tab === 'settings' ? settingsBody : overviewBody),
       inspector,
       deleteModal)

@@ -130,7 +130,9 @@ export function deriveActionGate(input: ActionGateInput): ActionGate {
     if (phase === 'error') {
       push('merge', previewState.message || '')
     } else if (preview && preview.conflict) {
-      push('merge', t.mergePreviewConflictHint)
+      // A task without a session cannot "sync in the session"; point at the
+      // manual path the inspector offers instead of a capability it lacks.
+      push('merge', task && task.sessionId ? t.mergePreviewConflictHint : t.mergePreviewConflictManualHint)
     } else if (phase === 'checking' || !preview) {
       push('merge', t.mergePreviewChecking)
     } else if (preview.checked === false && preview.supported !== false) {

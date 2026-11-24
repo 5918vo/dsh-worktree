@@ -116,6 +116,8 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
   const [publishDraft, setPublishDraft] = React.useState(null as any)
   const [partialNotice, setPartialNotice] = React.useState(null as { taskId: string; message: string } | null)
   const [environment, setEnvironment] = React.useState(null as any)
+  // Runtime worktree dir: what a project without its own `dirName` inherits.
+  const [configDirName, setConfigDirName] = React.useState('')
   const [addOpen, setAddOpen] = React.useState(false)
   const [publishProjectId, setPublishProjectId] = React.useState('')
   const [publishParentId, setPublishParentId] = React.useState('')
@@ -158,7 +160,10 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
   // worktree path that may fail, and never change during a session.
   React.useEffect(() => {
     getJson('config')
-      .then((d: any) => { if (d && d.environment) setEnvironment(d.environment) })
+      .then((d: any) => {
+        if (d && d.environment) setEnvironment(d.environment)
+        if (d && d.config && d.config.dirName) setConfigDirName(String(d.config.dirName))
+      })
       .catch(() => {})
   }, [])
 
@@ -721,7 +726,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
             h('div', { className: 'dshw-scope' + (theme === 'dark' ? ' dshw-dark' : ''), style: { height: '100%' } },
               h(ProjectDetail, {
                 view: selectedProject,
-                cfg: null,
+                cfg: configDirName ? { dirName: configDirName } : null,
                 pendingMap,
                 sessionMap,
                 t,
@@ -789,6 +794,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
       ? h(PublishModal, {
         t,
         views,
+        configDirName,
         initialProjectId: publishProjectId,
         parentId: publishParentId,
         parentView: publishParentId ? views.flatMap((v: ProjectView) => v.tasks).find((tv: TaskView) => tv.task.id === publishParentId) || null : null,

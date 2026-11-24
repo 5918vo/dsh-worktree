@@ -25,6 +25,8 @@ export interface PublishModalProps {
   initialProjectId: string
   parentId: string
   parentView: TaskView | null
+  /** Runtime `dirName`; a project without its own override inherits this. */
+  configDirName?: string
   /** In-session draft restored when the modal is reopened. */
   draft?: any
   /** Persist (or clear, with null) the draft in the parent's session state. */
@@ -331,7 +333,7 @@ export function PublishModal(props: PublishModalProps) {
   }
 
   if (!project) {
-    return modal(t, project, null, busy, start, handleClose, rootRef, h('div', { className: 'dshwd-empty' },
+    return modal(t, project, null, busy, start, handleClose, rootRef, props.configDirName || '', h('div', { className: 'dshwd-empty' },
       h('div', { className: 'dshwd-empty-title' }, t.noProjectsHint),
       h('div', { className: 'dshwd-hint' }, t.boardAddProjectFirst)),
     h('button', { className: 'dshwd-btn', onClick: handleClose }, t.close))
@@ -344,7 +346,7 @@ export function PublishModal(props: PublishModalProps) {
   const baseBranches = showAllBranches ? choices.primary.concat(choices.rest) : choices.primary
   const hiddenBranches = choices.rest.length
 
-  return modal(t, project, submit, busy, start, handleClose, rootRef,
+  return modal(t, project, submit, busy, start, handleClose, rootRef, props.configDirName || '',
     closeConfirm
       ? h('div', { className: 'dshwd-notice dshwd-alert dshwd-alert-warn', role: 'alert' },
         h('div', { className: 'dshwd-notice-text' },
@@ -589,7 +591,7 @@ export function PublishModal(props: PublishModalProps) {
   }
 }
 
-function modal(t: any, project: any, onSubmit: (() => void) | null, busy: boolean, start: boolean, onClose: () => void, rootRef: any, ...children: any[]) {
+function modal(t: any, project: any, onSubmit: (() => void) | null, busy: boolean, start: boolean, onClose: () => void, rootRef: any, configDirName: string, ...children: any[]) {
   const close = () => { if (!busy) onClose() }
   return h('div', {
     className: 'dshwd-modal-backdrop',
@@ -611,7 +613,7 @@ function modal(t: any, project: any, onSubmit: (() => void) | null, busy: boolea
       h('div', { className: 'dshwd-modal-foot' },
         // With auto-start off nothing is launched, so neither the button nor the
         // footer may promise a session: show the path being created instead.
-        h('span', { className: 'dshwd-modal-foot-meta dshwd-mono' }, pathPreview(project)),
+        h('span', { className: 'dshwd-modal-foot-meta dshwd-mono' }, pathPreview(project, configDirName)),
         h('div', { className: 'dshwd-modal-foot-actions' },
           h('button', { className: 'dshwd-btn', disabled: busy, onClick: close }, t.cancel),
           onSubmit
@@ -641,9 +643,9 @@ function validBranch(value: string) {
   return true
 }
 
-function pathPreview(project: any) {
+function pathPreview(project: any, configDirName: string) {
   if (!project) return ''
-  return `${project.name} → ${worktreePreviewRoot(project)}/<auto>`
+  return `${project.name} → ${worktreePreviewRoot(project, configDirName)}/<auto>`
 }
 
 /** Footer path without the "→ worktree" arrow that reads as "will start". */

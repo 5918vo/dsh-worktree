@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   DEFAULT_WORKTREE_DIR,
+  effectiveDirName,
   isExternalWorktreeDir,
   worktreeProjectSegment,
   worktreePreviewRoot,
@@ -38,4 +39,25 @@ test('worktreePreviewRoot appends the project only for external roots', () => {
   assert.equal(worktreePreviewRoot({ name: 'repo', dirName: 'C:\\wt\\' }), 'C:/wt/repo')
   assert.equal(worktreePreviewRoot({ name: 'a/b', dirName: '~/wt/' }), '~/wt/a-b')
   assert.equal(worktreePreviewRoot(null), '~/.dsh/worktrees/project')
+})
+
+test('effectiveDirName prefers the project, then the runtime config, then the default', () => {
+  assert.equal(effectiveDirName({ dirName: ' D:\\wt ' }, '~/.dsh/worktrees'), 'D:\\wt')
+  assert.equal(effectiveDirName({ dirName: '   ' }, 'C:/runtime/wt'), 'C:/runtime/wt')
+  assert.equal(effectiveDirName({}, 'C:/runtime/wt'), 'C:/runtime/wt')
+  assert.equal(effectiveDirName(null, '  '), DEFAULT_WORKTREE_DIR)
+  assert.equal(effectiveDirName(null, null), DEFAULT_WORKTREE_DIR)
+})
+
+// The publish footer must describe the directory the host would actually use:
+// a project without its own override inherits the runtime config, not the
+// built-in default.
+test('worktreePreviewRoot falls back to the runtime dirName', () => {
+  assert.equal(worktreePreviewRoot({ name: 'repo' }, 'C:\\Users\\liang\\Temp\\wt'), 'C:/Users/liang/Temp/wt/repo')
+  assert.equal(worktreePreviewRoot({ name: 'repo' }, '~/.dsh/worktrees'), '~/.dsh/worktrees/repo')
+  // A project override still wins over the runtime config.
+  assert.equal(worktreePreviewRoot({ name: 'repo', dirName: '~/.dsh/own' }, 'C:/runtime/wt'), '~/.dsh/own/repo')
+  // The legacy in-repo layout stays a bare directory (no project segment).
+  assert.equal(worktreePreviewRoot({ name: 'repo' }, '.dsh-worktrees'), '.dsh-worktrees')
+  assert.equal(worktreePreviewRoot(null, 'C:/runtime/wt'), 'C:/runtime/wt/project')
 })

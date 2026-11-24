@@ -38,13 +38,30 @@ export function worktreeProjectSegment(name: string): string {
 }
 
 /**
+ * The worktree directory in effect for a project: the project's own `dirName`
+ * wins, then the runtime config, then the default. The host applies the same
+ * precedence in `effectiveConfig()`, so previews and real paths cannot drift.
+ */
+export function effectiveDirName(
+  project?: { dirName?: string } | null,
+  fallbackDirName?: string | null,
+): string {
+  const own = String((project && project.dirName) || '').trim()
+  if (own) return own
+  const fallback = String(fallbackDirName || '').trim()
+  return fallback || DEFAULT_WORKTREE_DIR
+}
+
+/**
  * Client-side display root for a project's worktrees, without touching the
  * filesystem: the external root already includes the project segment; the
  * legacy in-repo directory does not.
  */
-export function worktreePreviewRoot(project: { name?: string; dirName?: string } | null | undefined): string {
-  const dir = String((project && project.dirName) || DEFAULT_WORKTREE_DIR)
-    .trim()
+export function worktreePreviewRoot(
+  project: { name?: string; dirName?: string } | null | undefined,
+  fallbackDirName?: string | null,
+): string {
+  const dir = effectiveDirName(project, fallbackDirName)
     .replace(/\\/g, '/')
     .replace(/\/+$/, '')
   if (!isExternalWorktreeDir(dir)) return dir
