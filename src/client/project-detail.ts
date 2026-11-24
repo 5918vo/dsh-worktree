@@ -11,6 +11,8 @@ import { buildEstimateCalibration, CALIBRATION_MIN_SAMPLES, CALIBRATION_SAMPLE_L
 import { workDurationUnits } from './work-format'
 import { formatWorkDuration } from '../task-timer'
 import { buildDependencyGraph, DEP_GRAPH_LIMIT } from './dependency-graph'
+import { buildCriticalPath, CRITICAL_PATH_LIMIT } from './critical-path'
+import { normalizeDependencyIds } from '../task-deps'
 import { buildProjectRisk } from './project-risk'
 import { fill } from './markdown'
 import { DEFAULT_WORKTREE_DIR } from '../worktree-layout'
@@ -507,6 +509,86 @@ export function ProjectDetail(props: any) {
       h('div', { className: 'dshw-hint', style: { marginBottom: '8px' } }, t.depGraphHint + ' · ' + depSummary),
       depGraphBody)
 
+    // Critical path: the longest chain by dependency hops plus the tasks that
+    // can start right now. Display only — no scheduling, no duration, no writes.
+    const crit = buildCriticalPath(v.tasks)
+    const critStatusLabel = (node: any) => boardStatusLabel(t, boardStatus(node.status, false))
+    const critStat = (key: string, label: string, value: number) => h('div', { key, className: 'dshwd-critpath-stat' },
+      h('span', { className: 'dshwd-critpath-stat-num' }, String(value)),
+      h('span', { className: 'dshwd-critpath-stat-label' }, label))
+    const critHasDeps = v.tasks.some((item: any) => normalizeDependencyIds(item.task.dependsOn).length > 0)
+    const critBody: any[] = []
+    if (v.tasks.length === 0) {
+      critBody.push(h('div', { key: 'empty', className: 'dshw-hint' }, t.critPathEmpty))
+    } else {
+      critBody.push(h('div', { key: 'stats', className: 'dshwd-critpath-stats' },
+        critStat('length', t.critPathLength, crit.length),
+        critStat('ready', t.critPathReady, crit.ready.length),
+        critStat('blocked', t.critPathBlocked, crit.blocked),
+        critStat('missing', t.critPathMissing, crit.missing)))
+
+      if (crit.chain.length) {
+        critBody.push(h('div', { key: 'chain', className: 'dshwd-critpath-section' },
+          h('div', { className: 'dshw-block-label' }, t.critPathChain),
+          h('ol', { className: 'dshwd-critpath-chain', 'aria-label': t.critPathChain }, crit.chain.map((node: any, index: number) => {
+            const status = critStatusLabel(node)
+            return h('li', { key: node.id, className: 'dshwd-critpath-step-item' },
+              h('button', {
+                type: 'button',
+                className: 'dshwd-critpath-step',
+                title: node.title,
+                'aria-label': fill(t.critPathStep, { n: index + 1, title: node.title }) + ' · ' + status,
+                onClick: props.onSelectTask ? () => props.onSelectTask(node.id, project.id) : undefined,
+              },
+                h('span', { className: 'dshwd-critpath-step-num dshw-mono', 'aria-hidden': 'true' }, String(index + 1)),
+                h('span', { className: 'dshwd-critpath-step-title' }, fill(t.critPathStep, { n: index + 1, title: node.title })),
+                h('span', { className: 'dshwd-critpath-step-status' }, status))
+            )
+          }))))
+      } else {
+        critBody.push(h('div', { key: 'nochain', className: 'dshw-hint' }, t.critPathNoChain))
+      }
+
+      if (!critHasDeps && crit.open > 0) {
+        critBody.push(h('div', { key: 'nodeps', className: 'dshw-hint' }, t.critPathNoDeps))
+      }
+
+      if (crit.ready.length) {
+        critBody.push(h('div', { key: 'ready', className: 'dshwd-critpath-section' },
+          h('div', { className: 'dshw-block-label' }, t.critPathReadyList),
+          h('div', { className: 'dshwd-critpath-ready', role: 'group', 'aria-label': t.critPathReadyList }, crit.ready.map((node: any) => {
+            const status = critStatusLabel(node)
+            return h('button', {
+              key: node.id,
+              type: 'button',
+              className: 'dshwd-critpath-ready-item',
+              title: node.title,
+              'aria-label': fill(t.critPathJump, { title: node.title }) + ' · ' + status,
+              onClick: props.onSelectTask ? () => props.onSelectTask(node.id, project.id) : undefined,
+            },
+              h('span', { className: 'dshwd-critpath-ready-title' }, node.title),
+              h('span', { className: 'dshwd-critpath-ready-status' }, status))
+          }))))
+      } else if (crit.open === 0) {
+        critBody.push(h('div', { key: 'noopen', className: 'dshw-hint' }, t.critPathNoOpen))
+      } else {
+        critBody.push(h('div', { key: 'noready', className: 'dshw-hint' }, t.critPathNoReady))
+      }
+
+      if (crit.truncated) {
+        critBody.push(h('div', { key: 'truncated', className: 'dshw-hint' }, fill(t.critPathTruncated, { n: CRITICAL_PATH_LIMIT })))
+      }
+      if (crit.cycles.length) {
+        critBody.push(h('div', { key: 'cycles', className: 'dshwd-critpath-warn', role: 'status' },
+          h(Icon, { name: 'alert' }),
+          h('span', null, fill(t.critPathCycle, { n: crit.cycles.length }))))
+      }
+    }
+    const critPathCard = h(Card, { className: 'dshwd-critpath-card' },
+      h(CardHead, { icon: 'branch', title: t.critPathTitle }),
+      h('div', { className: 'dshw-hint', style: { marginBottom: '8px' } }, t.critPathHint),
+      critBody)
+
     // Risk radar: a sortable, explainable hint derived from the rows on screen.
     // The card never writes, never reorders the board and never changes status.
     const risk = buildProjectRisk(v.tasks, Date.now())
@@ -627,6 +709,7 @@ export function ProjectDetail(props: any) {
         insightsCard,
         calibrCard,
         depGraphCard,
+        critPathCard,
         riskCard,
         h(Card, null,
           h(CardHead, { icon: 'file', title: t.projectReport }),

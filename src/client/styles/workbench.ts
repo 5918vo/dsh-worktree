@@ -491,6 +491,28 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-depgraph-item-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dshw-board .dshwd-depgraph-item-status { flex: none; font-size: 10.5px; color: var(--text-3); }
 
+/* ---------- critical path: longest chain + ready queue ---------------------- */
+.dshw-board .dshwd-critpath-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin: 12px 0; }
+.dshw-board .dshwd-critpath-stat { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg-elevated); }
+.dshw-board .dshwd-critpath-stat-num { font-family: "JetBrains Mono", "Cascadia Code", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 18px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.dshw-board .dshwd-critpath-stat-label { font-size: 11px; color: var(--text-3); }
+.dshw-board .dshwd-critpath-section { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.dshw-board .dshwd-critpath-chain { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.dshw-board .dshwd-critpath-step-item { display: flex; min-width: 0; }
+.dshw-board .dshwd-critpath-step { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 6px 9px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg-elevated); color: var(--text-1); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
+.dshw-board button.dshwd-critpath-step:hover { border-color: var(--accent-line); background: var(--bg-hover); }
+.dshw-board .dshwd-critpath-step:focus-visible { outline: 2px solid var(--accent-line); outline-offset: -2px; }
+.dshw-board .dshwd-critpath-step-num { flex: none; min-width: 20px; height: 20px; border-radius: 999px; border: 1px solid var(--accent-line); background: var(--accent-soft); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-variant-numeric: tabular-nums; }
+.dshw-board .dshwd-critpath-step-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dshw-board .dshwd-critpath-step-status { flex: none; margin-left: auto; font-size: 10.5px; color: var(--text-3); }
+.dshw-board .dshwd-critpath-ready { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.dshw-board .dshwd-critpath-ready-item { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 3px 10px; align-items: center; width: 100%; padding: 8px 2px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: inherit; text-align: left; font: inherit; font-size: 12.5px; cursor: pointer; }
+.dshw-board .dshwd-critpath-ready-item:hover { background: var(--bg-hover); }
+.dshw-board .dshwd-critpath-ready-item:focus-visible { outline: 2px solid var(--accent-line); outline-offset: -2px; }
+.dshw-board .dshwd-critpath-ready-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dshw-board .dshwd-critpath-ready-status { flex: none; font-size: 10.5px; color: var(--text-3); }
+.dshw-board .dshwd-critpath-warn { display: flex; align-items: center; gap: 7px; margin-top: 8px; padding: 7px 9px; border-radius: 7px; border: 1px solid var(--warn-line); background: var(--warn-soft); color: var(--warn); font-size: 12px; }
+
 /* ---------- risk radar: sortable heuristic signals -------------------------- */
 .dshw-board .dshwd-risk-stats { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin-top: 12px; }
 .dshw-board .dshwd-risk-stat { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg-elevated); }
