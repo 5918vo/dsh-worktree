@@ -922,7 +922,7 @@ export function saveLastVisit(at: number, storage?: Storage | null): boolean
 - `npm run check:locale`：通过，`zh=973 en=973`，客户端引用 742 个 key。
 - `npm test`：756 项全部通过，0 失败；基线 661 项，净增 95 项。
 - `npm run build`：通过，`dist/index.js`（196.8kb）与 `dist/client.js`（726.3kb）生成。
-- `npm run verify`：待独立复核修正后、推送前执行；pre-push hook 会再跑一次完整 verify。
+- `npm run verify`：通过（`typecheck` → `check:locale` → 756 项测试 → `build` 全链路 exit 0）；推送时 pre-push hook 会再跑一次完整 verify。
 
 ### 10.4 验收审批
 
