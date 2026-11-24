@@ -461,6 +461,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     projectOfTask,
     diff,
     statusLabel,
+    views,
     busy,
     setBusy,
     setConfirm,
@@ -696,6 +697,9 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           onDownloadReport: actions.runDownloadReport,
           // Any in-flight action freezes the snapshot the report would read.
           reportBusy: !!busy,
+          onCopyHandover: actions.runCopyHandover,
+          onDownloadHandover: actions.runDownloadHandover,
+          handoverBusy: !!busy,
           entries,
           entriesReady,
           live,

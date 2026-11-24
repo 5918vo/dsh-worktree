@@ -8,9 +8,10 @@ import { getJson, post, postLong } from '../context'
 import { openNativeSession, sendSessionPrompt, startTask } from '../actions'
 import { SYNC_BUSY, syncPromptText } from '../review-surfaces'
 import type { BoardAction } from '../model'
-import { cleanupPrimaryLabel, criteria, criteriaProgress, mergeGateMissing, switchConfirmText } from '../model'
+import { cleanupPrimaryLabel, boardStatus, boardStatusLabel, criteria, criteriaProgress, mergeGateMissing, switchConfirmText } from '../model'
 import { copyText, downloadText } from '../format'
 import { buildAcceptanceReport, reportFilename } from '../report'
+import { buildHandoverBrief, handoverFilename } from '../handover'
 import type { ProjectView, TaskDiff, TaskView } from '../../models'
 import type { ConfirmState, StashViewState } from './dialogs'
 import type { BoardTab } from '../stage'
@@ -25,6 +26,8 @@ export interface UseBoardActionsArgs {
   diff: TaskDiff | null
   /** Localized status label for the report, matching the Stage chip. */
   statusLabel: string
+  /** Every project view the board holds; used to derive handover dependents. */
+  views: ProjectView[]
   busy: string
   setBusy: (value: string) => void
   setConfirm: (state: ConfirmState | null) => void
@@ -50,6 +53,7 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     projectOfTask,
     diff,
     statusLabel,
+    views,
     busy,
     setBusy,
     setConfirm,
@@ -399,6 +403,61 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     }
   }
 
+  /** Every task view in the board, flattened; dependents are ids, not projects. */
+  function allProjectViews(): TaskView[] {
+    const out: TaskView[] = []
+    for (const project of views || []) {
+      for (const tv of (project && project.tasks) || []) out.push(tv)
+    }
+    return out
+  }
+
+  /**
+   * Handover text for one task. Copy and download share this body so they can
+   * never diverge; dependents read their status through the same board mapping
+   * as the Stage chip.
+   */
+  function handoverMarkdown(view: TaskView): string {
+    const current = !!(selectedTask && view.task.id === selectedTask.task.id)
+    return buildHandoverBrief({
+      task: view.task,
+      snapshot: view.snapshot,
+      views: allProjectViews(),
+      projectName: projectOfTask ? projectOfTask.project.name : '',
+      statusLabel: current ? statusLabel : boardStatusLabel(t, boardStatus(view.snapshot.status, false)),
+      statusLabelOf: (tv: TaskView) => boardStatusLabel(t, boardStatus(tv.snapshot.status, false)),
+      t,
+    })
+  }
+
+  async function runCopyHandover() {
+    if (!selectedTask || busy) return
+    setBusy('handover')
+    try {
+      const ok = await copyText(handoverMarkdown(selectedTask))
+      if (!ok) throw new Error(t.reportFailed)
+      say(t.handoverCopied)
+    } catch (e: any) {
+      say(String((e && e.message) || t.reportFailed), true)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function runDownloadHandover() {
+    if (!selectedTask || busy) return
+    const view = selectedTask
+    setBusy('handover')
+    try {
+      if (!downloadText(handoverMarkdown(view), handoverFilename(view.task))) throw new Error(t.reportFailed)
+      say(t.handoverDownloaded)
+    } catch (e: any) {
+      say(String((e && e.message) || t.reportFailed), true)
+    } finally {
+      setBusy('')
+    }
+  }
+
   const applyStash = (sha: string) => {
     if (!selectedTask || busy) return
     const id = selectedTask.task.id
@@ -506,6 +565,8 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     runCriterion,
     runCopyReport,
     runDownloadReport,
+    runCopyHandover,
+    runDownloadHandover,
     runSaveMeta,
     runTimer,
     runCleanup,
