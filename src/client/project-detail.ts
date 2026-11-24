@@ -7,6 +7,9 @@ import { resolveStatus, pendingLabel } from './status'
 import { boardStatus, boardStatusLabel } from './model'
 import { buildProjectReport, projectReportFilename } from './project-report'
 import { buildProjectInsights } from './project-insights'
+import { buildEstimateCalibration, CALIBRATION_MIN_SAMPLES, CALIBRATION_SAMPLE_LIMIT } from './estimate-calibration'
+import { workDurationUnits } from './work-format'
+import { formatWorkDuration } from '../task-timer'
 import { buildDependencyGraph, DEP_GRAPH_LIMIT } from './dependency-graph'
 import { buildProjectRisk } from './project-risk'
 import { fill } from './markdown'
@@ -303,6 +306,68 @@ export function ProjectDetail(props: any) {
             h('span', null, h('i', { className: 'dshwd-insights-swatch dshwd-insights-swatch--created', 'aria-hidden': 'true' }), t.insightsCreated),
             h('span', null, h('i', { className: 'dshwd-insights-swatch dshwd-insights-swatch--merged', 'aria-hidden': 'true' }), t.insightsMerged))))
 
+    // Estimate calibration: pairs each estimate with the work the same task
+    // actually recorded. Read-only — it never rewrites the estimate or timer.
+    const calibration = buildEstimateCalibration(v.tasks, Date.now())
+    const calibrUnits = workDurationUnits(t)
+    const calibrDuration = (ms: number) => formatWorkDuration(ms, calibrUnits)
+    const calibrStat = (key: string, label: string, value: string) => h('div', {
+      key,
+      className: 'dshwd-calibr-stat',
+    },
+      h('span', { className: 'dshwd-calibr-stat-value' }, value),
+      h('span', { className: 'dshwd-calibr-stat-label' }, label))
+    const calibrRate = (ms: number | null) => ms == null
+      ? fill(t.calibrNeedMore, { have: calibration.samples, need: CALIBRATION_MIN_SAMPLES })
+      : calibrDuration(ms)
+    const calibrCard = h(Card, null,
+      h(CardHead, { icon: 'clock', title: t.calibrTitle }),
+      h('div', { className: 'dshw-hint' }, t.calibrHint),
+      calibration.samples === 0
+        ? [
+          h('div', { key: 'empty', className: 'dshw-hint' }, t.calibrEmpty),
+          h('div', { key: 'empty-hint', className: 'dshw-hint' }, t.calibrEmptyHint),
+        ]
+        : [
+          h('div', { key: 'stats', className: 'dshwd-calibr-stats' },
+            calibrStat('samples', t.calibrSamples, String(calibration.samples)),
+            calibrStat('points', t.calibrPoints, fill(t.taskEstimatePoints, { n: calibration.points })),
+            calibrStat('work', t.calibrWork, calibrDuration(calibration.workMs)),
+            calibrStat('average', t.calibrAverage, calibrRate(calibration.averageMsPerPoint)),
+            calibrStat('median', t.calibrMedian, calibrRate(calibration.medianMsPerPoint))),
+          h('div', { key: 'coverage', className: 'dshw-hint' }, fill(t.calibrCoverage, {
+            estimated: calibration.estimated,
+            timed: calibration.timed,
+            both: calibration.both,
+            total: v.tasks.length,
+          })),
+          h('div', { key: 'list', className: 'dshwd-calibr-list', role: 'group', 'aria-label': t.calibrTitle },
+            h('div', { className: 'dshwd-calibr-row dshwd-calibr-row--head', 'aria-hidden': 'true' },
+              h('span', null, t.calibrColTask),
+              h('span', null, t.calibrColPoints),
+              h('span', null, t.calibrColWork),
+              h('span', null, t.calibrColRate)),
+            calibration.recent.map((sample: any) => {
+              const work = calibrDuration(sample.workMs) + (sample.running ? String(t.taskWorkTimingSuffix) : '')
+              const rate = calibrDuration(sample.msPerPoint)
+              const label = fill(t.calibrSampleLabel, { title: sample.title, points: sample.points, work, rate })
+              return h('button', {
+                key: sample.taskId,
+                type: 'button',
+                className: 'dshwd-calibr-row dshwd-calibr-item',
+                'aria-label': label,
+                onClick: () => { if (props.onSelectTask) props.onSelectTask(sample.taskId) },
+              },
+                h('span', { className: 'dshwd-calibr-item-title' }, sample.title),
+                h('span', { className: 'dshwd-calibr-item-points dshw-mono' }, fill(t.taskEstimatePoints, { n: sample.points })),
+                h('span', { className: 'dshwd-calibr-item-work dshw-mono' }, work),
+                h('span', { className: 'dshwd-calibr-item-rate dshw-mono' }, rate))
+            })),
+          calibration.truncated
+            ? h('div', { key: 'truncated', className: 'dshw-hint' }, fill(t.calibrTruncated, { n: CALIBRATION_SAMPLE_LIMIT }))
+            : null,
+        ])
+
     // Dependency graph: a pure, layered view of the same records. It never
     // blocks anything and never writes; missing ids become placeholder nodes.
     const depGraph = buildDependencyGraph(v.tasks)
@@ -560,6 +625,7 @@ export function ProjectDetail(props: any) {
               h('span', { className: 'dshw-act-time dshw-mono' }, pendingLabel(t, props.pendingMap[item.task.sessionId]))))))
           : null,
         insightsCard,
+        calibrCard,
         depGraphCard,
         riskCard,
         h(Card, null,

@@ -430,6 +430,24 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-insights-swatch { width: 8px; height: 8px; border-radius: 2px; background: var(--accent); }
 .dshw-board .dshwd-insights-swatch--merged { background: var(--ok); }
 
+/* ---------- estimate calibration: estimate vs recorded work ----------------- */
+.dshw-board .dshwd-calibr-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-top: 12px; }
+.dshw-board .dshwd-calibr-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg-elevated); }
+.dshw-board .dshwd-calibr-stat-value { font-family: "JetBrains Mono", "Cascadia Code", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; font-weight: 700; line-height: 1.25; color: var(--text-1); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.dshw-board .dshwd-calibr-stat-label { font-size: 11px; color: var(--text-3); }
+.dshw-board .dshwd-calibr-list { display: flex; flex-direction: column; margin-top: 12px; border-top: 1px solid var(--line); }
+.dshw-board .dshwd-calibr-row { display: grid; grid-template-columns: minmax(0,1fr) 48px 92px 88px; gap: 3px 10px; align-items: center; width: 100%; }
+.dshw-board .dshwd-calibr-row--head { padding: 6px 2px; border-bottom: 1px solid var(--line); color: var(--text-3); font-size: 10.5px; }
+.dshw-board .dshwd-calibr-row--head > span:not(:first-child) { text-align: right; }
+.dshw-board .dshwd-calibr-item { padding: 9px 2px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; }
+.dshw-board .dshwd-calibr-item:hover { background: var(--bg-hover); }
+.dshw-board .dshwd-calibr-item:focus-visible { outline: 2px solid var(--accent-line); outline-offset: -2px; }
+.dshw-board .dshwd-calibr-item-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.dshw-board .dshwd-calibr-item-points,
+.dshw-board .dshwd-calibr-item-work,
+.dshw-board .dshwd-calibr-item-rate { text-align: right; font-size: 11.5px; color: var(--text-2); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.dshw-board .dshwd-calibr-item-rate { color: var(--accent); }
+
 /* ---------- dependency graph: layered DAG --------------------------------- */
 .dshw-board .dshwd-depgraph-legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px; color: var(--text-3); }
 .dshw-board .dshwd-depgraph-legend-item { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
