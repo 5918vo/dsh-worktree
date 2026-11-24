@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { stageGridClass } from '../src/client/detail-layout.js'
+import { stageGridClass, panelToggleAttrs } from '../src/client/detail-layout.js'
 
 /**
  * The project overview and the task stage share one board inspector toggle.
@@ -13,6 +13,23 @@ import { stageGridClass } from '../src/client/detail-layout.js'
 test('stageGridClass adds the hidden flag only when the inspector is closed', () => {
   assert.equal(stageGridClass(false), 'dshw-detail-inner dshw-stage-grid')
   assert.equal(stageGridClass(true), 'dshw-detail-inner dshw-stage-grid dshw-inspector-hidden')
+})
+
+// The label describes the next action and aria-expanded the current state; the
+// project toggle used to announce "collapse" even when the panel was already
+// closed, which is what made it read as a dead button.
+test('panelToggleAttrs follow the panel state', () => {
+  const t = { expand: '展开', collapse: '折叠' }
+  assert.deepEqual(panelToggleAttrs(false, t), { title: '折叠', 'aria-label': '折叠', 'aria-expanded': 'true' })
+  assert.deepEqual(panelToggleAttrs(true, t), { title: '展开', 'aria-label': '展开', 'aria-expanded': 'false' })
+})
+
+test('the project detail toggle spreads the shared attrs', () => {
+  const src = readFileSync(new URL('../src/client/project-detail.ts', import.meta.url), 'utf8')
+  assert.ok(src.includes('...panelToggleAttrs(!!props.inspectorHidden, t)'))
+  // A hardcoded aria-label/title next to the spread would silently win.
+  assert.equal(/title: props\.inspectorHidden \? t\.expand/.test(src), false)
+  assert.equal(/'aria-label': t\.collapse/.test(src), false)
 })
 
 test('the project detail stylesheet collapses the column and hides the panel', () => {

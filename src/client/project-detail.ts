@@ -11,7 +11,7 @@ import { buildDependencyGraph, DEP_GRAPH_LIMIT } from './dependency-graph'
 import { buildProjectRisk } from './project-risk'
 import { fill } from './markdown'
 import { DEFAULT_WORKTREE_DIR } from '../worktree-layout'
-import { stageGridClass } from './detail-layout'
+import { panelToggleAttrs, stageGridClass } from './detail-layout'
 
 /** Character-budget truncation for SVG labels (a pure render cannot measure text). */
 function graphLabel(text: string, maxWidth: number): string {
@@ -227,7 +227,7 @@ export function ProjectDetail(props: any) {
       h('div', { className: 'dshw-topbar-right' },
         h('span', { className: 'dshw-mono dshwd-topbar-count', style: { fontSize: '11px', color: 'var(--dshw-text-3)' } }, counts.total + ' ' + t.taskUnit),
         props.onToggleInspector
-          ? h('button', { type: 'button', className: 'dshw-btn dshw-btn--ghost dshw-btn--sm', title: props.inspectorHidden ? t.expand : t.collapse, 'aria-label': t.collapse, onClick: () => props.onToggleInspector() }, '◨')
+          ? h('button', { type: 'button', className: 'dshw-btn dshw-btn--ghost dshw-btn--sm', ...panelToggleAttrs(!!props.inspectorHidden, t), onClick: () => props.onToggleInspector() }, '◨')
           : null))
 
     const stageHead = h('header', { className: 'dshw-stage-head' },
