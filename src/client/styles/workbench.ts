@@ -540,6 +540,45 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-risk-score--low { color: var(--ok); border-color: var(--ok-line); background: var(--ok-soft); }
 .dshw-board .dshwd-risk-reasons { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 5px; }
 .dshw-board .dshwd-risk-chip { padding: 1px 6px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg-elevated); color: var(--text-2); font-size: 10.5px; }
+/* ---------- project digest: windowed change summary ------------------------ */
+.dshw-board .dshwd-digest-select { height: 26px; padding: 0 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg-stage); color: var(--text-2); font-size: 11.5px; outline: none; }
+.dshw-board .dshwd-digest-select:focus { border-color: var(--accent-line); background: var(--bg-elevated); }
+.dshw-board .dshwd-digest-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dshw-board .dshwd-digest-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; }
+.dshw-board .dshwd-digest-stat { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg-elevated); }
+.dshw-board .dshwd-digest-num { font-family: "JetBrains Mono", "Cascadia Code", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 16px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; color: var(--text-1); }
+.dshw-board .dshwd-digest-num--brand { color: var(--accent); }
+.dshw-board .dshwd-digest-num--success { color: var(--ok); }
+.dshw-board .dshwd-digest-num--muted { color: var(--text-2); }
+.dshw-board .dshwd-digest-label { font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dshw-board .dshwd-digest-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 10px; font-size: 12px; }
+.dshw-board .dshwd-digest-key { color: var(--text-3); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+.dshw-board .dshwd-digest-value { color: var(--text-1); font-weight: 600; font-variant-numeric: tabular-nums; }
+.dshw-board .dshwd-digest-note { color: var(--text-3); font-size: 11px; }
+.dshw-board .dshwd-digest-chips { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.dshw-board .dshwd-digest-chip { display: inline-flex; align-items: baseline; gap: 5px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg-elevated); font-size: 11px; color: var(--text-2); }
+.dshw-board .dshwd-digest-chip--warn { border-color: var(--warn-line); background: var(--warn-soft); color: var(--warn); }
+.dshw-board .dshwd-digest-chip-label { font-size: 10.5px; color: var(--text-3); }
+.dshw-board .dshwd-digest-chip--warn .dshwd-digest-chip-label { color: inherit; opacity: .8; }
+.dshw-board .dshwd-digest-chip-value { font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.dshw-board .dshwd-digest-events { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.dshw-board .dshwd-digest-events .dshw-block-label { margin-bottom: 4px; }
+.dshw-board .dshwd-digest-event { display: grid; grid-template-columns: 8px minmax(0,1fr) auto auto auto; align-items: center; gap: 8px; width: 100%; padding: 7px 2px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.dshw-board .dshwd-digest-event:last-child { border-bottom: 0; }
+.dshw-board button.dshwd-digest-event:hover { background: var(--bg-hover); }
+.dshw-board .dshwd-digest-event:focus-visible { outline: 2px solid var(--accent-line); outline-offset: -2px; }
+.dshw-board .dshwd-digest-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--text-3); }
+.dshw-board .dshwd-digest-dot--created { background: var(--accent); }
+.dshw-board .dshwd-digest-dot--merged { background: var(--ok); }
+.dshw-board .dshwd-digest-dot--cleaned { background: var(--warn); }
+.dshw-board .dshwd-digest-dot--archived { background: var(--text-3); }
+.dshw-board .dshwd-digest-event-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--text-1); }
+.dshw-board .dshwd-digest-event-kind { font-size: 10.5px; color: var(--text-3); white-space: nowrap; }
+.dshw-board .dshwd-digest-event-status { font-size: 10.5px; color: var(--text-2); white-space: nowrap; }
+.dshw-board .dshwd-digest-event-date { font-size: 10.5px; color: var(--text-3); white-space: nowrap; }
+.dshw-board .dshwd-digest-empty { margin-top: 12px; padding: 14px 12px; border: 1px dashed var(--line); border-radius: 8px; background: var(--bg-rail); text-align: center; }
+.dshw-board .dshwd-digest-empty-title { margin-bottom: 4px; font-size: 12.5px; color: var(--text-2); }
+
 @container dshwboard (max-width: 980px) {
   .dshw-board .dshwd-app { grid-template-columns: 248px minmax(0,1fr) 0; }
   .dshw-board .dshwd-app.dshwd-hide-left { grid-template-columns: 0 minmax(0,1fr) 0; }

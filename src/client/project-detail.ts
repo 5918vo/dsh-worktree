@@ -6,6 +6,10 @@ import { copyText, cx, downloadText, relTime } from './format'
 import { resolveStatus, pendingLabel } from './status'
 import { boardStatus, boardStatusLabel } from './model'
 import { buildProjectReport, projectReportFilename } from './project-report'
+import { buildProjectDigest, buildProjectDigestReport, digestFilename, DIGEST_WINDOWS, DIGEST_WINDOW_DEFAULT, isDigestWindow } from './project-digest'
+import type { DigestWindow } from './project-digest'
+import { formatWorkDuration } from '../task-timer'
+import { workDurationUnits } from './work-format'
 import { buildProjectInsights } from './project-insights'
 import { buildEstimateCalibration, CALIBRATION_MIN_SAMPLES, CALIBRATION_SAMPLE_LIMIT } from './estimate-calibration'
 import { workDurationUnits } from './work-format'
@@ -14,7 +18,7 @@ import { buildDependencyGraph, DEP_GRAPH_LIMIT } from './dependency-graph'
 import { buildCriticalPath, CRITICAL_PATH_LIMIT } from './critical-path'
 import { normalizeDependencyIds } from '../task-deps'
 import { buildProjectRisk } from './project-risk'
-import { fill } from './markdown'
+import { fill, reportTimestamp } from './markdown'
 import { DEFAULT_WORKTREE_DIR } from '../worktree-layout'
 import { panelToggleAttrs, stageGridClass } from './detail-layout'
 
@@ -52,6 +56,7 @@ export function ProjectDetail(props: any) {
     const [err, setErr] = React.useState('')
     const [nameError, setNameError] = React.useState('')
     const [tab, setTab] = React.useState('overview')
+    const [digestWindow, setDigestWindow] = React.useState(DIGEST_WINDOW_DEFAULT)
     const saveTimer = React.useRef(null)
     const actionRef = React.useRef(false)
 
@@ -677,6 +682,127 @@ export function ProjectDetail(props: any) {
       }
     }
 
+    // Project digest: one clock read for the whole card, so the window, the
+    // statistics, the copied text and the file name all describe the same day.
+    // The status callback resolves the real view by id, so a digest row and the
+    // board label the same task identically (running sessions included).
+    const digestNow = Date.now()
+    const digest = buildProjectDigest(v.tasks, digestWindow, digestNow)
+    const digestViewById = new Map<string, any>(v.tasks.map((item: any) => [item.task.id, item]))
+    const digestStatusLabel = (item: any) => {
+      const full = (item && item.task && digestViewById.get(item.task.id)) || item
+      return boardStatusLabel(t, boardStatus(full.snapshot.status, isRunning(full.task)))
+    }
+    const digestKind = (kind: string) => kind === 'merged'
+      ? t.digestMerged
+      : kind === 'cleaned'
+        ? t.digestCleaned
+        : kind === 'archived'
+          ? t.digestArchived
+          : t.digestCreated
+    const digestText = () => buildProjectDigestReport({ project, digest, t, statusLabel: digestStatusLabel, now: digestNow })
+    const runDigestAction = async (kind: 'copy' | 'download') => {
+      if (actionRef.current || busy) return
+      actionRef.current = true
+      setBusy('digest')
+      try {
+        if (kind === 'copy') {
+          const ok = await copyText(digestText())
+          if (!ok) throw new Error(t.reportFailed)
+          if (props.notify) props.notify(t.digestCopied)
+        } else {
+          if (!downloadText(digestText(), digestFilename(project, digestNow))) throw new Error(t.reportFailed)
+          if (props.notify) props.notify(t.digestDownloaded)
+        }
+      } catch (e: any) {
+        if (props.notify) props.notify(String((e && e.message) || t.reportFailed), true)
+      } finally {
+        actionRef.current = false
+        setBusy('')
+      }
+    }
+
+    const digestStat = (key: string, label: string, value: number, tone: string) => h('div', { key, className: 'dshwd-digest-stat' },
+      h('span', { className: 'dshwd-digest-num dshwd-digest-num--' + tone }, String(value)),
+      h('span', { className: 'dshwd-digest-label' }, label))
+    const digestChip = (key: string, label: string, value: any, tone: string) => h('span', { key, className: 'dshwd-digest-chip dshwd-digest-chip--' + tone },
+      h('span', { className: 'dshwd-digest-chip-label' }, label),
+      h('span', { className: 'dshwd-digest-chip-value dshw-mono' }, value))
+    // The card lists the newest few rows; the report itself carries up to
+    // DIGEST_EVENT_LIMIT, and both say so when they cut the window short.
+    const digestListLimit = 8
+    const digestCard = h(Card, null,
+      h(CardHead, {
+        icon: 'clock',
+        title: t.digestTitle,
+        right: h('select', {
+          className: 'dshwd-digest-select',
+          value: String(digest.windowDays),
+          'aria-label': t.digestWindow,
+          title: t.digestWindow,
+          onChange: (e: any) => {
+            const next = e && e.target ? e.target.value : ''
+            setDigestWindow(isDigestWindow(next) ? (Number(next) as DigestWindow) : DIGEST_WINDOW_DEFAULT)
+          },
+        }, DIGEST_WINDOWS.map((days: number) => h('option', { key: days, value: String(days) }, fill(t.digestWindowDays, { n: days })))),
+      }),
+      h('div', { className: 'dshw-hint', style: { marginBottom: '10px' } }, t.digestHint),
+      h('div', { className: 'dshwd-digest-stats' },
+        digestStat('created', t.digestCreated, digest.created, 'brand'),
+        digestStat('merged', t.digestMerged, digest.merged, 'success'),
+        digestStat('cleaned', t.digestCleaned, digest.cleaned, 'muted'),
+        digestStat('archived', t.digestArchived, digest.archived, 'muted')),
+      h('div', { className: 'dshwd-digest-line' },
+        h('span', { className: 'dshwd-digest-key' }, t.digestDeliveredWork),
+        h('span', { className: 'dshwd-digest-value dshw-mono' }, digest.deliveredWorkMs > 0
+          ? formatWorkDuration(digest.deliveredWorkMs, workDurationUnits(t))
+          : '—'),
+        h('span', { className: 'dshwd-digest-key' }, t.digestDeliveredPoints),
+        h('span', { className: 'dshwd-digest-value dshw-mono' }, String(digest.deliveredPoints)),
+        h('span', { className: 'dshwd-digest-note' }, fill(t.digestDeliveredDetail, { estimated: digest.deliveredEstimated, merged: digest.merged }))),
+      h('div', { className: 'dshwd-digest-line' },
+        h('span', { className: 'dshwd-digest-key' }, t.digestCurrent),
+        h('span', { className: 'dshwd-digest-chips' },
+          digestChip('open', t.digestOpen, digest.open, 'muted'),
+          digestChip('overdue', t.digestOverdue, digest.overdueOpen, digest.overdueOpen > 0 ? 'warn' : 'muted'),
+          digestChip('stalled', t.digestStalled, digest.stalledOpen, digest.stalledOpen > 0 ? 'warn' : 'muted'),
+          digestChip('acceptance', t.digestAcceptance, fill(t.digestAcceptanceValue, { checked: digest.acceptanceChecked, total: digest.acceptanceTotal }), 'muted'))),
+      digest.events.length
+        ? h('div', { className: 'dshwd-digest-events' },
+          h('div', { className: 'dshw-block-label' }, t.digestEvents),
+          digest.events.slice(0, digestListLimit).map((event: any) => {
+            const eventId = { task: { id: event.taskId }, snapshot: { status: event.status } }
+            const status = digestStatusLabel(eventId)
+            const label = fill(t.digestEventLabel, {
+              date: reportTimestamp(event.at).slice(0, 10),
+              kind: digestKind(event.kind),
+              title: event.title || '—',
+              status,
+            })
+            return h('button', {
+              key: event.taskId + ':' + event.kind + ':' + event.at,
+              type: 'button',
+              className: 'dshwd-digest-event',
+              title: label,
+              'aria-label': label,
+              onClick: () => props.onSelectTask(event.taskId, project.id),
+            },
+              h('span', { className: 'dshwd-digest-dot dshwd-digest-dot--' + event.kind }),
+              h('span', { className: 'dshwd-digest-event-title' }, event.title || '—'),
+              h('span', { className: 'dshwd-digest-event-kind' }, digestKind(event.kind)),
+              h('span', { className: 'dshwd-digest-event-status' }, status),
+              h('span', { className: 'dshwd-digest-event-date dshw-mono' }, reportTimestamp(event.at).slice(5, 10)))
+          }),
+          digest.events.length > digestListLimit
+            ? h('div', { className: 'dshw-hint' }, fill(t.digestTruncated, { shown: digestListLimit, n: digest.events.length }))
+            : null)
+        : h('div', { className: 'dshwd-digest-empty' },
+          h('div', { className: 'dshwd-digest-empty-title' }, t.digestEmpty),
+          h('div', { className: 'dshw-hint' }, t.digestEmptyHint)),
+      h('div', { style: { display: 'flex', gap: '8px', marginTop: '10px' } },
+        h(Btn, { variant: 'ghost', size: 'sm', icon: 'copy', disabled: busy === 'digest', onClick: () => void runDigestAction('copy') }, t.digestCopy),
+        h(Btn, { variant: 'ghost', size: 'sm', icon: 'file', disabled: busy === 'digest', onClick: () => void runDigestAction('download') }, t.digestDownload)))
+
     const overviewBody = h('div', { className: 'dshw-stage-body' },
       h('div', { className: 'dshw-measure' },
         err ? h('div', { className: 'dshw-err', role: 'alert', style: { marginBottom: '16px' } }, h(Icon, { name: 'alert' }), h('span', null, err)) : null,
@@ -717,6 +843,7 @@ export function ProjectDetail(props: any) {
           h('div', { style: { display: 'flex', gap: '8px' } },
             h(Btn, { variant: 'ghost', size: 'sm', icon: 'copy', disabled: busy === 'report', onClick: () => void copyProjectReport() }, t.projectReportCopy),
             h(Btn, { variant: 'ghost', size: 'sm', icon: 'file', disabled: busy === 'report', onClick: downloadProjectReport }, t.projectReportDownload))),
+        digestCard,
         h(Card, null,
           h(CardHead, { title: t.lastActivity }),
           recent.length
