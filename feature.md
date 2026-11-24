@@ -412,8 +412,10 @@ export interface CriticalPath {
   chain: CriticalPathNode[]
   /** Number of tasks on the chain (0 when empty). */
   length: number
-  /** Open tasks whose prerequisites are all done (or absent), sorted. */
+  /** Open tasks whose prerequisites are all done (or absent), sorted and capped. */
   ready: CriticalPathNode[]
+  /** Total ready tasks before the cap; the stat must not read `ready.length`. */
+  readyTotal: number
   /** Open tasks with at least one unfinished or missing prerequisite. */
   blocked: number
   /** Missing prerequisite ids referenced by open tasks (deduped). */
@@ -752,7 +754,7 @@ export function saveLastVisit(at: number, storage?: Storage | null): boolean
     2. `const previous = loadLastVisit()`。
     3. `saveLastVisit(now)`（先算后写；写失败不影响摘要）。
     4. `previous == null` → 不显示。
-    5. `const digest = buildVisitDigest(allViews, previous, now)`；`digest` 为 `null` 或 `digest.changed + digest.review + digest.overdue + digest.workMs === 0` → 不显示；否则 `setVisitDigest(digest)`。
+    5. `const digest = buildVisitDigest(allViews, previous, now)`；`digest` 为 `null` 或 `digest.created + digest.merged + digest.review + digest.overdue + digest.workMs === 0` → 不显示；否则 `setVisitDigest(digest)`。只发生归档 / 清理时摘要行没有可展示的数字，保持安静。
   - 依赖数组使用 `[loaded, allViews]`，但 `visitCaptured` ref 保证每个挂载只执行一次；轮询刷新不会重置摘要。
   - 给 `Rail` 传 `visitDigest` 与 `onDismissVisit: () => setVisitDigest(null)`。
 - `rail.ts`：
@@ -782,7 +784,7 @@ export function saveLastVisit(at: number, storage?: Storage | null): boolean
 - [ ] 没有变化且没有待验收 / 逾期时不显示摘要条。
 - [ ] 摘要条可关闭；关闭只影响本次挂载。
 - [ ] localStorage 不可用、内容损坏、值为未来时间时，看板正常加载，不抛异常、不显示坏数据。
-- [ ] 摘要条 `role="status"`、关闭按钮有可访问名称、文本不只靠颜色表达。
+- [ ] 摘要条 `role="status"`、关闭按钮有可访问名称、文本不只靠颜色表达；不使用 `aria-label` 覆盖可见摘要文本。
 - [ ] 不写台账、不改变任务状态与筛选。
 - [ ] 中英文 locale key 完全一致，`npm run check:locale` 通过。
 

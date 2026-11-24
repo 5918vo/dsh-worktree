@@ -34,8 +34,10 @@ export interface CriticalPath {
   chain: CriticalPathNode[]
   /** Number of tasks on the chain (0 when empty). */
   length: number
-  /** Open tasks whose prerequisites are all done (or absent), sorted. */
+  /** Open tasks whose prerequisites are all done (or absent), sorted and capped. */
   ready: CriticalPathNode[]
+  /** Total ready tasks before the cap; the stat must not read `ready.length`. */
+  readyTotal: number
   /** Open tasks with at least one unfinished or missing prerequisite. */
   blocked: number
   /** Missing prerequisite ids referenced by open tasks (deduped). */
@@ -256,6 +258,7 @@ export function buildCriticalPath(views: TaskView[]): CriticalPath {
     chain,
     length: chain.length,
     ready,
+    readyTotal: readyIds.length,
     blocked,
     missing: missingIds.size,
     open: openIds.length,

@@ -168,6 +168,7 @@ test('more than five ready tasks: five kept, truncated flagged', () => {
   }
   const path = buildCriticalPath(views)
   assert.equal(path.ready.length, CRITICAL_PATH_LIMIT)
+  assert.equal(path.readyTotal, CRITICAL_PATH_LIMIT + 3)
   assert.equal(path.truncated, true)
   assert.deepEqual(ids(path.ready), ['t0', 't1', 't2', 't3', 't4'])
 })

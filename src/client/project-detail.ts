@@ -523,7 +523,7 @@ export function ProjectDetail(props: any) {
     } else {
       critBody.push(h('div', { key: 'stats', className: 'dshwd-critpath-stats' },
         critStat('length', t.critPathLength, crit.length),
-        critStat('ready', t.critPathReady, crit.ready.length),
+        critStat('ready', t.critPathReady, crit.readyTotal),
         critStat('blocked', t.critPathBlocked, crit.blocked),
         critStat('missing', t.critPathMissing, crit.missing)))
 

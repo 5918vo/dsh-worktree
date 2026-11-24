@@ -382,7 +382,9 @@ function visitBar(props: RailProps) {
   const text = digest.workMs > 0
     ? fill(t.visitSummary, { ...values, work: formatWorkDuration(digest.workMs, workDurationUnits(t)) })
     : fill(t.visitSummaryNoWork, values)
-  return h('div', { className: 'dshwd-visit', role: 'status', 'aria-label': t.visitTitle },
+  // The visible text already begins with "Since your last visit"; do not
+  // override it with an aria-label or screen readers announce only the title.
+  return h('div', { className: 'dshwd-visit', role: 'status' },
     h('span', { className: 'dshwd-visit-text' }, text),
     props.onDismissVisit
       ? h('button', {

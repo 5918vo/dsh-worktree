@@ -544,8 +544,10 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     const digest = previous == null ? null : buildVisitDigest(allViews, previous, now)
     saveLastVisit(now)
     if (!digest) return
-    // Nothing changed and nothing currently needs attention: stay quiet.
-    if (digest.changed + digest.review + digest.overdue + digest.workMs === 0) return
+    // Stay quiet unless the summary line actually has something to say: a
+    // window that only archived / cleaned tasks would otherwise render
+    // "0 new · 0 merged · 0 review · 0 overdue".
+    if (digest.created + digest.merged + digest.review + digest.overdue + digest.workMs === 0) return
     setVisitDigest(digest)
   }, [loaded, allViews])
   const shownViews = React.useMemo(() => visibleProjectViews(views, showArchived), [views, showArchived])
