@@ -263,6 +263,16 @@ test('pathPreview uses the project worktree directory', () => {
   assert.equal(pathPreview(null), 'worktree → ~/.dsh/worktrees/…')
 })
 
+// A project without its own dirName inherits the runtime config: the publish
+// dialog used to show the built-in default while the host created the worktree
+// under the configured root.
+test('pathPreview falls back to the runtime dirName', () => {
+  assert.equal(pathPreview({ name: 'repo' }, 'C:\\Temp\\wt'), 'repo → C:/Temp/wt/repo/<auto-id>')
+  assert.equal(pathPreview({ name: 'repo', dirName: '~/.dsh/own' }, 'C:\\Temp\\wt'), 'repo → ~/.dsh/own/repo/<auto-id>')
+  assert.equal(pathPreview({ name: 'repo', dirName: '' }, '.dsh-worktrees'), 'repo → .dsh-worktrees/<auto-id>')
+  assert.equal(pathPreview(null, 'C:\\Temp\\wt'), 'worktree → C:/Temp/wt/…')
+})
+
 test('snapshot-less task rows still resolve their CTA', () => {
   const bare = { task: task(), snapshot: null } as any
   assert.equal(boardStatus('ready', false).key, 'ready')

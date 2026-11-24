@@ -72,6 +72,21 @@ export function syncPromptText(t: any, task: any, files: string[]): string {
     .replace('{files}', () => syncFileText(files))
 }
 
+/**
+ * The manual equivalent of the base-sync prompt, for tasks without a session:
+ * `cd` into the worktree, then merge the base in. Two lines, because Windows
+ * PowerShell before 7 has no `&&` chaining, and `cd /d` because cmd.exe would
+ * otherwise refuse to change drive (harmless for PowerShell and POSIX shells,
+ * which treat it as a plain directory). Empty when the worktree is unknown, so
+ * callers can hide the affordance instead of copying a broken command.
+ */
+export function manualSyncCommand(task: any): string {
+  const dir = String((task && task.worktreePath) || '').trim()
+  if (!dir) return ''
+  const base = String((task && task.baseBranch) || '').trim() || 'main'
+  return `cd /d "${dir}"\ngit merge "${base}"`
+}
+
 /** Is there anything for the base-sync action to act on? */
 export function syncApplicable(preview: any): boolean {
   if (!preview) return false

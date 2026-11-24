@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   SYNC_FILE_LIMIT,
+  manualSyncCommand,
   mergePreviewFiles,
   mergeRiskChip,
   postMergeCount,
@@ -20,6 +21,38 @@ const t: any = {
 }
 
 const task = { baseBranch: 'master', branch: 'feat/x' }
+
+test('manualSyncCommand walks into the worktree and merges the base', () => {
+  assert.equal(
+    manualSyncCommand({ worktreePath: 'D:\\wt\\repo\\96aa88c3', baseBranch: 'main' }),
+    'cd /d "D:\\wt\\repo\\96aa88c3"\ngit merge "main"',
+  )
+})
+
+// cmd.exe refuses a plain `cd` across drives; `/d` is a no-op for PowerShell and
+// POSIX shells, so one copied command works in every terminal the user may have.
+test('manualSyncCommand changes drive and quotes both arguments', () => {
+  const command = manualSyncCommand({ worktreePath: 'C:\\Users\\liang\\wt\\a', baseBranch: 'release/1.2' })
+  assert.equal(command.split('\n')[0], 'cd /d "C:\\Users\\liang\\wt\\a"')
+  assert.equal(command.split('\n')[1], 'git merge "release/1.2"')
+})
+
+test('manualSyncCommand keeps the two steps separate for old shells', () => {
+  const command = manualSyncCommand({ worktreePath: '/srv/wt/a', baseBranch: 'trunk' })
+  assert.equal(command.split('\n').length, 2)
+  assert.equal(command.includes('&&'), false)
+  assert.match(command, /\ngit merge "trunk"$/)
+})
+
+test('manualSyncCommand stays empty without a worktree', () => {
+  assert.equal(manualSyncCommand({ baseBranch: 'main' }), '')
+  assert.equal(manualSyncCommand(null), '')
+})
+
+test('manualSyncCommand falls back to main only when the base is missing', () => {
+  assert.match(manualSyncCommand({ worktreePath: '/srv/wt/a' }), /\ngit merge "main"$/)
+  assert.match(manualSyncCommand({ worktreePath: '/srv/wt/a', baseBranch: '  ' }), /\ngit merge "main"$/)
+})
 
 test('sync prompt fills the placeholders and quotes file names', () => {
   const text = syncPromptText(t, task, ['src/a.ts', 'docs/b.md'])

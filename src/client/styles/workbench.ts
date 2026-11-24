@@ -403,6 +403,19 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-management .dshw-stage-body { flex: 1; min-height: 0; }
 .dshw-board .dshwd-management .dshw-measure { max-width: none; }
 .dshw-board .dshwd-management .dshw-inspector { position: static; align-self: stretch; overflow: auto; }
+/* Project detail reuses the board's inspector toggle. Without these two rules
+   the toggle flipped the state but left the panel (and its column) mounted, so
+   the only "close" affordance on the project overview did nothing. The panel
+   never overlays the stage: it is a column when wide and a stacked block when
+   narrow, and it is closed by the same toggle that closes the task inspector. */
+.dshw-board .dshwd-management .dshw-detail-inner.dshw-stage-grid.dshw-inspector-hidden { grid-template-columns: minmax(0, 1fr); }
+.dshw-board .dshwd-management .dshw-detail-inner.dshw-stage-grid.dshw-inspector-hidden .dshw-inspector { display: none; }
+/* Stacked project layout: a 100%-min-height on the stage makes the row claim
+   the pane height, so a taller stage body spills out of its own box and the
+   inspector row — placed right after that box — paints over the report card and
+   swallows its buttons. Let the row size to its content instead; with a single
+   row the grid still stretches it to the pane. */
+.dshw-board .dshwd-management .dshw-detail-inner.dshw-stage-grid .dshw-stage { min-height: auto; }
 
 /* ---------- project insights: 7-day throughput bars ------------------------- */
 .dshw-board .dshwd-insights { margin-top: 12px; }

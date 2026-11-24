@@ -1,6 +1,6 @@
 import type { ProjectView, TaskDiff, TaskSnapshot, TaskStatus, TaskView, WorktreeTask } from '../models'
 import { CATEGORY_ORDER, type AttentionCategory } from './task-attention'
-import { DEFAULT_WORKTREE_DIR, worktreePreviewRoot } from '../worktree-layout'
+import { effectiveDirName, worktreePreviewRoot } from '../worktree-layout'
 import { matchesStructuredQuery, parseSearchQuery } from './search-query'
 
 /** The rail filter is an attention category, never a lifecycle status. */
@@ -433,9 +433,10 @@ export function themeFor(stored: string | null | undefined, hostDark: boolean, p
   return hostDark || prefersDark ? 'dark' : 'light'
 }
 
-export function pathPreview(project: any): string {
-  if (!project) return `worktree → ${DEFAULT_WORKTREE_DIR}/…`
-  return `${project.name} → ${worktreePreviewRoot(project)}/<auto-id>`
+/** Where a new task's worktree will land; `fallbackDirName` is the runtime config. */
+export function pathPreview(project: any, fallbackDirName?: string | null): string {
+  if (!project) return `worktree → ${effectiveDirName(null, fallbackDirName).replace(/\\/g, '/')}/…`
+  return `${project.name} → ${worktreePreviewRoot(project, fallbackDirName)}/<auto-id>`
 }
 
 export function diffCount(diff: TaskDiff | null): number {

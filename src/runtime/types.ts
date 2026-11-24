@@ -8,6 +8,7 @@ import * as gitx from '../gitx.js'
 import { MergePreview, ModelSelection, PendingStash, Project, TaskSnapshot, WorktreeConfig, WorktreeTask } from '../models.js'
 import { acquireRepoLock, RepoLockBusyError, type RepoLockHandle } from '../repo-lock.js'
 import { Store } from '../store.js'
+import { effectiveDirName } from '../worktree-layout.js'
 
 import { TaskError } from '../errors.js'
 export { TaskError } from '../errors.js'
@@ -141,7 +142,8 @@ export function repoKey(repoPath: string): string {
 
 export function effectiveConfig(ctx: RuntimeContext, project: Project | undefined) {
   return {
-    dirName: project?.dirName?.trim() || ctx.config.dirName,
+    // Same precedence as the client preview (worktree-layout.effectiveDirName).
+    dirName: effectiveDirName(project, ctx.config.dirName),
     branchPrefix: project?.branchPrefix?.trim() || ctx.config.branchPrefix,
   }
 }
