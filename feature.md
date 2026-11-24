@@ -915,18 +915,25 @@ export function saveLastVisit(at: number, storage?: Storage | null): boolean
 - **cherry-pick 后去重**：功能 1 与功能 2 都在 `project-detail.ts` 引入 `formatWorkDuration` / `workDurationUnits`，自动合并后出现重复 import；主线程删除重复行，`typecheck` 通过。
 - **locale 合并**：功能 2 锚点 `insightsEmpty`、功能 3 锚点 `depGraphTruncated`、功能 4 锚点 `reportDownloaded`、功能 5 锚点 `savedViewDeleted`、功能 1 锚点 `projectReportDownloaded`；自动合并后中英各 973 个 key，`check:locale` 通过。
 - **未改动子 agent 实现**：估算校准的阈值与中位口径、交接摘要的 `{deps}` 占位符、访问摘要的累计工时差均按规格保留；如后续统一术语，再同步文案与测试。
+- **独立复核修正（`8786193`）**：
+  - 首次加载失败不再盖章「上次访问」：`board.ts` 的访问摘要 effect 在 `err` 非空时直接返回，重试成功后补算；避免网络故障的空看板成为下次访问基线。
+  - 交接摘要的前置 / 后继只解析当前项目视图（`projectViewsOf`），与关键路径把跨项目 id 视为「缺失前置」的口径一致；找不到所属项目时回退到全看板视图。
+  - 访问摘要事件标题改用码点比较（与周报 / 校准 / 关键路径一致），不再依赖 `localeCompare` 的 ICU 排序；新增 1 项测试锁定该口径。
+  - 删除无引用的 `visitTitle`（zh/en 各 1），locale key 由 973 降为 972；同步更新术语表与第 5 节规格。
 
 ### 10.3 验证结果
 
 - `npm run typecheck`：通过。
-- `npm run check:locale`：通过，`zh=973 en=973`，客户端引用 742 个 key。
-- `npm test`：756 项全部通过，0 失败；基线 661 项，净增 95 项。
-- `npm run build`：通过，`dist/index.js`（196.8kb）与 `dist/client.js`（726.3kb）生成。
-- `npm run verify`：通过（`typecheck` → `check:locale` → 756 项测试 → `build` 全链路 exit 0）；推送时 pre-push hook 会再跑一次完整 verify。
+- `npm run check:locale`：通过，`zh=972 en=972`，客户端引用 742 个 key。
+- `npm test`：757 项全部通过，0 失败；基线 661 项，净增 96 项。
+- `npm run build`：通过，`dist/index.js`（196.8kb）与 `dist/client.js`（726.5kb）生成。
+- `npm run verify`：复核修正前通过；推送时 pre-push hook 会再跑一次完整 verify（含 757 项测试），以 hook 结果为准。
 
 ### 10.4 验收审批
 
-待填。
+- **独立复核**：reviewer（`mm/workbuddy/glm-5.3`，独立 worktree，只读）实际运行 `npm ci`、`typecheck`、`check:locale`、`npm test`、`build`、`git diff --check` 全部通过，结论「可合并」，无 blocker / major，提出 3 条 minor、4 条 nit。
+- **处理决定**：minor 1（首次加载失败误盖章）、minor 2（`visitTitle` 死 key）、minor 3（交接跨项目解析口径）已修复；nit 4（排序口径）已修复并加测试。nit 5（周报事件行 `onSelectTask` 未判空）、nit 6（报告截断 `{n}` 为保留条数）、nit 7（访问摘要 `broken` 口径差异）不阻塞，保留现状并记录于此。
+- **主线程验收**：复核修正后 `typecheck`、`check:locale`、`npm test`（757/757）、`build` 均通过；推送时以 pre-push hook 的完整 `npm run verify` 为最终结果。
 
 ### 10.5 PR
 
