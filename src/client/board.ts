@@ -46,6 +46,8 @@ import {
   type BoardFilter,
 } from './model'
 import { loadSavedViews, saveSavedViews } from './view-storage'
+import { buildVisitDigest, type VisitDigest } from './visit-digest'
+import { loadLastVisit, saveLastVisit } from './visit-storage'
 import {
   SAVED_VIEW_LIMIT,
   SAVED_VIEW_NAME_MAX,
@@ -105,6 +107,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
   const [showArchived, setShowArchived] = React.useState(false)
   // Views are read lazily once per mount; storage failures read as "no views".
   const [savedViews, setSavedViews] = React.useState(() => loadSavedViews())
+  const [visitDigest, setVisitDigest] = React.useState(null as VisitDigest | null)
   const [selectedTaskId, setSelectedTaskId] = React.useState('')
   const [selectedProjectId, setSelectedProjectId] = React.useState('')
   const [tab, setTab] = React.useState('overview' as BoardTab)
@@ -143,6 +146,9 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
   const compactRef = React.useRef(false)
   const narrowRef = React.useRef(false)
   const searchRef = React.useRef(null as HTMLInputElement | null)
+  // One digest per mount: polling refreshes must not move the baseline or
+  // re-show a dismissed row.
+  const visitCaptured = React.useRef(false)
   const toastTimer = React.useRef(null as ReturnType<typeof setTimeout> | null)
 
   // An error toast vanishes in 6s; the same text also becomes a sticky inline
@@ -522,6 +528,26 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     for (const view of views) for (const tv of view.tasks) out.push(tv)
     return out
   }, [views])
+
+  // "Since your last visit": compute once the first fetch lands. A missing or
+  // broken stored timestamp simply hides the row; saving never blocks it.
+  //
+  // Multi-window: same-origin windows share localStorage, and every mounting
+  // window computes its own digest *before* stamping its visit. Window A
+  // refreshing therefore makes window B's next load report changes since A —
+  // "since the board was last opened", not "since this tab was last opened".
+  React.useEffect(() => {
+    if (!loaded || visitCaptured.current) return
+    visitCaptured.current = true
+    const now = Date.now()
+    const previous = loadLastVisit()
+    const digest = previous == null ? null : buildVisitDigest(allViews, previous, now)
+    saveLastVisit(now)
+    if (!digest) return
+    // Nothing changed and nothing currently needs attention: stay quiet.
+    if (digest.changed + digest.review + digest.overdue + digest.workMs === 0) return
+    setVisitDigest(digest)
+  }, [loaded, allViews])
   const shownViews = React.useMemo(() => visibleProjectViews(views, showArchived), [views, showArchived])
   // Tag options come from every task, archived or not, so the dropdown does not
   // flicker while the archive toggle changes what the list shows.
@@ -647,6 +673,8 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
         onApplyView: applyView,
         onSaveView: saveView,
         onDeleteView: deleteView,
+        visitDigest,
+        onDismissVisit: () => setVisitDigest(null),
         onQuery: setQuery,
         onFilter: setFilter,
         onToggleArchived: toggleArchived,

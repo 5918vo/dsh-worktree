@@ -87,6 +87,11 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-tag-filter:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .dshw-board .dshwd-rail-tools { display: flex; align-items: center; gap: 6px; }
 .dshw-board .dshwd-archive-toggle { margin-left: auto; height: 27px; padding: 0 7px; font-size: 11px; flex: none; }
+/* "Since your last visit": read-only, wraps instead of overflowing the rail. */
+.dshw-board .dshwd-visit { display: flex; align-items: flex-start; gap: 6px; padding: 6px 8px; border: 1px solid var(--line); border-left: 2px solid var(--accent-line); border-radius: 7px; background: var(--bg-elevated); color: var(--text-2); font-size: 11px; line-height: 1.45; }
+.dshw-board .dshwd-visit-text { flex: 1 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.dshw-board .dshwd-visit-close { flex: none; width: 20px; height: 20px; padding: 0; font-size: 14px; line-height: 18px; color: var(--text-3); }
+.dshw-board .dshwd-visit-close:hover:not(:disabled) { color: var(--text-1); background: var(--bg-hover); }
 .dshw-board .dshwd-filter { position: relative; flex: 1; min-width: 0; }
 .dshw-board .dshwd-filter-btn { display: flex; align-items: center; gap: 5px; width: 100%; height: 27px; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-stage); color: var(--text-2); font-size: 12px; cursor: pointer; transition: border-color .12s, background .12s; }
 .dshw-board .dshwd-filter-btn:hover { border-color: var(--line-strong); }
