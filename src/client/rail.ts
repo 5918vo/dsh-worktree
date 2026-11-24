@@ -14,6 +14,9 @@ import { AttentionSummaryBar } from './attention-summary'
 import { quickActionKey, type QuickAction, type SessionHealth, type TaskAttention } from './task-attention'
 import { environmentWarnings, type EnvironmentInfo } from './environment'
 import { fill } from './markdown'
+import { formatWorkDuration } from '../task-timer'
+import { workDurationUnits } from './work-format'
+import type { VisitDigest } from './visit-digest'
 import type { DependencyStatus } from '../task-deps'
 
 export type RailEmptyKind = '' | 'search' | 'tag' | 'filter' | 'no-projects' | 'no-tasks'
@@ -64,6 +67,9 @@ export interface RailProps {
   onPinTask: (taskId: string, pinned: boolean) => void
   onToggleTheme: () => void
   searchRef: any
+  /** "Since your last visit" digest; absent or null hides the row. */
+  visitDigest?: VisitDigest | null
+  onDismissVisit?: () => void
   /** Host capabilities from `GET config`; absent while loading or after failure. */
   environment?: EnvironmentInfo | null
   /** Narrow container: the rail is an overlay sheet with its own close control. */
@@ -186,6 +192,7 @@ export function Rail(props: RailProps) {
             h('option', { value: '' }, t.taskTagAll),
             props.tags.map((tag) => h('option', { key: tag, value: tag }, '#' + tag))))
         : null,
+      visitBar(props),
       h('div', { className: 'dshwd-rail-tools' },
         h(AttentionFilter, { t, value: props.filter, counts: props.counts, onChange: props.onFilter }),
         props.archivedCount > 0 || props.showArchived
@@ -356,6 +363,38 @@ function SaveViewDialog(props: SaveViewDialogProps) {
 /** The bar reports every category with a count, even when the list is filtered. */
 function summaryCounts(props: RailProps): Record<string, number> {
   return props.counts || {}
+}
+
+/**
+ * "Since your last visit" row: read-only, dismissible for this mount only.
+ * The work item is omitted when the window added no measurable time.
+ */
+function visitBar(props: RailProps) {
+  const digest = props.visitDigest
+  if (!digest) return null
+  const { t } = props
+  const values = {
+    created: digest.created,
+    merged: digest.merged,
+    review: digest.review,
+    overdue: digest.overdue,
+  }
+  const text = digest.workMs > 0
+    ? fill(t.visitSummary, { ...values, work: formatWorkDuration(digest.workMs, workDurationUnits(t)) })
+    : fill(t.visitSummaryNoWork, values)
+  // The visible text already begins with "Since your last visit"; do not
+  // override it with an aria-label or screen readers announce only the title.
+  return h('div', { className: 'dshwd-visit', role: 'status' },
+    h('span', { className: 'dshwd-visit-text' }, text),
+    props.onDismissVisit
+      ? h('button', {
+        type: 'button',
+        className: 'dshwd-btn dshwd-btn-ghost dshwd-visit-close',
+        title: t.visitDismiss,
+        'aria-label': t.visitDismiss,
+        onClick: props.onDismissVisit,
+      }, '×')
+      : null)
 }
 
 function chip(label: string, tone: string, title?: string) {

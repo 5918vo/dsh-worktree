@@ -43,6 +43,12 @@ export interface StageProps {
   onDownloadReport?: () => void
   /** A report action is in flight; both report buttons stay disabled. */
   reportBusy?: boolean
+  /** Copy the handover brief; omitted hides the entry (SSR / tests). */
+  onCopyHandover?: () => void
+  /** Download the handover brief as `.md`; omitted hides the entry. */
+  onDownloadHandover?: () => void
+  /** A handover action is in flight; both handover buttons stay disabled. */
+  handoverBusy?: boolean
   /** Persist tags / priority / notes / dependencies / deadline; omitted keeps the info block read-only. */
   onSaveMeta?: (patch: { tags?: string[]; priority?: string; notes?: string; dependsOn?: string[]; dueAt?: number | null; estimate?: number | null }) => Promise<void>
   /** A metadata write is in flight; the editors stay disabled. */
@@ -304,6 +310,7 @@ function Overview(props: StageProps) {
       h('div', { className: 'dshwd-block-label' }, t.taskDescription),
       h('div', { className: 'dshwd-prose' }, props.taskView.task.description || '—')),
     h(TaskMetaSection, props),
+    h(HandoverSection, props),
     h(TaskLifecycleSection, props),
     h('section', { className: 'dshwd-block' },
       h('div', { className: 'dshwd-block-head' },
@@ -344,6 +351,42 @@ function Overview(props: StageProps) {
             h('span', null, item.text)))))
         : h('div', { className: 'dshwd-hint' }, t.boardNoCriteria),
       hint ? h('div', { className: 'dshwd-hint', style: { marginTop: '6px' } }, hint) : null))
+}
+
+/**
+ * Handover entry point: one text for the clipboard and one `.md` download, for
+ * whoever continues this task. Both buttons keep an accessible name even while
+ * the shared busy marker replaces their visible label.
+ */
+function HandoverSection(props: StageProps) {
+  const { t } = props
+  if (!props.onCopyHandover && !props.onDownloadHandover) return null
+  const busy = !!props.handoverBusy
+  return h('section', { className: 'dshwd-block dshwd-handover' },
+    h('div', { className: 'dshwd-block-head' },
+      h('div', { className: 'dshwd-block-label' }, t.handoverTitle),
+      h('div', { className: 'dshwd-block-actions' },
+        props.onCopyHandover
+          ? h('button', {
+            type: 'button',
+            className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini',
+            disabled: busy,
+            title: busy ? t.working : t.handoverCopy,
+            'aria-label': t.handoverCopy,
+            onClick: props.onCopyHandover,
+          }, busy ? t.working : t.handoverCopy)
+          : null,
+        props.onDownloadHandover
+          ? h('button', {
+            type: 'button',
+            className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini',
+            disabled: busy,
+            title: busy ? t.working : t.handoverDownload,
+            'aria-label': t.handoverDownload,
+            onClick: props.onDownloadHandover,
+          }, busy ? t.working : t.handoverDownload)
+          : null)),
+    h('div', { className: 'dshwd-hint' }, t.handoverHint))
 }
 
 type DependencyRowItem = { id: string; title: string; done: boolean; missing?: boolean }
