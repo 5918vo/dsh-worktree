@@ -1,0 +1,6 @@
+_agent/
+history/
+.artifact*
+.sharing.json
+*.log
+.DS_Store

@@ -1,0 +1,17 @@
+{
+  "manifestVersion": 3,
+  "name": "DSH Worktree 仪表台",
+  "namespace": "DshWorkbench",
+  "files": [
+    "tokens.css"
+  ],
+  "libraries": [],
+  "components": [],
+  "assetGroups": [],
+  "lastChange": {
+    "by": "Claude Code",
+    "at": "2026-11-24T13:45:00Z",
+    "via": "agent",
+    "note": "从现有 WORKBENCH_CSS 建立明暗语义 token。"
+  }
+}
