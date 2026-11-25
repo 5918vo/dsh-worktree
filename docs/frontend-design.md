@@ -12,8 +12,8 @@
 - `src/client.ts`：factory、locale 注册和 slot 接线。
 - `src/client/`：React 视图、配色、样式、国际化和数据交互的模块化实现。
 - `src/client/`：按参考原型 1:1 重构的三栏看板（Rail / Stage / Inspector）。
-- `src/client/styles.ts`：看板 `WORKBENCH_CSS` 与明暗 token。
-- `src/client/palette.ts`：项目详情和设置页的明暗色板。
+- `src/client/styles.ts`：看板 `WORKBENCH_CSS`、`PANEL_CSS` 叠加层与明暗 token 插值。
+- `src/client/palette.ts`：颜色唯一来源，经 `paletteVars()` / `workbenchVars()` 生成两套壳层的 CSS 变量。
 - 构建产物：`dist/client.js`。
 
 ### 约束
@@ -40,7 +40,7 @@
 4. **密集但不拥挤**：保持开发者工具的信息密度，同时让标题、状态和辅助信息有清晰层级。
 5. **嵌入式自适应**：三栏在宽容器展开，窄容器收起 Rail、把 Inspector 变成覆盖层。
 6. **反馈可靠**：加载、空、失败、成功和进行中状态必须可见且不可重复提交。
-7. **配色可替换**：看板颜色集中在 `WORKBENCH_CSS` 的 token，项目详情/设置页集中在 `PALETTE`。
+7. **配色可替换**：颜色集中在 `PALETTE`，看板与项目详情/设置页都从它生成各自的 CSS 变量，换色只改一处。
 
 ### 非目标
 
@@ -121,36 +121,45 @@ grid-template-columns: 272px minmax(0, 1fr) 284px;
 
 ### 5.1 配色管理
 
-看板颜色集中在 `src/client/palette.ts` 定义，由 `src/client/styles/workbench.ts` 的 `WORKBENCH_CSS` 以 `.dshw-board` 作用域的 CSS 变量承载（`--text-3` 直接读 `PALETTE`，避免两处漂移）：
+颜色的唯一来源是 `src/client/palette.ts`。`PALETTE.light` / `PALETTE.dark` 的每个值同时喂给两套壳层，样式表里不再手写任何色值：
+
+- 项目详情与设置页：`paletteVars(PALETTE.x)` 生成 `--dshw-*`，挂在 `.dshw-scope` 上；`.dshw-board[data-theme="light"|"dark"] .dshw-scope{…}` 让详情页跟随看板主题，而不是跟随宿主。
+- 看板：`workbenchVars(theme)` 把同一份 palette 映射成壳层变量，`WORKBENCH_CSS` 里只剩两处插值：
 
 ```css
-.dshw-board { --bg-canvas: #0b0b0c; --bg-rail: #070708; --bg-stage: #0b0b0c;
-             --text-1: #f2f0ec; --text-2: #a9a59d; --text-3: #8b877f;
-             --line: rgba(242,240,236,.11);
-             --accent: #e0a256; --ok: #8fbf94; --warn: #d9a93f; --err: #e0776f; }
-.dshw-board[data-theme="light"] { --bg-canvas: #f8f5ef; --text-1: #17150f; ... }
+.dshw-board { /* ${workbenchVars('dark')} */ }
+.dshw-board[data-theme="light"] { /* ${workbenchVars('light')} */ }
 ```
 
-项目详情与设置页使用 `src/client/palette.ts` 的 `PALETTE.light` / `PALETTE.dark`，由 `paletteVars()` 生成 `--dshw-*`：
+映射由 `workbenchVarPairs(theme)` 定义，两种主题同名同序：
 
-```css
-.dshw-scope { --dshw-bg: ...; --dshw-surface: ...; }
-.dshw-dark .dshw-scope { --dshw-bg: ...; --dshw-surface: ...; }
-```
+| 壳层变量 | palette 键 |
+| --- | --- |
+| `--bg-canvas` / `--bg-rail` / `--bg-stage` / `--bg-elevated` / `--bg-modal` | `bg` / `treeBg` / `surface` / `elevated` / `modalBg` |
+| `--bg-hover` / `--bg-active` / `--backdrop` | `hover` / `active` / `backdrop` |
+| `--line` / `--line-strong` / `--specular` / `--modal-shadow` | `border` / `borderStrong` / `boardSpecular` / `boardModalShadow` |
+| `--text-1` / `--text-2` / `--text-3` | `text` / `text2` / `text3` |
+| `--cta-bg` / `--cta-text` / `--cta-hover` | `brandSolid` / `onBrand` / `brandSolidHover` |
+| `--accent` / `--accent-soft` / `--accent-line` | `brand` / `brandSoft` / `brandBorder` |
+| `--ok` / `--warn` / `--err`（各带 `-soft`、`-line`） | `success` / `warn` / `danger` + 对应 `*Soft`、`*Border` |
+| `--toast-err-bg` / `-text` / `-line` | `TOAST_ERROR[theme]` |
+| `--code-bg` / `--diff-add-bg` / `--diff-del-bg` | `boardCodeBg` / `boardDiffAddBg` / `boardDiffDelBg` |
 
-两套取值必须一致（深色纸黑 + 铜色强调，浅色暖纸 + 深棕强调），改一处就要同步另一处。
+`board*` 前缀的键（`boardSpecular`、`boardModalShadow`、`boardCodeBg`、`boardDiffAddBg`、`boardDiffDelBg`）是壳层独有的表面，留在 `PALETTE` 里作为唯一来源，但不经 `--dshw-*` 暴露给项目详情。
 
-`PANEL_CSS`（`src/client/styles.ts` 顶部）是叠加层，被追加到 `CSS` 与 `WORKBENCH_CSS` 末尾，用同一组规则同时约束两套 shell：按钮三档高度、chip 方标、分区自增编号、键值点线引导、左栏 34px 文本轴、统一焦点环。改版式规则优先进这里，而不是在两个样式表里各改一遍。
+`PANEL_CSS`（`src/client/styles/panel.ts`）是叠加层，被追加到 `CSS` 与 `WORKBENCH_CSS` 末尾，用同一组规则同时约束两套 shell：按钮三档高度、chip 方标、分区自增编号、键值点线引导、左栏 34px 文本轴、统一焦点环。改版式规则优先进这里，而不是在两个样式表里各改一遍。
 
 规则：
 
-- 看板换色只改 `WORKBENCH_CSS` 顶部两组 token；项目详情/设置页换色只改 `PALETTE`。
+- 改颜色只改 `PALETTE`。看板 token 块里出现 hex/rgba 就是第二个来源，`test/client-workbench-tokens.test.ts` 会失败；块外重复已声明的颜色同样失败。
 - 强调色只用于：运行态、领先提交数、主操作、选中行左侧条。其余状态用降饱和的成功/警告/危险色。
-- 文本三级色必须满足 AA，且要在**实际承载它的抬升面**上达标（rail `--bg-rail`、surface2、surface3，不只画布）：深色 `#8b877f`、浅色 `#6b6659`，两套 token 同步定义在 `src/client/palette.ts` 与 `src/client/styles/workbench.ts`，并由 `test/client-contrast.test.ts` 用真实色值防回归。
+- 文本三级色必须在**实际承载它的面**上满足 AA：画布、rail、stage、elevated、modal、代码块逐一对齐（深 `#8b877f`、浅 `#6b6659`）；软底 chip 和 diff 行另外单独测，因为半透明底色会把有效对比度拉低。
 - 看板主题由 `.dshw-board[data-theme]` 控制，默认跟随宿主亮度，用户切换后写入 `localStorage` 的 `dshw-board:theme`。
-- 项目详情/设置页跟随宿主 `dshw-dark` 类；该类由 `useStyles()` 根据宿主文本颜色自动维护并监听主题变化。
-- 看板语义 token 包括：画布/栏底/舞台/浮层背景、悬停/激活、边框、三级文本、主 CTA、强调色、成功/警告/危险、代码块、diff 增删底色。
+- 项目详情/设置页跟随宿主 `dshw-dark` 类；该类由 `useStyles()` 根据宿主文本颜色自动维护并监听主题变化，但当它嵌在 `.dshw-board` 内时以看板 `data-theme` 为准。
+- 看板语义 token 包括：画布/栏底/舞台/浮层背景、悬停/激活、边框、三级文本、主 CTA、强调色、成功/警告/危险、toast、代码块、diff 增删底色。
 - 看板状态点、chip 和验收操作共用 `src/client/model.ts` 的状态映射，不单独维护近似色。
+- `designs/` 下的 Open Artifact `tokens.css` 只是设计副本：不进入构建，不作为运行时资源，也不允许 `.dc.html` 被拷成生产组件。
+- 已知遗留：`--dshw-mono` 被 `PANEL_CSS` 读取但两套样式表都没声明，`font-family` 会静默失效；测试把它固定成唯一已知例外，补 fallback 属于单独一次可见改动。
 
 ### 5.2 状态色语义
 

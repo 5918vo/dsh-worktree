@@ -1,4 +1,4 @@
-import { PALETTE, TOAST_ERROR, paletteVars } from '../palette'
+import { PALETTE, paletteVars, workbenchVars } from '../palette'
 import { PANEL_CSS } from './panel'
 
 /**
@@ -18,38 +18,14 @@ export const WORKBENCH_CSS = `
 .dshw-board, .dshw-board *, .dshw-board *::before, .dshw-board *::after { box-sizing: border-box; }
 .dshw-board {
   container-type: inline-size; container-name: dshwboard;
-  --bg-canvas: #0b0b0c; --bg-rail: #070708; --bg-stage: #0b0b0c; --bg-elevated: #131315;
-  --bg-modal: #0f0f11; --bg-hover: rgba(242,240,236,.05); --bg-active: rgba(242,240,236,.085);
-  --backdrop: rgba(4,4,5,.74); --line: rgba(242,240,236,.11); --line-strong: rgba(242,240,236,.20);
-  --specular: inset 0 1px 0 rgba(242,240,236,.045);
-  --modal-shadow: 0 24px 64px rgba(0,0,0,.62), 0 0 0 1px rgba(242,240,236,.09);
-  --text-1: #f2f0ec; --text-2: #a9a59d; --text-3: ${PALETTE.dark.text3};
-  --cta-bg: #f2f0ec; --cta-text: #0b0b0c; --cta-hover: #ffffff;
-  --accent: #e0a256; --accent-soft: rgba(224,162,86,.12); --accent-line: rgba(224,162,86,.30);
-  --ok: #8fbf94; --ok-soft: rgba(143,191,148,.12); --ok-line: rgba(143,191,148,.28);
-  --warn: #d9a93f; --warn-soft: rgba(217,169,63,.12); --warn-line: rgba(217,169,63,.28);
-  --err: #e0776f; --err-soft: rgba(224,119,111,.12); --err-line: rgba(224,119,111,.28);
-  --toast-err-bg: ${TOAST_ERROR.dark.bg}; --toast-err-text: ${TOAST_ERROR.dark.text}; --toast-err-line: ${TOAST_ERROR.dark.border};
-  --code-bg: #070708; --diff-add-bg: rgba(143,191,148,.12); --diff-del-bg: rgba(224,119,111,.12);
+  ${workbenchVars('dark')}
   height: 100%; min-height: 0; position: relative; overflow: hidden;
   color: var(--text-1); background: var(--bg-canvas);
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
   font-size: 13px; line-height: 1.5; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
 }
 .dshw-board[data-theme="light"] {
-  --bg-canvas: #f8f5ef; --bg-rail: #f1ede4; --bg-stage: #f8f5ef; --bg-elevated: #fffdf8;
-  --bg-modal: #fffdf8; --bg-hover: rgba(23,21,15,.045); --bg-active: rgba(23,21,15,.08);
-  --backdrop: rgba(23,21,15,.32); --line: rgba(23,21,15,.14); --line-strong: rgba(23,21,15,.26);
-  --specular: inset 0 1px 0 rgba(255,255,255,.9);
-  --modal-shadow: 0 24px 60px rgba(20,20,19,.16), 0 0 0 1px rgba(20,20,19,.09);
-  --text-1: #17150f; --text-2: #4d4a42; --text-3: ${PALETTE.light.text3};
-  --cta-bg: #17150f; --cta-text: #f8f5ef; --cta-hover: #2b2820;
-  --accent: #9a5619; --accent-soft: rgba(154,86,25,.10); --accent-line: rgba(154,86,25,.30);
-  --ok: #3f7a4a; --ok-soft: rgba(63,122,74,.10); --ok-line: rgba(63,122,74,.28);
-  --warn: #8a5a12; --warn-soft: rgba(138,90,18,.10); --warn-line: rgba(138,90,18,.28);
-  --err: #a83a34; --err-soft: rgba(168,58,52,.08); --err-line: rgba(168,58,52,.26);
-  --toast-err-bg: ${TOAST_ERROR.light.bg}; --toast-err-text: ${TOAST_ERROR.light.text}; --toast-err-line: ${TOAST_ERROR.light.border};
-  --code-bg: #f6f5f0; --diff-add-bg: rgba(16,185,129,.10); --diff-del-bg: rgba(220,38,38,.08);
+  ${workbenchVars('light')}
 }
 /* Project overview keeps the legacy .dshw-scope palette, but it must follow the
    board theme rather than the host's dshw-dark ancestor (or lack of one). */
