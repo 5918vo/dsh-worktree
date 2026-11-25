@@ -3,17 +3,16 @@ import { Icon } from './primitives'
 import { pad2, relTime, taskStamp } from './format'
 import { railStatsText } from './model'
 import type { ProjectView, TaskView } from '../models'
-import { boardBranch, boardStat, boardStatTitle, boardStatus, boardStatusLabel, type BoardFilter, type BoardTheme } from './model'
+import { boardBranch, boardStat, boardStatTitle, boardStatus, boardStatusLabel, criteria, criteriaProgress, type BoardFilter, type BoardTheme } from './model'
 import { dueStateOf, parseEstimate } from '../task-meta'
 import { isWorkTiming } from '../task-timer'
 import { useDialogFocus } from './dialog-focus'
 import type { SavedView } from './saved-views'
-import { pendingLabel, postMergeLabel } from './status'
 import { AttentionFilter } from './attention-filter'
 import { AttentionSummaryBar } from './attention-summary'
 import { quickActionKey, type QuickAction, type SessionHealth, type TaskAttention } from './task-attention'
 import { environmentWarnings, type EnvironmentInfo } from './environment'
-import { fill } from './markdown'
+import { railRowSignals, signalIcon, type RailSignal } from './rail-summary'
 import type { DependencyStatus } from '../task-deps'
 
 export type RailEmptyKind = '' | 'search' | 'tag' | 'filter' | 'no-projects' | 'no-tasks'
@@ -358,35 +357,11 @@ function summaryCounts(props: RailProps): Record<string, number> {
   return props.counts || {}
 }
 
-function chip(label: string, tone: string, title?: string) {
-  return h('span', { className: 'dshwd-chip dshwd-chip-sm' + (tone ? ' dshwd-' + tone : ''), title: title || label }, label)
-}
-
 const QUICK_ICON: Record<QuickAction, string> = {
   recover: 'refresh',
   handle: 'message',
   review: 'checkCircle',
   'open-session': 'terminal',
-}
-
-/** Alert copy shared by the row chip and the "more states" popover. */
-function alertText(t: any, kind: string, tv: TaskView, pendingKind: string, health: SessionHealth | null, stalledDays?: number): string {
-  switch (kind) {
-    case 'recovery': return t.attentionRecovery
-    case 'pending': return pendingLabel(t, pendingKind)
-    case 'broken': return t.attentionBroken
-    case 'stalled': return String(t.attentionStalledDays).replace('{n}', String(stalledDays || 0))
-    case 'post-merge': return postMergeLabel(t, Number((tv.snapshot && tv.snapshot.postMergeAhead) || 0))
-    case 'session':
-      if (!health) return t.sessionIdle
-      return health.kind === 'interrupted' ? t.sessionInterrupted : t.sessionError
-    default: return ''
-  }
-}
-
-function alertTone(kind: string): string {
-  if (kind === 'broken' || kind === 'session') return 'err'
-  return 'warn'
 }
 
 function taskRow(
@@ -405,62 +380,36 @@ function taskRow(
   const health = props.healthOf(task)
   const attention = props.attentionOf(tv)
   const active = props.selectedTaskId === task.id
-  const extras = attention.extraAlerts.filter((kind) => kind !== 'pending' && !(kind === 'session' && health))
   const open = moreOpen === task.id
   const quick = attention.quickAction
 
-  const chips = [chip(pendingKind ? pendingLabel(t, pendingKind) : boardStatusLabel(t, status), pendingKind ? 'warn' : status.chip)]
-  if (task.sessionId && !pendingKind) {
-    // A new turn makes an earlier failure historical: show the live state.
-    if (health && !running) {
-      chips.push(chip(
-        health.kind === 'interrupted' ? t.sessionInterrupted : t.sessionError,
-        health.kind === 'interrupted' ? 'warn' : 'err',
-        (health.kind === 'interrupted' ? t.sessionInterruptedHint : t.sessionErrorHint) + (health.message ? ' · ' + health.message : ''),
-      ))
-    } else {
-      chips.push(chip(running ? t.sessionRunning : t.sessionIdle, running ? 'accent' : ''))
-    }
-  }
-  const primary = attention.primaryAlert
-  if (task.priority === 'high') chips.push(chip(t.priorityHigh, 'warn'))
-  else if (task.priority === 'low') chips.push(chip(t.priorityLow, 'weak'))
-  // Size estimate: a quiet points chip; unestimated tasks show nothing.
+  // One alarm per row: the most urgent signal wins the second chip and every
+  // other one waits in "more states". Static metadata (tags, estimate, a plain
+  // priority, a far-off deadline) is not an alarm and lives in the stage meta
+  // block; structured search still finds tasks by tag and priority.
   const estimate = parseEstimate(task.estimate)
-  if (estimate.ok && estimate.value != null) chips.push(chip(fill(t.taskEstimatePoints, { n: estimate.value }), '', t.taskEstimate))
-  // Advisory only: a blocked task keeps its status and sort order.
   const deps = props.depsOf ? props.depsOf(task) : null
-  if (deps && deps.blocked) {
-    chips.push(chip(fill(t.taskDepsBlocked, { n: deps.open.length }), 'warn', deps.open.map((item) => item.title).join(', ')))
-  }
-  // Deadline chip: overdue is an error tone, today/soon a warning. Later dates
-  // stay out of the row so a far-off deadline does not add noise.
   const due = dueStateOf(task.dueAt)
-  if (due && due.kind === 'overdue') {
-    chips.push(chip(String(t.taskDueOverdue).replace('{n}', String(due.days)), 'err', t.taskDueHint))
-  } else if (due && due.kind === 'today') {
-    chips.push(chip(t.taskDueToday, 'warn', t.taskDueHint))
-  } else if (due && due.kind === 'soon') {
-    chips.push(chip(String(t.taskDueSoon).replace('{n}', String(due.days)), 'warn', t.taskDueHint))
-  }
-  // Manual work timer: a quiet marker, so "计时中" survives switching tasks and
-  // reloading the board. The start clock explains *since when* on hover.
-  if (isWorkTiming(task)) {
-    const startedAt = new Date(Number(task.workStartedAt))
-    const clock = pad2(startedAt.getHours()) + ':' + pad2(startedAt.getMinutes())
-    chips.push(chip(t.taskWorkTiming, 'accent', fill(t.taskWorkTimingHint, { time: clock })))
-  }
-  // Two tags at most: the row stays one line; the full list lives in the title
-  // and in "+N" so nothing is lost.
-  const tags: string[] = Array.isArray(task.tags) ? task.tags : []
-  const tagsTitle = tags.join(', ')
-  if (tags.length) {
-    chips.push(chip(tags.slice(0, 2).map((tag) => '#' + tag).join(' '), 'tag', tagsTitle))
-    if (tags.length > 2) chips.push(chip('+' + String(tags.length - 2), 'tag', tagsTitle))
-  }
-  if (primary && primary !== 'pending' && primary !== 'session') {
-    chips.push(chip(alertText(t, primary, tv, pendingKind, health, attention.stalledDays), alertTone(primary)))
-  }
+  const startedAt = isWorkTiming(task) ? new Date(Number(task.workStartedAt)) : null
+  const signals = railRowSignals({
+    t,
+    statusLabel: boardStatusLabel(t, status),
+    statusTone: status.chip || '',
+    pendingKind,
+    health,
+    running,
+    attention,
+    deps,
+    due,
+    criteria: criteriaProgress(criteria(task, tv.snapshot.status)),
+    estimate: estimate.ok && estimate.value != null ? estimate.value : null,
+    timerClock: startedAt ? pad2(startedAt.getHours()) + ':' + pad2(startedAt.getMinutes()) : '',
+    postMergeAhead: Number((tv.snapshot && tv.snapshot.postMergeAhead) || 0),
+    tags: task.tags,
+    priority: task.priority,
+  })
+  const chips = signals.lead ? [signals.status, signals.lead] : [signals.status]
+  const moreCount = signals.more.length
 
   return h('div', {
     key: task.id,
@@ -480,7 +429,12 @@ function taskRow(
       h('div', { className: 'dshwd-item-row2' },
         h('span', { className: 'dshwd-mono' }, boardBranch(task.branch)),
         h('span', null, task.archivedAt ? t.archived : relTime(taskStamp(task, tv.snapshot), t))),
-      h('div', { className: 'dshwd-item-chips' }, chips)),
+      h('div', { className: 'dshwd-item-chips' }, chips.map((signal: RailSignal) =>
+        h('span', {
+          key: signal.kind,
+          className: 'dshwd-chip' + (signal.tone ? ' dshwd-' + signal.tone : ''),
+          title: signal.title || signal.label,
+        }, signal.label)))),
 
     h('div', { className: 'dshwd-item-actions' },
       h('button', {
@@ -491,13 +445,13 @@ function taskRow(
         'aria-pressed': task.pinnedAt ? 'true' : 'false',
         onClick: () => props.onPinTask(task.id, !task.pinnedAt),
       }, h(Icon, { name: 'pin' })),
-      extras.length
+      moreCount
         ? h('button', {
           ref: open ? moreBtnRef : undefined,
           type: 'button',
           className: 'dshwd-item-action' + (open ? ' dshwd-item-action-on' : ''),
           title: t.moreStates,
-          'aria-label': t.moreStates + (active ? ' · ' + task.title : ''),
+          'aria-label': t.moreStates + ' · ' + String(moreCount) + (active ? ' · ' + task.title : ''),
           'aria-expanded': open ? 'true' : 'false',
           onClick: () => setMoreOpen(open ? '' : task.id),
           onKeyDown: (e: any) => {
@@ -523,8 +477,8 @@ function taskRow(
     open
       ? h('div', { className: 'dshwd-more', role: 'group', 'aria-label': t.moreStates },
         h('div', { className: 'dshwd-more-head' }, t.moreStates),
-        extras.map((kind) => h('div', { key: kind, className: 'dshwd-more-item' + (kind === 'broken' || kind === 'session' ? ' dshwd-more-item-err' : '') },
-          h(Icon, { name: kind === 'broken' || kind === 'session' ? 'alert' : 'clock' }),
-          h('span', null, alertText(t, kind, tv, pendingKind, health, attention.stalledDays)))))
+        signals.more.map((signal: RailSignal) => h('div', { key: signal.kind, className: 'dshwd-more-item' + (signal.tone === 'err' ? ' dshwd-more-item-err' : '') },
+          h(Icon, { name: signalIcon(signal.kind) }),
+          h('span', { title: signal.title }, signal.label))))
       : null)
 }

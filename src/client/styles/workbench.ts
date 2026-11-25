@@ -114,7 +114,9 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-item-action svg { width: 13px; height: 13px; }
 .dshw-board .dshwd-item-action-cta { color: var(--warn); border-color: var(--warn-line); background: var(--warn-soft); }
 .dshw-board .dshwd-item-action-cta:hover { color: var(--warn); background: var(--warn-soft); }
-.dshw-board .dshwd-item-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.dshw-board .dshwd-item-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; min-width: 0; }
+/* A long status or dependency label is clipped, never allowed to widen the rail. */
+.dshw-board .dshwd-item-chips .dshwd-chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .dshw-board .dshwd-chip-sm { padding: 1px 6px; font-size: 10px; gap: 3px; }
 .dshw-board .dshwd-more { grid-column: 1 / -1; margin-top: 7px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg-stage); display: flex; flex-direction: column; gap: 3px; }
 .dshw-board .dshwd-more-head { font-size: 10px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3); }
@@ -199,12 +201,19 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-block-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .dshw-board .dshwd-prose { font-size: 13.5px; line-height: 1.7; color: var(--text-2); white-space: pre-wrap; }
 .dshw-board .dshwd-check-list { display: flex; flex-direction: column; gap: 9px; }
+/* Segments restate n/total visually; the text stays authoritative and the bar
+   is aria-hidden, so colour is never the only signal. */
+.dshw-board .dshwd-check-progress { display: flex; gap: 4px; margin: 0 0 10px; }
+.dshw-board .dshwd-check-segment { flex: 1 1 0; height: 3px; border-radius: 999px; background: var(--line-strong); }
+.dshw-board .dshwd-check-segment-on { background: var(--ok); }
+.dshw-board .dshwd-acceptance .dshwd-block-label { color: var(--text-1); }
 .dshw-board .dshwd-check-toggle { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
-.dshw-board .dshwd-check-toggle input[type='checkbox'] { width: 15px; height: 15px; margin: 0; flex-shrink: 0; accent-color: var(--accent); }
+/* The box sits on the first line of a wrapped criterion, never centred. */
+.dshw-board .dshwd-check-toggle input[type='checkbox'] { width: 15px; height: 15px; margin: 2px 0 0; flex-shrink: 0; accent-color: var(--accent); }
 .dshw-board .dshwd-check-readonly { color: var(--text-2); }
 .dshw-board .dshwd-check-readonly .dshwd-check-box { opacity: .55; }
-.dshw-board .dshwd-check-item { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-1); }
-.dshw-board .dshwd-check-box { width: 15px; height: 15px; border-radius: 4px; border: 1px solid var(--ok-line); display: grid; place-items: center; font-size: 10px; color: var(--ok); background: var(--ok-soft); flex-shrink: 0; }
+.dshw-board .dshwd-check-item { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; line-height: 1.5; color: var(--text-1); overflow-wrap: anywhere; }
+.dshw-board .dshwd-check-box { width: 15px; height: 15px; margin-top: 2px; border-radius: 4px; border: 1px solid var(--ok-line); display: grid; place-items: center; font-size: 10px; color: var(--ok); background: var(--ok-soft); flex-shrink: 0; }
 .dshw-board .dshwd-check-box.dshwd-todo { background: transparent; border-color: var(--line-strong); color: transparent; }
 .dshw-board .dshwd-check-toggle:hover input[type='checkbox'] { outline: 2px solid var(--accent); outline-offset: 1px; }
 .dshw-board .dshwd-check-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
