@@ -110,6 +110,14 @@ grid-template-columns: 272px minmax(0, 1fr) 284px;
 
 项目详情与设置页沿用原 `dshw-scope` 的容器查询断点（双栏 → 单栏），`.dshw-scope` 自身也是容器，因此嵌入 Stage 后会按 Stage 宽度响应。
 
+### 4.2.1 窄屏的焦点、遮罩与偏好
+
+- **一个遮罩，一个主人**：`activeDrawer()` 只认当前可见的那张抽屉（两者都可见时右栏优先），`dshwd-scrim` 只由它渲染；`drawerFocusTrap()` 在弹窗打开时返回 `null`，所以 Modal 独占焦点与 `Esc`，抽屉不会抢。
+- **焦点进出**：打开抽屉时焦点落到该抽屉的 `.dshwd-drawer-close`，关闭时回到触发它的元素（`drawerReturn`）；从 Rail 选中任务时 `selectionDrawerState()` 让 Rail 收起并把焦点交给 Stage（`focusStage`），宽屏下两者都不动。
+- **`Esc` 只关一层**：看板的 `keydown` 处理函数调一次 `dismissDrawer()`，弹窗自己处理自己的 `Esc`，两条路径互不代劳。
+- **偏好不是装饰**：`prefers-reduced-motion: reduce` 停掉 `developing` 圆点脉冲与过渡（状态仍靠颜色表达）；`pointer: coarse` 让行内操作常显、点击目标不小于 24px。
+- **回归护栏**（Node 纯函数/CSS 文本断言，不是浏览器验收）：`test/client-drawers.test.ts`（互斥、遮罩归属、`dismissDrawer`）、`test/client-drawer-focus-trap.test.ts`（Tab/Shift+Tab、弹窗优先、焦点不被拽回）、`test/client-responsive.test.ts`（980/720/480 断点、遮罩只在 720 以下出现、Stage 不降级成卡片列表、reduced motion/coarse pointer 覆盖仍在）。
+
 ### 4.3 滚动与高度
 
 - 外层 `height: 100%`、`min-height: 0`。
@@ -640,6 +648,7 @@ src/client/
 - [ ] 任务项显示状态点、标题、统计、分支和最近提交时间；键盘 Enter/Space 可选中。
 - [ ] Stage 的「概览 / 实时会话 / 代码改动」切换正确，切换任务后回到概览。
 - [ ] Inspector 的合并预检、技术信息和生命周期操作对应选中任务。
+- [ ] 视觉待验（本机未做浏览器截图验收）：桌面 dark/light 三栏、981/980、721/720、480、键盘 Tab/Shift+Tab/Esc 与触摸长按。
 - [ ] 有 `pendingStashes` 时 Inspector 列出暂存，可查看 patch / 恢复 / 丢弃；丢弃需二次确认。
 - [ ] 清理弹窗可勾选强制、删除分支、强制删除未合并分支；删除记录单独二次确认。
 - [ ] 合并后自动切回原分支失败时，Inspector 出现「切回原分支」并可恢复。

@@ -5,6 +5,7 @@ import {
   closeAllDrawers,
   closeDrawer,
   dismissDrawer,
+  selectionDrawerState,
   toggleDrawer,
 } from '../src/client/drawers.js'
 
@@ -54,4 +55,16 @@ test('dismissDrawer is a no-op when nothing is open or the layout is wide', () =
   assert.deepEqual(dismissDrawer(bothClosed, true, true), { state: bothClosed, closed: null })
   const wide = { railHidden: false, inspectorHidden: false }
   assert.deepEqual(dismissDrawer(wide, false, true), { state: wide, closed: null })
+})
+
+test('selecting a task from the open rail sheet hands the stage the room', () => {
+  const open = { railHidden: false, inspectorHidden: true }
+  assert.deepEqual(selectionDrawerState(open, true), { state: { railHidden: true, inspectorHidden: true }, focusStage: true })
+  // Wide layouts keep the rail as-is: collapsing a column on click would surprise.
+  assert.deepEqual(selectionDrawerState(open, false), { state: open, focusStage: false })
+  // An already closed sheet has nothing to hide, so nothing to hand over.
+  assert.deepEqual(selectionDrawerState(bothClosed, true), { state: bothClosed, focusStage: false })
+  // The inspector is not touched by a selection: it stays whatever it was.
+  const withInspector = { railHidden: false, inspectorHidden: false }
+  assert.deepEqual(selectionDrawerState(withInspector, true), { state: { railHidden: true, inspectorHidden: false }, focusStage: true })
 })

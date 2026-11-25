@@ -15,7 +15,7 @@ import { WORKBENCH_CSS } from './styles'
 import { Rail } from './rail'
 import { Stage, type BoardTab } from './stage'
 import { Inspector } from './inspector'
-import { activeDrawer, closeAllDrawers, closeDrawer, dismissDrawer, drawerFocusTrap, toggleDrawer, type DrawerState, type DrawerSide } from './drawers'
+import { activeDrawer, closeAllDrawers, closeDrawer, dismissDrawer, drawerFocusTrap, selectionDrawerState, toggleDrawer, type DrawerState, type DrawerSide } from './drawers'
 import { attachFocusTrap } from './dialog-focus'
 import { PublishModal } from './publish'
 import { AddProjectModal } from './add-project'
@@ -362,11 +362,12 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     setSelectedTaskId(id)
     if (owner) setSelectedProjectId(owner)
     setTab('overview')
-    if (narrow && !railHidden) {
+    const picked = selectionDrawerState({ railHidden, inspectorHidden }, narrow)
+    if (picked.focusStage) {
       drawerReturn.current = null
       focusStage.current = true
-      setRailHidden(true)
     }
+    setDrawers(picked.state)
   }
   const selectProject = (id: string) => {
     setSelectedProjectId(id)
