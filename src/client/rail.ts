@@ -396,6 +396,7 @@ function taskRow(
     statusLabel: boardStatusLabel(t, status),
     statusTone: status.chip || '',
     pendingKind,
+    taskStatus: tv.snapshot.status,
     health,
     running,
     attention,

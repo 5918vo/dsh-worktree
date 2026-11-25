@@ -42,6 +42,7 @@ function input(over: Partial<RailSignalsInput> = {}): RailSignalsInput {
     statusLabel: '待验收',
     statusTone: 'warn',
     pendingKind: '',
+    taskStatus: 'ready',
     health: null,
     running: false,
     attention: {},
@@ -109,15 +110,16 @@ test('post-merge drift is derived from the snapshot, not duplicated by an alert'
   assert.match(row.lead?.label || '', /2/)
 })
 
-test('acceptance progress only stands in as an alarm while awaiting review', () => {
-  const review = railRowSignals(input({ pendingKind: 'review', criteria: { checked: 2, total: 3 } }))
-  assert.equal(review.status.kind, 'pending')
+test('acceptance progress uses task lifecycle, not session pending kind', () => {
+  const review = railRowSignals(input({ taskStatus: 'review', criteria: { checked: 2, total: 3 } }))
+  assert.equal(review.status.kind, 'status')
   assert.equal(review.lead?.kind, 'criteria')
   assert.equal(review.lead?.label, '已核对 2/3')
-  // Complete, unset, or not waiting for review: nothing to nag about.
-  assert.equal(railRowSignals(input({ pendingKind: 'review', criteria: { checked: 3, total: 3 } })).lead, null)
-  assert.equal(railRowSignals(input({ pendingKind: 'review' })).lead, null)
+  // Complete, unset, or a session pending kind must not masquerade as review.
+  assert.equal(railRowSignals(input({ taskStatus: 'review', criteria: { checked: 3, total: 3 } })).lead, null)
+  assert.equal(railRowSignals(input({ taskStatus: 'review' })).lead, null)
   assert.equal(railRowSignals(input({ criteria: { checked: 1, total: 3 } })).lead, null)
+  assert.equal(railRowSignals(input({ pendingKind: 'approval', criteria: { checked: 1, total: 3 } })).lead, null)
 })
 
 test('static metadata stays out of the row but survives in the candidate list', () => {

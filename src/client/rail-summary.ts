@@ -40,8 +40,10 @@ export interface RailSignalsInput {
   /** Already-resolved board status label and chip tone. */
   statusLabel: string
   statusTone: RailTone
-  /** Pending kind (`approval` / `plan-review` / `question`), '' when none. */
+  /** Session interaction, not the task lifecycle: approval / plan-review / question. */
   pendingKind: string
+  /** Raw task lifecycle; `review` is distinct from session pending kinds. */
+  taskStatus: string
   health: { kind: string; message?: string } | null
   running: boolean
   attention: RailAlertSource
@@ -174,7 +176,7 @@ export function railSignals(input: RailSignalsInput): RailSignal[] {
 
   // Acceptance progress is an alarm only while the task waits for review: that
   // is the moment the count tells you what is left to do.
-  if (input.pendingKind === 'review' && input.criteria.total > 0 && input.criteria.checked < input.criteria.total) {
+  if (input.taskStatus === 'review' && input.criteria.total > 0 && input.criteria.checked < input.criteria.total) {
     const label = String(t['boardCriteriaProgress'])
       .replace('{n}', String(input.criteria.checked))
       .replace('{total}', String(input.criteria.total))
