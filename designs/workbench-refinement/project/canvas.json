@@ -1,0 +1,24 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-11-24T13:32:00Z" },
+  "title": "DSH Worktree 工作台优化",
+  "launch": { "view": "canvas" },
+  "pages": [
+    { "id": "screens", "name": "工作台" },
+    { "id": "foundation", "name": "设计规范" }
+  ],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 1440, "h": 920, "title": "01 · 任务工作台 / 暗色", "page": "screens", "is_interactive": true, "guides": [{ "kind": "grid", "size": 8, "hidden": true }] },
+    "Light.dc.html": { "x": 1520, "y": 0, "w": 1440, "h": 920, "title": "02 · 任务工作台 / 亮色", "page": "screens", "is_interactive": true },
+    "Compact.dc.html": { "x": 3040, "y": 0, "w": 720, "h": 920, "title": "03 · 窄屏任务列表", "page": "screens", "is_interactive": true },
+    "Merge.dc.html": { "x": 0, "y": 1040, "w": 1440, "h": 920, "title": "04 · 合并确认", "page": "screens", "is_interactive": true },
+    "Tokens.dc.html": { "x": 1520, "y": 1040, "w": 960, "h": 840, "title": "05 · 色彩与文字", "page": "foundation" },
+    "Components.dc.html": { "x": 2560, "y": 1040, "w": 1200, "h": 840, "title": "06 · 组件与状态", "page": "foundation" }
+  },
+  "order": ["Main.dc.html", "Light.dc.html", "Compact.dc.html", "Merge.dc.html", "Tokens.dc.html", "Components.dc.html"],
+  "notes": {
+    "screen-title": { "x": 0, "y": -260, "text": "把任务噪声，整理成下一步。", "kind": "title1", "maxW": 3760, "page": "screens" },
+    "foundation-title": { "x": 1520, "y": 780, "text": "沿用产品语言，不重新发明。", "kind": "title1", "maxW": 2240, "page": "foundation" }
+  },
+  "designSystems": [{ "title": "DSH Worktree 仪表台", "namespace": "dsh-worktree", "artifact": "designs/workbench-design-system", "version": null, "copiedAt": "2026-11-24T13:48:00Z" }]
+}

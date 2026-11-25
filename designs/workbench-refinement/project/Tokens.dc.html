@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>DSH Worktree · 色彩与文字</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/dsh-worktree/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet><style>body{margin:0}code{font-family:'JetBrains Mono',monospace}</style></helmet>
+<div style="width:960px;min-height:840px;box-sizing:border-box;background:#0b0b0c;color:#f2f0ec;font:13px/1.6 Inter,-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif;padding:40px">
+<header style="display:flex;justify-content:space-between;align-items:flex-end;gap:20px;padding-bottom:24px;border-bottom:1px solid #262524"><div><div style="font-size:11px;color:#a9a59d;margin-bottom:8px">DSH Worktree · 现有视觉语言</div><h1 style="font-size:28px;letter-spacing:-.03em;margin:0;font-weight:600">克制的仪表台</h1></div><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#e0a256">paper black / copper</span></header>
+<p style="margin:18px 0 28px;color:#a9a59d;max-width:65ch">颜色来自现有 <code>WORKBENCH_CSS</code> 与 <code>PALETTE</code>，不是另一套品牌。状态同时用文字表达，铜色只用于活动、选择与主操作。</p>
+<section style="margin-bottom:28px"><h2 style="font-size:13px;margin:0 0 14px">暗色 · 表面与文字</h2><div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px">
+<div style="padding:16px;background:#070708;border:1px solid #33312e;border-radius:6px;min-height:80px"><code style="font-size:10px;color:#a9a59d">--bg-rail</code><div style="margin-top:16px;font-size:12px">#070708</div></div>
+<div style="padding:16px;background:#0b0b0c;border:1px solid #33312e;border-radius:6px;min-height:80px"><code style="font-size:10px;color:#a9a59d">--bg-canvas</code><div style="margin-top:16px;font-size:12px">#0b0b0c</div></div>
+<div style="padding:16px;background:#131315;border:1px solid #33312e;border-radius:6px;min-height:80px"><code style="font-size:10px;color:#a9a59d">--bg-elevated</code><div style="margin-top:16px;font-size:12px">#131315</div></div>
+<div style="padding:16px;background:#f2f0ec;color:#0b0b0c;border-radius:6px;min-height:80px"><code style="font-size:10px;color:#4d4a42">--text-1</code><div style="margin-top:16px;font-size:12px">#f2f0ec</div></div>
+</div></section>
+<section style="margin-bottom:28px"><h2 style="font-size:13px;margin:0 0 14px">状态 · 不只依赖颜色</h2><div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px">
+<div style="padding:14px;background:#1b1814;border:1px solid #453729;border-radius:6px"><span style="width:6px;height:6px;display:inline-block;border-radius:50%;background:#e0a256;margin-right:7px"></span><span style="font-size:12px;color:#e0a256">活动中</span><div style="margin-top:10px;font-size:10px;color:#a9a59d">#e0a256 · accent</div></div>
+<div style="padding:14px;background:#211c13;border:1px solid #5b4727;border-radius:6px"><span style="width:6px;height:6px;display:inline-block;border-radius:50%;background:#d9a93f;margin-right:7px"></span><span style="font-size:12px;color:#e3b662">待处理</span><div style="margin-top:10px;font-size:10px;color:#a9a59d">#d9a93f · warn</div></div>
+<div style="padding:14px;background:#111812;border:1px solid #334b37;border-radius:6px"><span style="width:6px;height:6px;display:inline-block;border-radius:50%;background:#8fbf94;margin-right:7px"></span><span style="font-size:12px;color:#8fbf94">已合并</span><div style="margin-top:10px;font-size:10px;color:#a9a59d">#8fbf94 · ok</div></div>
+<div style="padding:14px;background:#211313;border:1px solid #58322e;border-radius:6px"><span style="width:6px;height:6px;display:inline-block;border-radius:50%;background:#e0776f;margin-right:7px"></span><span style="font-size:12px;color:#e0776f">异常</span><div style="margin-top:10px;font-size:10px;color:#a9a59d">#e0776f · err</div></div>
+</div></section>
+<section style="display:grid;grid-template-columns:1.2fr 1fr;gap:36px;padding-top:24px;border-top:1px solid #262524"><div><h2 style="font-size:13px;margin:0 0 14px">文字层级</h2><div style="font-size:24px;font-weight:600;letter-spacing:-.03em">任务标题 · 24 / 600</div><div style="font-size:13px;margin-top:13px">分区标题 · 13 / 600</div><div style="font-size:12px;color:#a9a59d;margin-top:8px">辅助信息 · 12 / 400</div><div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#a9a59d;margin-top:8px">main @ 9f5c35c · mono / 11</div></div><div><h2 style="font-size:13px;margin:0 0 14px">尺寸</h2><dl style="margin:0;display:flex;flex-direction:column;gap:7px;color:#a9a59d;font-size:12px"><div style="display:flex;justify-content:space-between"><dt>间距</dt><dd style="margin:0"><code>4 / 8 / 12 / 16 / 24</code></dd></div><div style="display:flex;justify-content:space-between"><dt>控件高</dt><dd style="margin:0"><code>28 / 32 / 36</code></dd></div><div style="display:flex;justify-content:space-between"><dt>圆角</dt><dd style="margin:0"><code>4 / 6 / 8</code></dd></div><div style="display:flex;justify-content:space-between"><dt>正文行长</dt><dd style="margin:0"><code>≤ 65–80 ch</code></dd></div></dl></div></section>
+<footer style="margin-top:28px;padding-top:18px;border-top:1px solid #262524;color:#a9a59d;font-size:11px">明暗主题使用同一语义 token；不新增卡片投影、渐变或装饰性发光。</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":960,"height":840}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

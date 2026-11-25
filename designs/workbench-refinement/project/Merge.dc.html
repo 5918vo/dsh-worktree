@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>DSH Worktree · 合并确认</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/dsh-worktree/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet><style>
+body{margin:0}button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid #e0a256;outline-offset:3px}a{color:#e0a256}
+</style></helmet>
+<div style="width:1440px;height:920px;position:relative;overflow:hidden;background:#0b0b0c;color:#f2f0ec;font:13px/1.5 Inter,-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif">
+<div style="position:absolute;inset:0;display:grid;grid-template-columns:272px minmax(0,1fr) 284px;opacity:.65">
+<aside style="background:#070708;border-right:1px solid #262524;padding:18px 16px"><div style="font-weight:600">Worktree</div><div style="margin-top:32px;height:32px;border:1px solid #33312e;border-radius:6px"></div><div style="margin-top:18px;font-size:11px;color:#a9a59d">dsh-worktree</div><div style="margin-top:10px;padding:13px;background:#1b1814;border:1px solid #453729;border-radius:6px">完善任务依赖关系</div><div style="margin-top:8px;padding:13px;color:#a9a59d">修复窄屏抽屉焦点</div><div style="margin-top:8px;padding:13px;color:#a9a59d">同步基线与冲突预检</div></aside>
+<main><div style="height:52px;border-bottom:1px solid #262524"></div><div style="padding:30px 32px;border-bottom:1px solid #262524"><h1 style="font-size:24px;margin:0">完善任务依赖关系</h1><div style="color:#d9a93f;margin-top:12px">待验收 · 2 / 4 已核对</div><div style="margin-top:30px;border-bottom:2px solid #f2f0ec;width:36px;padding-bottom:12px">概览</div></div><div style="padding:26px 32px"><h2 style="font-size:13px">验收标准</h2><p style="color:#a9a59d;font-size:12px">添加前置任务后可查看完成状态</p><p style="color:#a9a59d;font-size:12px">拒绝自己、跨项目与循环依赖</p><p style="font-size:12px">项目详情展示任务依赖关系图</p><p style="font-size:12px">前置完成后解除等待提示</p></div></main>
+<aside style="background:#0d0d0e;border-left:1px solid #262524;padding:22px 18px"><h2 style="font-size:12px;color:#a9a59d">合并预检</h2><p style="color:#c5c1b9;font-size:12px">基线与任务分支无冲突。还有 2 项验收标准待核对。</p><p style="font-family:'JetBrains Mono',monospace;font-size:11px;margin-top:22px">main @ 9f5c35c</p></aside>
+</div>
+<div style="position:absolute;inset:0;background:rgba(4,4,5,.78);display:flex;align-items:center;justify-content:center;padding:32px;box-sizing:border-box">
+<section role="dialog" aria-modal="true" aria-labelledby="merge-title" aria-describedby="merge-desc" style="width:520px;background:#0f0f11;border:1px solid #4d4a42;border-radius:8px;box-shadow:0 24px 64px rgba(0,0,0,.62);overflow:hidden">
+<header style="padding:20px 22px 18px;border-bottom:1px solid #262524;display:flex;align-items:flex-start;justify-content:space-between;gap:16px"><div><div style="color:#8fbf94;font-size:11px;margin-bottom:8px">预检通过 · 无冲突</div><h1 id="merge-title" style="font-size:18px;letter-spacing:-.015em;margin:0;font-weight:600">合并到 main</h1></div><a href="Main.dc.html" aria-label="关闭合并确认" style="text-decoration:none;color:#a9a59d;font-size:20px;line-height:1;padding:3px">×</a></header>
+<div style="padding:20px 22px;display:flex;flex-direction:column;gap:18px">
+<p id="merge-desc" style="margin:0;color:#c5c1b9;font-size:12px;line-height:1.7">将把任务分支的 3 个提交合并到基线。主仓库当前位于 main，工作区干净。</p>
+<div style="display:flex;align-items:center;gap:10px;padding:14px 16px;background:#0b0b0c;border:1px solid #33312e;border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:12px"><span style="color:#e0a256">dsh-wt/c89f09ec</span><span style="color:#807c74">→</span><span>main</span></div>
+<dl style="margin:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px"><div><dt style="font-size:11px;color:#a9a59d">领先提交</dt><dd style="margin:5px 0 0;font:18px 'JetBrains Mono',monospace">3</dd></div><div><dt style="font-size:11px;color:#a9a59d">未提交改动</dt><dd style="margin:5px 0 0;font:18px 'JetBrains Mono',monospace;color:#8fbf94">0</dd></div><div><dt style="font-size:11px;color:#a9a59d">验收进度</dt><dd style="margin:5px 0 0;font:18px 'JetBrains Mono',monospace;color:#e3b662">2 / 4</dd></div></dl>
+<div style="padding:12px 14px;background:#211c13;border:1px solid #5b4727;border-radius:6px"><strong style="display:block;font-size:12px;color:#e3b662;font-weight:600">还有 2 项未核对</strong><p style="font-size:11px;color:#d9c9a9;line-height:1.7;margin:5px 0 0">当前项目未开启强制门禁，可以继续合并。请在合并前确认验收缺口已有记录。</p><button style="margin-top:7px;background:transparent;border:0;color:#e3b662;padding:0;font-size:11px">查看验收标准</button></div>
+<label style="display:flex;gap:9px;align-items:flex-start;color:#c5c1b9;font-size:12px;line-height:1.6"><input type="checkbox" checked style="accent-color:#e0a256;width:15px;height:15px;margin:2px 0 0">合并后切回原分支</label>
+<p style="margin:0;color:#a9a59d;font-size:11px">此操作会修改主仓库。若分支或基线变化，需要重新预检。</p>
+</div>
+<footer style="padding:15px 22px;border-top:1px solid #262524;background:#0b0b0c;display:flex;justify-content:space-between;gap:12px;align-items:center"><span style="font-size:11px;color:#a9a59d">HEAD 6e847d5</span><div style="display:flex;gap:8px"><a href="Main.dc.html" style="text-decoration:none;height:34px;box-sizing:border-box;display:flex;align-items:center;padding:0 14px;border:1px solid #33312e;border-radius:6px;color:#f2f0ec;font-size:12px">取消</a><a href="Main.dc.html" style="text-decoration:none;height:34px;box-sizing:border-box;display:flex;align-items:center;padding:0 14px;background:#f2f0ec;border:1px solid #f2f0ec;border-radius:6px;color:#0b0b0c;font-size:12px;font-weight:600">确认合并</a></div></footer>
+</section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":920}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>DSH Worktree · 任务工作台</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/dsh-worktree/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet><style>
+body{margin:0}button,input{font:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible{outline:2px solid #e0a256;outline-offset:3px}button{transition:background 120ms,border-color 120ms}a{color:#e0a256}
+</style></helmet>
+<div style="display:grid;grid-template-columns:272px minmax(0,1fr) 284px;min-height:920px;height:100vh;background:#0b0b0c;color:#f2f0ec;font:13px/1.5 Inter,-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif">
+<aside style="display:flex;flex-direction:column;background:#070708;border-right:1px solid #262524;min-width:0">
+<div style="padding:16px 16px 18px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+<div style="display:flex;gap:9px;align-items:center;font-weight:600;letter-spacing:-.02em"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="4" width="4" height="16" rx="1.5" fill="#e0a256"/><rect x="9" y="4" width="12" height="7" rx="1.5" fill="#f2f0ec"/><rect x="9" y="13" width="12" height="7" rx="1.5" fill="#807c74"/></svg>Worktree</div>
+<button style="height:30px;padding:0 11px;border:1px solid #e0a256;border-radius:6px;background:#e0a256;color:#0b0b0c;font-size:12px;font-weight:600">＋ 发布任务</button>
+</div>
+<div style="padding:0 14px 14px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid #262524">
+<label for="task-search" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">搜索任务</label>
+<div style="position:relative"><span style="position:absolute;left:11px;top:6px;color:#a9a59d"><svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.25" stroke="currentColor" stroke-width="1.5"/><path d="m13 13 4 4" stroke="currentColor" stroke-width="1.5"/></svg></span><input id="task-search" placeholder="搜索任务、分支或标签" style="width:100%;height:32px;box-sizing:border-box;background:#111112;border:1px solid #33312e;border-radius:6px;color:#f2f0ec;padding:0 34px 0 34px;font-size:12px"><span style="position:absolute;right:10px;top:6px;color:#a9a59d;border:1px solid #3c3935;border-radius:3px;padding:0 5px;font-size:11px">/</span></div>
+<button style="display:flex;align-items:center;gap:8px;height:30px;background:transparent;border:1px solid #33312e;border-radius:6px;color:#a9a59d;padding:0 10px;text-align:left"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m4 2 9 6-9 6V2Z" stroke="currentColor" stroke-width="1.3"/></svg>所有任务<span style="margin-left:auto;color:#f2f0ec;font-family:'JetBrains Mono',monospace">12</span></button>
+<div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;color:#a9a59d;padding:2px 2px 0"><span>保存视图</span><span style="color:#e0a256">默认视图⌄</span></div>
+</div>
+<div style="padding:12px 14px;background:#15120e;border-bottom:1px solid #382e21;display:flex;gap:10px;align-items:center"><span style="width:6px;height:6px;border-radius:50%;background:#d9a93f"></span><span style="color:#d9c9a9;font-size:12px">4 项需要处理</span><a href="#attention" style="margin-left:auto;font-size:11px;text-decoration:none">查看</a></div>
+<div style="padding:14px 8px;flex:1;min-height:0">
+<div style="padding:0 8px 8px;display:flex;align-items:center;gap:7px;color:#a9a59d;font-size:11px"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5.5h5l1-2h6v9H2v-7Z" stroke="#9a5619" stroke-width="1.3"/></svg>dsh-worktree<span style="margin-left:auto;font-family:'JetBrains Mono',monospace">6</span></div>
+<div style="padding:12px 12px 12px 14px;background:#1b1814;border:1px solid #453729;border-radius:6px;box-shadow:inset 2px 0 #e0a256;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;gap:9px;align-items:center"><span style="width:6px;height:6px;border-radius:50%;background:#d9a93f;flex:none"></span><span style="font-size:12.5px;font-weight:600">完善任务依赖关系</span><span style="margin-left:auto;color:#d9a93f;font:11px 'JetBrains Mono',monospace">↑3</span></div>
+<div style="padding-left:15px;display:flex;justify-content:space-between;gap:4px;font-size:11px;color:#a9a59d"><span style="font-family:'JetBrains Mono',monospace">dsh-wt/c89f09ec</span><span>12 分钟前</span></div>
+<div style="padding-left:15px;display:flex;gap:6px;align-items:center"><span style="padding:2px 6px;background:#282114;color:#e3b662;border:1px solid #5b4727;border-radius:4px;font-size:10px">待验收</span><span style="font-size:10px;color:#a9a59d">验收 2 / 4</span></div>
+</div>
+<div style="padding:12px 12px 12px 14px;border:1px solid transparent;border-radius:6px;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;gap:9px;align-items:center"><span style="width:6px;height:6px;border-radius:50%;background:#e0a256"></span><span style="font-size:12.5px">修复窄屏抽屉焦点</span><span style="margin-left:auto;color:#e0a256;font-size:10px">计时中</span></div>
+<div style="padding-left:15px;display:flex;justify-content:space-between;font-size:11px;color:#a9a59d"><span style="font-family:'JetBrains Mono',monospace">dsh-wt/9fe39f58</span><span>进行中</span></div>
+</div>
+<div style="padding:12px 12px 12px 14px;border:1px solid transparent;border-radius:6px;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;gap:9px;align-items:center"><span style="width:6px;height:6px;border-radius:50%;background:#e0776f"></span><span style="font-size:12.5px">同步基线与冲突预检</span></div>
+<div style="padding-left:15px;display:flex;gap:6px;align-items:center"><span style="font-size:10px;color:#e0776f">逾期 1 天</span><span style="font-size:10px;color:#a9a59d">等待 2 项前置</span></div>
+</div>
+<div style="padding:12px 12px 12px 14px;display:flex;gap:9px;align-items:center;border:1px solid transparent"><span style="width:6px;height:6px;border-radius:50%;background:#8fbf94"></span><span style="font-size:12.5px">项目验收报告导出</span><span style="margin-left:auto;color:#8fbf94;font-size:10px">已合并</span></div>
+<div style="margin:12px 8px;border-top:1px solid #262524"></div>
+<div style="padding:0 8px 8px;display:flex;align-items:center;gap:7px;color:#a9a59d;font-size:11px"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5.5h5l1-2h6v9H2v-7Z" stroke="#66809b" stroke-width="1.3"/></svg>agent-harness<span style="margin-left:auto;font-family:'JetBrains Mono',monospace">3</span></div>
+<div style="padding:10px 12px 10px 14px;display:flex;gap:9px;align-items:center"><span style="width:6px;height:6px;border-radius:50%;background:#e0a256"></span><span style="font-size:12.5px">优化会话列表加载</span><span style="margin-left:auto;color:#a9a59d;font-size:10px">空闲</span></div>
+</div>
+<div style="border-top:1px solid #262524;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#a9a59d"><span style="font-family:'JetBrains Mono',monospace">2 个项目 · 9 个任务</span><a href="Light.dc.html" style="text-decoration:none;font-size:11px">切换亮色</a></div>
+</aside>
+<main style="display:flex;flex-direction:column;min-width:0;background:#0b0b0c">
+<div style="height:52px;padding:0 24px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #262524;flex:none;color:#a9a59d;font-size:12px"><div style="display:flex;gap:12px;align-items:center"><button aria-label="折叠任务列表" style="background:transparent;border:0;color:#a9a59d;padding:4px"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor"/><path d="M6 2v12" stroke="currentColor"/></svg></button><span>dsh-worktree</span><span>/</span><span style="font-family:'JetBrains Mono',monospace;color:#f2f0ec">c89f09ec</span></div><button style="border:1px solid #33312e;border-radius:6px;background:transparent;color:#a9a59d;font-size:11px;padding:5px 9px">任务详情</button></div>
+<header style="padding:28px 32px 0;border-bottom:1px solid #262524;flex:none">
+<div style="display:flex;gap:20px;align-items:flex-start;justify-content:space-between">
+<div><h1 style="margin:0;font-size:24px;letter-spacing:-.03em;font-weight:600;line-height:1.3">完善任务依赖关系</h1><p style="margin:8px 0 0;color:#a9a59d;font-size:12px">前置任务提示、循环依赖校验与关系视图</p></div>
+<button style="height:34px;padding:0 14px;background:#f2f0ec;color:#0b0b0c;border:1px solid #f2f0ec;border-radius:6px;font-weight:600;font-size:12px;white-space:nowrap">打开会话 <span style="margin-left:10px;color:#4d4a42">↗</span></button>
+</div>
+<div style="display:flex;gap:8px;align-items:center;margin-top:20px;flex-wrap:wrap"><span style="padding:3px 8px;border:1px solid #5b4727;border-radius:4px;background:#211c13;color:#e3b662;font-size:11px">待验收</span><span style="padding:3px 8px;border:1px solid #33312e;border-radius:4px;color:#a9a59d;font-size:11px">高优先级</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#a9a59d;margin-left:4px">main..dsh-wt/c89f09ec · 12 分钟前</span></div>
+<nav aria-label="任务视图" style="display:flex;gap:26px;margin-top:24px"><button style="padding:0 0 13px;background:transparent;border:0;border-bottom:2px solid #f2f0ec;color:#f2f0ec;font-weight:600">概览</button><button style="padding:0 0 12px;background:transparent;border:0;color:#a9a59d">实时会话 <span style="font-family:'JetBrains Mono',monospace;font-size:11px">12</span></button><button style="padding:0 0 12px;background:transparent;border:0;color:#a9a59d">代码改动 <span style="font-family:'JetBrains Mono',monospace;font-size:11px">5</span></button></nav>
+</header>
+<div style="flex:1;padding:26px 32px 42px;max-width:800px;box-sizing:border-box;width:100%">
+<section style="padding-bottom:24px;border-bottom:1px solid #262524">
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:12px"><h2 style="margin:0;font-size:13px;font-weight:600">验收标准</h2><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#a9a59d">2 / 4 已核对</span></div>
+<div style="height:3px;background:#2b2926;display:flex;gap:3px;margin-bottom:20px"><span style="flex:1;background:#e0a256"></span><span style="flex:1;background:#e0a256"></span><span style="flex:1;background:#35312a"></span><span style="flex:1;background:#35312a"></span></div>
+<div style="display:flex;flex-direction:column;gap:12px">
+<label style="display:flex;align-items:flex-start;gap:10px;font-size:12px;color:#a9a59d"><input type="checkbox" checked style="accent-color:#e0a256;width:15px;height:15px;margin:1px 0 0">添加前置任务后可查看完成状态</label>
+<label style="display:flex;align-items:flex-start;gap:10px;font-size:12px;color:#a9a59d"><input type="checkbox" checked style="accent-color:#e0a256;width:15px;height:15px;margin:1px 0 0">拒绝自己、跨项目与循环依赖</label>
+<label style="display:flex;align-items:flex-start;gap:10px;font-size:12px"><input type="checkbox" style="accent-color:#e0a256;width:15px;height:15px;margin:1px 0 0">项目详情展示任务依赖关系图</label>
+<label style="display:flex;align-items:flex-start;gap:10px;font-size:12px"><input type="checkbox" style="accent-color:#e0a256;width:15px;height:15px;margin:1px 0 0">前置完成后解除等待提示</label>
+</div>
+</section>
+<section style="padding:22px 0;border-bottom:1px solid #262524">
+<h2 style="margin:0 0 13px;font-size:13px;font-weight:600">任务描述</h2><p style="margin:0;color:#c5c1b9;font-size:13px;line-height:1.8;max-width:65ch">为同项目任务建立可追踪的前置关系。依赖只作为执行提示，不改变任务状态或排序；合并仍遵循项目已有的验收门禁。</p>
+<div style="display:flex;gap:7px;margin-top:15px;flex-wrap:wrap"><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#a9a59d;border:1px solid #33312e;border-radius:4px;padding:2px 6px">#dependencies</span><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#a9a59d;border:1px solid #33312e;border-radius:4px;padding:2px 6px">#project-view</span><span style="font-size:10px;color:#a9a59d;padding:2px 6px">估算 5 点 · 已投入 1 小时 45 分</span></div>
+</section>
+<section style="padding-top:22px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px"><h2 style="margin:0;font-size:13px;font-weight:600">任务时间线</h2><button style="background:transparent;border:0;color:#a9a59d;font-size:11px;padding:3px">复制验收报告</button></div>
+<div style="margin-top:18px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px"><div style="border-top:1px solid #4d4a42;padding-top:10px"><div style="font-size:11px;color:#a9a59d">发布任务</div><div style="font-family:'JetBrains Mono',monospace;font-size:11px;margin-top:5px">今天 09:20</div></div><div style="border-top:1px solid #e0a256;padding-top:10px"><div style="font-size:11px;color:#e0a256">开始验收</div><div style="font-family:'JetBrains Mono',monospace;font-size:11px;margin-top:5px">今天 14:08</div></div><div style="border-top:1px solid #33312e;padding-top:10px"><div style="font-size:11px;color:#a9a59d">合并到 main</div><div style="font-size:11px;margin-top:5px;color:#a9a59d">等待核对完成</div></div></div>
+</section>
+</div>
+</main>
+<aside style="background:#0d0d0e;border-left:1px solid #262524;padding:22px 18px;display:flex;flex-direction:column;gap:26px;min-width:0">
+<section><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><h2 style="margin:0;font-size:12px;font-weight:600;color:#a9a59d">合并预检</h2><span style="font-size:11px;color:#8fbf94">可以合并</span></div><p style="margin:0 0 16px;color:#c5c1b9;font-size:12px;line-height:1.65">基线与任务分支无冲突。还有 2 项验收标准待核对。</p><div style="display:flex;flex-direction:column;gap:10px;font-size:11px"><div style="display:flex;justify-content:space-between;gap:8px"><span style="color:#a9a59d">目标基线</span><span style="font-family:'JetBrains Mono',monospace">main @ 9f5c35c</span></div><div style="display:flex;justify-content:space-between;gap:8px"><span style="color:#a9a59d">任务提交</span><span style="font-family:'JetBrains Mono',monospace">6e847d5</span></div><div style="display:flex;justify-content:space-between;gap:8px"><span style="color:#a9a59d">改动</span><span style="font-family:'JetBrains Mono',monospace"><span style="color:#8fbf94">+186</span> <span style="color:#e0776f">−24</span></span></div></div></section>
+<section style="padding-top:20px;border-top:1px solid #262524"><h2 style="margin:0 0 14px;font-size:12px;font-weight:600;color:#a9a59d">前置任务</h2><div style="display:flex;flex-direction:column;gap:13px;font-size:12px"><div style="display:flex;gap:8px;align-items:center"><span style="width:5px;height:5px;border-radius:50%;background:#8fbf94"></span><span>项目洞察统计</span><span style="margin-left:auto;color:#8fbf94;font-size:10px">已合并</span></div><div style="display:flex;gap:8px;align-items:center"><span style="width:5px;height:5px;border-radius:50%;background:#d9a93f"></span><span>依赖关系图</span><span style="margin-left:auto;color:#d9a93f;font-size:10px">待验收</span></div></div></section>
+<section style="padding-top:20px;border-top:1px solid #262524"><h2 style="margin:0 0 14px;font-size:12px;font-weight:600;color:#a9a59d">任务信息</h2><dl style="margin:0;display:flex;flex-direction:column;gap:13px;font-size:11px"><div style="display:flex;justify-content:space-between;gap:10px"><dt style="color:#a9a59d">截止日期</dt><dd style="margin:0">11 月 26 日 · 2 天后</dd></div><div style="display:flex;justify-content:space-between;gap:10px"><dt style="color:#a9a59d">优先级</dt><dd style="margin:0;color:#e3b662">高</dd></div><div style="display:flex;justify-content:space-between;gap:10px"><dt style="color:#a9a59d">工作区</dt><dd style="margin:0;color:#8fbf94">干净</dd></div></dl></section>
+<section style="padding-top:20px;border-top:1px solid #262524"><h2 style="margin:0 0 10px;font-size:12px;font-weight:600;color:#a9a59d">工作目录</h2><button title="复制工作目录" style="padding:9px 10px;background:#0b0b0c;border:1px solid #33312e;border-radius:6px;color:#a9a59d;text-align:left;font:10.5px/1.7 'JetBrains Mono',monospace;overflow-wrap:anywhere;width:100%">.dsh-worktrees/c89f09ec <span style="float:right">⧉</span></button></section>
+<a href="Merge.dc.html" style="display:block;text-align:center;text-decoration:none;padding:10px;border:1px solid #5b4727;background:#211c13;color:#e3b662;border-radius:6px;font-size:12px">查看合并确认</a>
+<div style="margin-top:auto;padding-top:20px;border-top:1px solid #262524;display:flex;justify-content:space-between;font-size:11px"><button style="background:transparent;border:0;color:#a9a59d;padding:4px">归档任务</button><button style="background:transparent;border:0;color:#e0776f;padding:4px">清理…</button></div>
+</aside>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":920}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

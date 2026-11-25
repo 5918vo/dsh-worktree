@@ -1,0 +1,96 @@
+/* DSH Worktree 仪表台 — generated from tokens.json */
+:root, [data-theme="dark"] {
+  --bg-canvas: #0b0b0c; /* 主工作区背景。 */
+  --bg-rail: #070708; /* 任务列表和辅助栏背景。 */
+  --bg-elevated: #131315; /* 输入、选中行和浮层表面。 */
+  --text-1: #f2f0ec; /* 标题与主要正文。 */
+  --text-2: #a9a59d; /* 辅助正文及未选控件。 */
+  --text-3: #807c74; /* 元数据、时间和占位符。 */
+  --line: #262524; /* 分隔线与普通控件边框。 */
+  --line-strong: #4d4a42; /* 输入边框与强调分隔线。 */
+  --accent: #e0a256; /* 活动、选择与焦点，不用于所有状态。 */
+  --accent-soft: #1b1814; /* 选中行和活动的低对比背景。 */
+  --cta-bg: #f2f0ec; /* 主操作按钮背景。 */
+  --cta-text: #0b0b0c; /* 主操作按钮文字。 */
+  --ok: #8fbf94; /* 已合并、干净和预检通过，必须附文字。 */
+  --warn: #d9a93f; /* 待验收、待审批和临近期限，必须附文字。 */
+  --err: #e0776f; /* 异常、逾期和危险操作，必须附文字。 */
+}
+[data-theme="light"] {
+  --bg-canvas: #f8f5ef;
+  --bg-rail: #f1ede4;
+  --bg-elevated: #fffdf8;
+  --text-1: #17150f;
+  --text-2: #4d4a42;
+  --text-3: #736f64;
+  --line: #d8d2c6;
+  --line-strong: #c6bfb2;
+  --accent: #9a5619;
+  --accent-soft: #f0e5d3;
+  --cta-bg: #17150f;
+  --cta-text: #f8f5ef;
+  --ok: #3f7a4a;
+  --warn: #8a5a12;
+  --err: #a83a34;
+}
+:root {
+  --space-xs: 4px; /* 图标和紧凑状态间距。 */
+  --space-sm: 8px; /* 控件间距。 */
+  --space-md: 12px; /* 任务行内边距。 */
+  --space-lg: 16px; /* 侧栏内边距。 */
+  --space-xl: 24px; /* 主区分区间距。 */
+  --space-2xl: 32px; /* 主区水平内边距。 */
+  --radius-sm: 4px; /* 状态标签与小型控件。 */
+  --radius-md: 6px; /* 按钮、输入和任务行。 */
+  --radius-lg: 8px; /* 弹窗和大型工具表面。 */
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', ui-monospace, monospace;
+  --text-task-title: 600 24px/31px var(--font-sans);
+  --text-body: 400 13px/22px var(--font-sans);
+  --text-section: 600 13px/20px var(--font-sans);
+  --text-auxiliary: 400 12px/18px var(--font-sans);
+  --text-task-row: 500 12.5px/19px var(--font-sans);
+  --text-git-meta: 400 11px/17px var(--font-mono);
+}
+.task-title {
+  font-family: var(--font-sans);
+  font-size: 24px;
+  line-height: 31px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.body {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 22px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.section {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.auxiliary {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.task-row {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  line-height: 19px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.git-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 17px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
