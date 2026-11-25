@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   SYNC_FILE_LIMIT,
   manualSyncCommand,
+  mergeDialogSections,
   mergePreviewFiles,
   mergeRiskChip,
   postMergeCount,
@@ -14,6 +15,20 @@ import {
 } from '../src/client/review-surfaces'
 
 const t: any = {
+  branchLabel: 'branch',
+  boardTargetBase: 'base',
+  commits: 'commits',
+  uncommitted: 'dirty',
+  changesUnit: 'changes',
+  mergeNoAutoStash: 'no auto-stash',
+  clean: 'clean',
+  acceptanceCriteria: 'acceptance',
+  'boardCriteriaProgress': '{n}/{total}',
+  mergeSectionObject: 'object',
+  mergeSectionRisk: 'risk',
+  mergeRiskConflictFiles: 'conflicts',
+  mergeOverlapLabel: 'overlapping',
+  mergeRiskBaseline: 'baseline',
   syncPrompt: 'sync {base} into {branch}: {files}',
   mergePreviewConflict: 'conflict {n}',
   mergePreviewOverlap: 'overlap {n}',
@@ -153,4 +168,90 @@ test('stale-review warning only applies while reviewing', () => {
   assert.equal(reviewStaleCount('review', { reviewBehind: 2 }), 0)
   assert.equal(reviewStaleCount('merged', { reviewBehind: 2 }), 0)
   assert.equal(reviewStaleCount('reviewing', null), 0)
+})
+
+test('merge dialog reads as object first, risk only when there is one', () => {
+  const clean = mergeDialogSections(t, {
+    branch: 'task/a',
+    baseBranch: 'main',
+    ahead: 3,
+    dirty: 0,
+    criteriaChecked: 2,
+    criteriaTotal: 2,
+    conflict: false,
+    conflictFiles: [],
+    overlapFiles: [],
+    baseAhead: 0,
+  })
+  assert.deepEqual(clean.map((section) => section.key), ['object'])
+  assert.deepEqual(clean[0].rows.map((row) => row.label), ['branch', 'base', 'commits', 'dirty', 'acceptance'])
+  assert.deepEqual(clean[0].rows[2], { label: 'commits', value: '3' })
+})
+
+test('a dirty worktree and unchecked criteria are stated, not glossed over', () => {
+  const sections = mergeDialogSections(t, {
+    branch: 'task/a',
+    baseBranch: 'main',
+    ahead: 1,
+    dirty: 4,
+    criteriaChecked: 1,
+    criteriaTotal: 3,
+    conflict: false,
+    conflictFiles: [],
+    overlapFiles: [],
+    baseAhead: 0,
+  })
+  const rows = sections[0].rows
+  assert.match(rows[3].value, /^4 changes · no auto-stash$/)
+  assert.equal(rows[4].value, '1/3')
+})
+
+test('overlap, conflicts and a moved baseline collect into one risk section', () => {
+  const overlap = mergeDialogSections(t, {
+    branch: 'task/a',
+    baseBranch: 'main',
+    ahead: 1,
+    dirty: 0,
+    criteriaChecked: 0,
+    criteriaTotal: 0,
+    conflict: false,
+    conflictFiles: [],
+    overlapFiles: ['src/a.ts', 'src/b.ts'],
+    baseAhead: 2,
+  })
+  assert.deepEqual(overlap.map((section) => section.key), ['object', 'risk'])
+  assert.deepEqual(overlap[1].rows[0], { label: 'overlapping', value: 'src/a.ts、src/b.ts', mono: true })
+  assert.deepEqual(overlap[1].rows[1], { label: 'baseline', value: 'ahead 2' })
+
+  const conflict = mergeDialogSections(t, {
+    branch: 'task/a',
+    baseBranch: 'main',
+    ahead: 1,
+    dirty: 0,
+    criteriaChecked: 0,
+    criteriaTotal: 0,
+    conflict: true,
+    conflictFiles: ['src/c.ts'],
+    overlapFiles: [],
+    baseAhead: 0,
+  })
+  assert.equal(conflict[1].rows[0].label, 'conflicts')
+  assert.equal(conflict[1].rows[0].value, 'src/c.ts')
+})
+
+test('a conflict without a file list still names the risk instead of hiding it', () => {
+  const sections = mergeDialogSections(t, {
+    branch: 'task/a',
+    baseBranch: 'main',
+    ahead: 1,
+    dirty: 0,
+    criteriaChecked: 0,
+    criteriaTotal: 0,
+    conflict: true,
+    conflictFiles: [],
+    overlapFiles: ['src/a.ts'],
+    baseAhead: 0,
+  })
+  assert.equal(sections[1].key, 'risk')
+  assert.equal(sections[1].rows[0].value, 'src/a.ts')
 })

@@ -18,6 +18,16 @@
  * To re-skin the plugin, edit only this object. Every rule below consumes
  * --dshw-* variables generated from these tokens; no colour literals should
  * appear in any other part of the stylesheet.
+ *
+ * Two shapes are generated from this object, and both are derived — never
+ * hand-written:
+ *   · paletteVars(p)      → --dshw-* (legacy .dshw-scope surfaces)
+ *   · workbenchVars(theme)→ --bg-* / --text-* / --line-* / --accent* / --ok /
+ *                           --warn / --err / --cta* / --toast-err* / --code-bg /
+ *                           --diff-* (workbench shell)
+ * A token that exists only on the workbench shell (its modal well, its code
+ * well, its hairline highlight) is named `board*` here so the shell never keeps
+ * a private hex literal.
  * ------------------------------------------------------------------------ */
 
 export const PALETTE = {
@@ -30,17 +40,19 @@ export const PALETTE = {
     elevated: '#fffdf8', // raised chips / active rows / inputs
     hover: 'rgba(23,21,15,.045)', // --bg-hover
     active: 'rgba(23,21,15,.08)', // --bg-active
+    modalBg: '#fffdf8', // --bg-modal (same paper as an elevated row)
 
     border: 'rgba(23,21,15,.14)', // --line
     borderSoft: 'rgba(23,21,15,.07)', // --line-soft
     borderStrong: 'rgba(23,21,15,.26)', // --line-strong
     specular: 'inset 0 1px 0 rgba(255,255,255,.7)', // --specular
+    boardSpecular: 'inset 0 1px 0 rgba(255,255,255,.9)', // --specular inside the workbench shell
 
     text: '#17150f', // --text-1
     text2: '#4d4a42', // --text-2
     text3: '#6b6659', // --text-3  (4.60:1 on surface-3, 4.90:1 on tree-bg — AA for 11–12px)
 
-    brand: '#9a5619', // --accent (copper, darkened for light paper)
+    brand: '#945215', // --accent (copper; darkened from #9a5619 for AA on accent-soft chips over the rail)
     brandStrong: '#7a4314',
     brandSolid: '#17150f', // --cta-bg (ink stamp)
     brandSolidHover: '#2b2820', // --cta-hover
@@ -48,11 +60,11 @@ export const PALETTE = {
     brandBorder: 'rgba(154,86,25,.30)', // --accent-line
     onBrand: '#f8f5ef', // --cta-text
 
-    success: '#3f7a4a', // --ok
+    success: '#336b3d', // --ok: darkened from #3f7a4a so chip and diff ink clear AA on soft tints
     successSoft: 'rgba(63,122,74,.10)',
     successBorder: 'rgba(63,122,74,.28)',
 
-    warn: '#8a5a12', // --warn
+    warn: '#86570f', // --warn: darkened from #8a5a12 for AA on warn-soft chips over the rail
     warnSoft: 'rgba(138,90,18,.10)',
     warnBorder: 'rgba(138,90,18,.28)',
 
@@ -81,6 +93,7 @@ export const PALETTE = {
 
     overlay: 'rgba(23,21,15,.32)',
     backdrop: 'rgba(23,21,15,.32)',
+    boardModalShadow: '0 24px 60px rgba(20,20,19,.16), 0 0 0 1px rgba(20,20,19,.09)',
     toastBg: '#17150f',
     toastFg: '#f8f5ef',
     toastErrorBg: '#fbe9e7',
@@ -88,6 +101,7 @@ export const PALETTE = {
     toastErrorBorder: '#a8625d',
 
     codeBg: '#f3efe6',
+    boardCodeBg: '#f6f5f0', // --code-bg: the workbench diff / block well
     diffAddBg: 'rgba(63,122,74,.10)',
     diffDelBg: 'rgba(168,58,52,.09)',
 
@@ -117,11 +131,13 @@ export const PALETTE = {
     elevated: '#131315',
     hover: 'rgba(242,240,236,.05)',
     active: 'rgba(242,240,236,.085)',
+    modalBg: '#0f0f11', // --bg-modal (a step above elevated, below the gutter)
 
     border: 'rgba(242,240,236,.11)',
     borderSoft: 'rgba(242,240,236,.06)',
     borderStrong: 'rgba(242,240,236,.20)',
     specular: 'inset 0 1px 0 rgba(242,240,236,.045)',
+    boardSpecular: 'inset 0 1px 0 rgba(242,240,236,.045)', // --specular inside the workbench shell
 
     text: '#f2f0ec',
     text2: '#a9a59d',
@@ -168,6 +184,7 @@ export const PALETTE = {
 
     overlay: 'rgba(4,4,5,.74)',
     backdrop: 'rgba(4,4,5,.74)',
+    boardModalShadow: '0 24px 64px rgba(0,0,0,.62), 0 0 0 1px rgba(242,240,236,.09)',
     toastBg: '#f2f0ec',
     toastFg: '#0b0b0c',
     toastErrorBg: '#2a1413',
@@ -175,6 +192,7 @@ export const PALETTE = {
     toastErrorBorder: '#a8544e',
 
     codeBg: '#070708',
+    boardCodeBg: '#070708', // --code-bg: the workbench diff / block well
     diffAddBg: 'rgba(143,191,148,.12)',
     diffDelBg: 'rgba(224,119,111,.12)',
 
@@ -209,6 +227,63 @@ export const TOAST_ERROR = {
     text: PALETTE.dark.toastErrorText,
     border: PALETTE.dark.toastErrorBorder,
   },
+}
+
+export type ThemeName = 'light' | 'dark'
+
+/**
+ * Board-shell variables, in stylesheet order. Every value comes from PALETTE
+ * (or the toast colours derived from it), so the workbench stylesheet declares
+ * no colour of its own.
+ */
+export function workbenchVarPairs(theme: ThemeName): Array<[string, string]> {
+  const p = PALETTE[theme]
+  const toast = TOAST_ERROR[theme]
+  return [
+    ['--bg-canvas', p.bg],
+    ['--bg-rail', p.treeBg],
+    ['--bg-stage', p.surface],
+    ['--bg-elevated', p.elevated],
+    ['--bg-modal', p.modalBg],
+    ['--bg-hover', p.hover],
+    ['--bg-active', p.active],
+    ['--backdrop', p.backdrop],
+    ['--line', p.border],
+    ['--line-strong', p.borderStrong],
+    ['--specular', p.boardSpecular],
+    ['--modal-shadow', p.boardModalShadow],
+    ['--text-1', p.text],
+    ['--text-2', p.text2],
+    ['--text-3', p.text3],
+    ['--cta-bg', p.brandSolid],
+    ['--cta-text', p.onBrand],
+    ['--cta-hover', p.brandSolidHover],
+    ['--accent', p.brand],
+    ['--accent-soft', p.brandSoft],
+    ['--accent-line', p.brandBorder],
+    ['--ok', p.success],
+    ['--ok-soft', p.successSoft],
+    ['--ok-line', p.successBorder],
+    ['--warn', p.warn],
+    ['--warn-soft', p.warnSoft],
+    ['--warn-line', p.warnBorder],
+    ['--err', p.danger],
+    ['--err-soft', p.dangerSoft],
+    ['--err-line', p.dangerBorder],
+    ['--toast-err-bg', toast.bg],
+    ['--toast-err-text', toast.text],
+    ['--toast-err-line', toast.border],
+    ['--code-bg', p.boardCodeBg],
+    ['--diff-add-bg', p.diffAddBg],
+    ['--diff-del-bg', p.diffDelBg],
+  ]
+}
+
+/** The same pairs as a declaration list, for `WORKBENCH_CSS`. */
+export function workbenchVars(theme: ThemeName): string {
+  return workbenchVarPairs(theme)
+    .map(([name, value]) => name + ':' + value + ';')
+    .join('')
 }
 
 export function paletteVars(p: Record<string, string>): string {

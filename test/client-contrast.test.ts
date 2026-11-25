@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { PALETTE, TOAST_ERROR } from '../src/client/palette.js'
+import { PALETTE, TOAST_ERROR, workbenchVarPairs } from '../src/client/palette.js'
 import { composite, contrastOf, meetsAA, meetsNonTextAA, parseColor } from '../src/client/contrast.js'
 
 // Real palette values, not synthetic gray pairs: these assertions are the
@@ -85,4 +85,80 @@ test('meetsAA distinguishes body text from large text thresholds', () => {
   assert.equal(meetsAA('#777777', '#ffffff'), false)
   assert.equal(meetsAA('#767676', '#ffffff'), true)
   assert.equal(meetsAA('#949494', '#ffffff', true), true)
+})
+
+/* ------------------------------------------------------------------------
+ * Workbench shell: the rendered tokens, not synthetic pairs. Every surface a
+ * row, a chip or a diff line can sit on is checked for the ink it really uses.
+ * ---------------------------------------------------------------------- */
+
+const boardVars = (theme: 'light' | 'dark') => new Map(workbenchVarPairs(theme))
+
+/** Paint a translucent layer (`rgba`) over an opaque surface. */
+function paint(fg: string, bg: string): string {
+  const colour = composite(parseColor(fg)!, parseColor(bg)!)
+  return `rgba(${colour.r},${colour.g},${colour.b},${colour.a})`
+}
+
+test('body, secondary and metadata ink clear AA on every board surface', () => {
+  const surfaces = ['--bg-canvas', '--bg-rail', '--bg-stage', '--bg-elevated', '--bg-modal', '--code-bg']
+  for (const theme of ['light', 'dark'] as const) {
+    const vars = boardVars(theme)
+    for (const surface of surfaces) {
+      const bg = vars.get(surface)!
+      for (const ink of ['--text-1', '--text-2', '--text-3']) {
+        const fg = vars.get(ink)!
+        assert.ok(meetsAA(fg, bg), `${theme} ${ink} on ${surface} (${fg} / ${bg}) = ${contrastOf(fg, bg)} < 4.5`)
+      }
+    }
+  }
+})
+
+test('the primary button reads as text in both states', () => {
+  for (const theme of ['light', 'dark'] as const) {
+    const vars = boardVars(theme)
+    const ink = vars.get('--cta-text')!
+    for (const bgToken of ['--cta-bg', '--cta-hover']) {
+      const bg = vars.get(bgToken)!
+      assert.ok(meetsAA(ink, bg), `${theme} CTA text on ${bgToken} = ${contrastOf(ink, bg)}`)
+    }
+  }
+})
+
+test('tone chips keep AA on the surfaces a row can sit on', () => {
+  // A chip paints `--X-soft` over the row background and writes `--X` on top,
+  // so the effective ratio is always lower than the bare token pair.
+  const tones: Array<[string, string]> = [['--warn', '--warn-soft'], ['--err', '--err-soft'], ['--ok', '--ok-soft'], ['--accent', '--accent-soft']]
+  const surfaces = ['--bg-stage', '--bg-rail', '--bg-elevated']
+  for (const theme of ['light', 'dark'] as const) {
+    const vars = boardVars(theme)
+    for (const surface of surfaces) {
+      for (const [ink, soft] of tones) {
+        const bg = paint(vars.get(soft)!, vars.get(surface)!)
+        const fg = vars.get(ink)!
+        assert.ok(meetsAA(fg, bg), `${theme} ${ink} chip on ${surface} = ${contrastOf(fg, bg)} < 4.5`)
+      }
+    }
+  }
+})
+
+test('diff lines stay AA on their own tinted rows', () => {
+  for (const theme of ['light', 'dark'] as const) {
+    const vars = boardVars(theme)
+    const code = vars.get('--code-bg')!
+    const addBg = paint(vars.get('--diff-add-bg')!, code)
+    const delBg = paint(vars.get('--diff-del-bg')!, code)
+    assert.ok(meetsAA(vars.get('--ok')!, addBg), `${theme} added line = ${contrastOf(vars.get('--ok')!, addBg)}`)
+    assert.ok(meetsAA(vars.get('--err')!, delBg), `${theme} removed line = ${contrastOf(vars.get('--err')!, delBg)}`)
+  }
+})
+
+test('status dots are visible as non-text graphics on the rail', () => {
+  for (const theme of ['light', 'dark'] as const) {
+    const vars = boardVars(theme)
+    const rail = vars.get('--bg-rail')!
+    for (const dot of ['--warn', '--ok', '--accent', '--err', '--text-3']) {
+      assert.ok(meetsNonTextAA(vars.get(dot)!, rail), `${theme} ${dot} dot on rail = ${contrastOf(vars.get(dot)!, rail)}`)
+    }
+  }
 })

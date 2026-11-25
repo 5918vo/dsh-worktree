@@ -1,4 +1,4 @@
-import { PALETTE, TOAST_ERROR, paletteVars } from '../palette'
+import { PALETTE, paletteVars, workbenchVars } from '../palette'
 import { PANEL_CSS } from './panel'
 
 /**
@@ -18,38 +18,14 @@ export const WORKBENCH_CSS = `
 .dshw-board, .dshw-board *, .dshw-board *::before, .dshw-board *::after { box-sizing: border-box; }
 .dshw-board {
   container-type: inline-size; container-name: dshwboard;
-  --bg-canvas: #0b0b0c; --bg-rail: #070708; --bg-stage: #0b0b0c; --bg-elevated: #131315;
-  --bg-modal: #0f0f11; --bg-hover: rgba(242,240,236,.05); --bg-active: rgba(242,240,236,.085);
-  --backdrop: rgba(4,4,5,.74); --line: rgba(242,240,236,.11); --line-strong: rgba(242,240,236,.20);
-  --specular: inset 0 1px 0 rgba(242,240,236,.045);
-  --modal-shadow: 0 24px 64px rgba(0,0,0,.62), 0 0 0 1px rgba(242,240,236,.09);
-  --text-1: #f2f0ec; --text-2: #a9a59d; --text-3: ${PALETTE.dark.text3};
-  --cta-bg: #f2f0ec; --cta-text: #0b0b0c; --cta-hover: #ffffff;
-  --accent: #e0a256; --accent-soft: rgba(224,162,86,.12); --accent-line: rgba(224,162,86,.30);
-  --ok: #8fbf94; --ok-soft: rgba(143,191,148,.12); --ok-line: rgba(143,191,148,.28);
-  --warn: #d9a93f; --warn-soft: rgba(217,169,63,.12); --warn-line: rgba(217,169,63,.28);
-  --err: #e0776f; --err-soft: rgba(224,119,111,.12); --err-line: rgba(224,119,111,.28);
-  --toast-err-bg: ${TOAST_ERROR.dark.bg}; --toast-err-text: ${TOAST_ERROR.dark.text}; --toast-err-line: ${TOAST_ERROR.dark.border};
-  --code-bg: #070708; --diff-add-bg: rgba(143,191,148,.12); --diff-del-bg: rgba(224,119,111,.12);
+  ${workbenchVars('dark')}
   height: 100%; min-height: 0; position: relative; overflow: hidden;
   color: var(--text-1); background: var(--bg-canvas);
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
   font-size: 13px; line-height: 1.5; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
 }
 .dshw-board[data-theme="light"] {
-  --bg-canvas: #f8f5ef; --bg-rail: #f1ede4; --bg-stage: #f8f5ef; --bg-elevated: #fffdf8;
-  --bg-modal: #fffdf8; --bg-hover: rgba(23,21,15,.045); --bg-active: rgba(23,21,15,.08);
-  --backdrop: rgba(23,21,15,.32); --line: rgba(23,21,15,.14); --line-strong: rgba(23,21,15,.26);
-  --specular: inset 0 1px 0 rgba(255,255,255,.9);
-  --modal-shadow: 0 24px 60px rgba(20,20,19,.16), 0 0 0 1px rgba(20,20,19,.09);
-  --text-1: #17150f; --text-2: #4d4a42; --text-3: ${PALETTE.light.text3};
-  --cta-bg: #17150f; --cta-text: #f8f5ef; --cta-hover: #2b2820;
-  --accent: #9a5619; --accent-soft: rgba(154,86,25,.10); --accent-line: rgba(154,86,25,.30);
-  --ok: #3f7a4a; --ok-soft: rgba(63,122,74,.10); --ok-line: rgba(63,122,74,.28);
-  --warn: #8a5a12; --warn-soft: rgba(138,90,18,.10); --warn-line: rgba(138,90,18,.28);
-  --err: #a83a34; --err-soft: rgba(168,58,52,.08); --err-line: rgba(168,58,52,.26);
-  --toast-err-bg: ${TOAST_ERROR.light.bg}; --toast-err-text: ${TOAST_ERROR.light.text}; --toast-err-line: ${TOAST_ERROR.light.border};
-  --code-bg: #f6f5f0; --diff-add-bg: rgba(16,185,129,.10); --diff-del-bg: rgba(220,38,38,.08);
+  ${workbenchVars('light')}
 }
 /* Project overview keeps the legacy .dshw-scope palette, but it must follow the
    board theme rather than the host's dshw-dark ancestor (or lack of one). */
@@ -138,7 +114,9 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-item-action svg { width: 13px; height: 13px; }
 .dshw-board .dshwd-item-action-cta { color: var(--warn); border-color: var(--warn-line); background: var(--warn-soft); }
 .dshw-board .dshwd-item-action-cta:hover { color: var(--warn); background: var(--warn-soft); }
-.dshw-board .dshwd-item-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.dshw-board .dshwd-item-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; min-width: 0; }
+/* A long status or dependency label is clipped, never allowed to widen the rail. */
+.dshw-board .dshwd-item-chips .dshwd-chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .dshw-board .dshwd-chip-sm { padding: 1px 6px; font-size: 10px; gap: 3px; }
 .dshw-board .dshwd-more { grid-column: 1 / -1; margin-top: 7px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg-stage); display: flex; flex-direction: column; gap: 3px; }
 .dshw-board .dshwd-more-head { font-size: 10px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3); }
@@ -223,12 +201,19 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-block-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .dshw-board .dshwd-prose { font-size: 13.5px; line-height: 1.7; color: var(--text-2); white-space: pre-wrap; }
 .dshw-board .dshwd-check-list { display: flex; flex-direction: column; gap: 9px; }
+/* Segments restate n/total visually; the text stays authoritative and the bar
+   is aria-hidden, so colour is never the only signal. */
+.dshw-board .dshwd-check-progress { display: flex; gap: 4px; margin: 0 0 10px; }
+.dshw-board .dshwd-check-segment { flex: 1 1 0; height: 3px; border-radius: 999px; background: var(--line-strong); }
+.dshw-board .dshwd-check-segment-on { background: var(--ok); }
+.dshw-board .dshwd-acceptance .dshwd-block-label { color: var(--text-1); }
 .dshw-board .dshwd-check-toggle { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
-.dshw-board .dshwd-check-toggle input[type='checkbox'] { width: 15px; height: 15px; margin: 0; flex-shrink: 0; accent-color: var(--accent); }
+/* The box sits on the first line of a wrapped criterion, never centred. */
+.dshw-board .dshwd-check-toggle input[type='checkbox'] { width: 15px; height: 15px; margin: 2px 0 0; flex-shrink: 0; accent-color: var(--accent); }
 .dshw-board .dshwd-check-readonly { color: var(--text-2); }
 .dshw-board .dshwd-check-readonly .dshwd-check-box { opacity: .55; }
-.dshw-board .dshwd-check-item { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-1); }
-.dshw-board .dshwd-check-box { width: 15px; height: 15px; border-radius: 4px; border: 1px solid var(--ok-line); display: grid; place-items: center; font-size: 10px; color: var(--ok); background: var(--ok-soft); flex-shrink: 0; }
+.dshw-board .dshwd-check-item { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; line-height: 1.5; color: var(--text-1); overflow-wrap: anywhere; }
+.dshw-board .dshwd-check-box { width: 15px; height: 15px; margin-top: 2px; border-radius: 4px; border: 1px solid var(--ok-line); display: grid; place-items: center; font-size: 10px; color: var(--ok); background: var(--ok-soft); flex-shrink: 0; }
 .dshw-board .dshwd-check-box.dshwd-todo { background: transparent; border-color: var(--line-strong); color: transparent; }
 .dshw-board .dshwd-check-toggle:hover input[type='checkbox'] { outline: 2px solid var(--accent); outline-offset: 1px; }
 .dshw-board .dshwd-check-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
@@ -377,6 +362,17 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-blocker-list { margin: 0; padding-left: 16px; font-size: 11.5px; line-height: 1.55; color: var(--text-2); overflow-wrap: anywhere; }
 .dshw-board .dshwd-confirm-details { margin-top: 10px; padding: 8px 10px; border-radius: 7px; background: var(--bg-rail); border: 1px solid var(--line); }
 .dshw-board .dshwd-confirm-details .dshwd-kv { gap: 10px; }
+/* Groups inside the confirmation: what merges, then what could go wrong. */
+.dshw-board .dshwd-confirm-section + .dshwd-confirm-section { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.dshw-board .dshwd-confirm-section-label { font-size: 10px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3); margin-bottom: 2px; }
+/* The verdict is the inspector's first sentence, not a chip in a title row. */
+.dshw-board .dshwd-insp-verdict { display: flex; align-items: flex-start; gap: 7px; margin-bottom: 6px; font-size: 13px; font-weight: 600; line-height: 1.45; }
+.dshw-board .dshwd-verdict-dot { font-size: 10px; line-height: 1.6; flex-shrink: 0; }
+.dshw-board .dshwd-verdict-text { color: var(--text-1); overflow-wrap: anywhere; }
+.dshw-board .dshwd-verdict-ok .dshwd-verdict-text { color: var(--ok); }
+.dshw-board .dshwd-verdict-warn .dshwd-verdict-text { color: var(--warn); }
+.dshw-board .dshwd-verdict-err .dshwd-verdict-text { color: var(--err); }
+.dshw-board .dshwd-verdict-muted .dshwd-verdict-text { color: var(--text-2); }
 .dshw-board .dshwd-kv-path { gap: 8px; }
 .dshw-board .dshwd-kv-path-copy { display: flex; align-items: flex-start; justify-content: flex-end; gap: 4px; min-width: 0; flex: 1 1 auto; }
 .dshw-board .dshwd-path-wrap { min-width: 0; text-align: right; white-space: normal; overflow-wrap: anywhere; }

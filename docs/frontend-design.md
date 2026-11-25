@@ -12,8 +12,8 @@
 - `src/client.ts`：factory、locale 注册和 slot 接线。
 - `src/client/`：React 视图、配色、样式、国际化和数据交互的模块化实现。
 - `src/client/`：按参考原型 1:1 重构的三栏看板（Rail / Stage / Inspector）。
-- `src/client/styles.ts`：看板 `WORKBENCH_CSS` 与明暗 token。
-- `src/client/palette.ts`：项目详情和设置页的明暗色板。
+- `src/client/styles.ts`：看板 `WORKBENCH_CSS`、`PANEL_CSS` 叠加层与明暗 token 插值。
+- `src/client/palette.ts`：颜色唯一来源，经 `paletteVars()` / `workbenchVars()` 生成两套壳层的 CSS 变量。
 - 构建产物：`dist/client.js`。
 
 ### 约束
@@ -40,7 +40,7 @@
 4. **密集但不拥挤**：保持开发者工具的信息密度，同时让标题、状态和辅助信息有清晰层级。
 5. **嵌入式自适应**：三栏在宽容器展开，窄容器收起 Rail、把 Inspector 变成覆盖层。
 6. **反馈可靠**：加载、空、失败、成功和进行中状态必须可见且不可重复提交。
-7. **配色可替换**：看板颜色集中在 `WORKBENCH_CSS` 的 token，项目详情/设置页集中在 `PALETTE`。
+7. **配色可替换**：颜色集中在 `PALETTE`，看板与项目详情/设置页都从它生成各自的 CSS 变量，换色只改一处。
 
 ### 非目标
 
@@ -59,17 +59,17 @@ Worktree（.dshwd-app 三栏网格）
 │  ├─ 状态过滤 pills：全部 / 待验收 / 进行中
 │  ├─ 项目分组
 │  │  ├─ 分组头部：项目名 + 任务数（点击查看项目详情）
-│  │  └─ 任务项：标题 + 状态点 + 统计；截止 / 依赖 / 估算 / 计时 chip；分支 + 最近提交时间
+│  │  └─ 任务项：状态点 + 标题 + Git 统计 / 短分支 + 时间 / 状态 chip + 至多一个最高优先级提醒（其余进「更多状态」）
 │  └─ 底部：仓库/任务计数 + 明暗主题切换
 ├─ Stage（中栏，自适应）
 │  ├─ 顶栏：折叠左栏 / 面包屑（项目 / 分支 → 基线）/ 折叠右栏
 │  ├─ 标题区：任务名、状态 chip、基线..HEAD、更新时间、主/次操作
 │  ├─ 标签页：概览 / 实时会话 / 代码改动（diff 文件数）
-│  ├─ 概览：任务摘要、任务信息（标签 / 优先级 / 截止 / 依赖 / 备注 / 工时 / 估算）、验收标准、验收报告导出、主操作说明
+│  ├─ 概览：验收标准（进度分段条 + 报告导出）→ 描述 → 任务信息（标签 / 优先级 / 截止 / 依赖 / 备注 / 工时 / 估算）→ 时间线
 │  ├─ 实时会话：按步骤折叠的会话时间线
 │  └─ 代码改动：逐文件 diff
 ├─ Inspector（右栏，284px）
-│  ├─ 合并预检结论、目标基线、任务 HEAD
+│  ├─ 合并预检结论（首屏一句判决）、目标基线、任务 HEAD、风险文件与同步基线入口
 │  ├─ 技术信息：分支、会话 ID、worktree、路径
 │  └─ 生命周期：未提交改动、归档/取消归档、清理
 ├─ 项目详情（选中项目、未选任务时占据 Stage）
@@ -110,6 +110,14 @@ grid-template-columns: 272px minmax(0, 1fr) 284px;
 
 项目详情与设置页沿用原 `dshw-scope` 的容器查询断点（双栏 → 单栏），`.dshw-scope` 自身也是容器，因此嵌入 Stage 后会按 Stage 宽度响应。
 
+### 4.2.1 窄屏的焦点、遮罩与偏好
+
+- **一个遮罩，一个主人**：`activeDrawer()` 只认当前可见的那张抽屉（两者都可见时右栏优先），`dshwd-scrim` 只由它渲染；`drawerFocusTrap()` 在弹窗打开时返回 `null`，所以 Modal 独占焦点与 `Esc`，抽屉不会抢。
+- **焦点进出**：打开抽屉时焦点落到该抽屉的 `.dshwd-drawer-close`，关闭时回到触发它的元素（`drawerReturn`）；从 Rail 选中任务时 `selectionDrawerState()` 让 Rail 收起并把焦点交给 Stage（`focusStage`），宽屏下两者都不动。
+- **`Esc` 只关一层**：看板的 `keydown` 处理函数调一次 `dismissDrawer()`，弹窗自己处理自己的 `Esc`，两条路径互不代劳。
+- **偏好不是装饰**：`prefers-reduced-motion: reduce` 停掉 `developing` 圆点脉冲与过渡（状态仍靠颜色表达）；`pointer: coarse` 让行内操作常显、点击目标不小于 24px。
+- **回归护栏**（Node 纯函数/CSS 文本断言，不是浏览器验收）：`test/client-drawers.test.ts`（互斥、遮罩归属、`dismissDrawer`）、`test/client-drawer-focus-trap.test.ts`（Tab/Shift+Tab、弹窗优先、焦点不被拽回）、`test/client-responsive.test.ts`（980/720/480 断点、遮罩只在 720 以下出现、Stage 不降级成卡片列表、reduced motion/coarse pointer 覆盖仍在）。
+
 ### 4.3 滚动与高度
 
 - 外层 `height: 100%`、`min-height: 0`。
@@ -121,36 +129,47 @@ grid-template-columns: 272px minmax(0, 1fr) 284px;
 
 ### 5.1 配色管理
 
-看板颜色集中在 `src/client/palette.ts` 定义，由 `src/client/styles/workbench.ts` 的 `WORKBENCH_CSS` 以 `.dshw-board` 作用域的 CSS 变量承载（`--text-3` 直接读 `PALETTE`，避免两处漂移）：
+颜色的唯一来源是 `src/client/palette.ts`。`PALETTE.light` / `PALETTE.dark` 的每个值同时喂给两套壳层，样式表里不再手写任何色值：
+
+- 项目详情与设置页：`paletteVars(PALETTE.x)` 生成 `--dshw-*`，挂在 `.dshw-scope` 上；`.dshw-board[data-theme="light"|"dark"] .dshw-scope{…}` 让详情页跟随看板主题，而不是跟随宿主。
+- 看板：`workbenchVars(theme)` 把同一份 palette 映射成壳层变量，`WORKBENCH_CSS` 里只剩两处插值：
 
 ```css
-.dshw-board { --bg-canvas: #0b0b0c; --bg-rail: #070708; --bg-stage: #0b0b0c;
-             --text-1: #f2f0ec; --text-2: #a9a59d; --text-3: #8b877f;
-             --line: rgba(242,240,236,.11);
-             --accent: #e0a256; --ok: #8fbf94; --warn: #d9a93f; --err: #e0776f; }
-.dshw-board[data-theme="light"] { --bg-canvas: #f8f5ef; --text-1: #17150f; ... }
+.dshw-board { /* ${workbenchVars('dark')} */ }
+.dshw-board[data-theme="light"] { /* ${workbenchVars('light')} */ }
 ```
 
-项目详情与设置页使用 `src/client/palette.ts` 的 `PALETTE.light` / `PALETTE.dark`，由 `paletteVars()` 生成 `--dshw-*`：
+映射由 `workbenchVarPairs(theme)` 定义，两种主题同名同序：
 
-```css
-.dshw-scope { --dshw-bg: ...; --dshw-surface: ...; }
-.dshw-dark .dshw-scope { --dshw-bg: ...; --dshw-surface: ...; }
-```
+| 壳层变量 | palette 键 |
+| --- | --- |
+| `--bg-canvas` / `--bg-rail` / `--bg-stage` / `--bg-elevated` / `--bg-modal` | `bg` / `treeBg` / `surface` / `elevated` / `modalBg` |
+| `--bg-hover` / `--bg-active` / `--backdrop` | `hover` / `active` / `backdrop` |
+| `--line` / `--line-strong` / `--specular` / `--modal-shadow` | `border` / `borderStrong` / `boardSpecular` / `boardModalShadow` |
+| `--text-1` / `--text-2` / `--text-3` | `text` / `text2` / `text3` |
+| `--cta-bg` / `--cta-text` / `--cta-hover` | `brandSolid` / `onBrand` / `brandSolidHover` |
+| `--accent` / `--accent-soft` / `--accent-line` | `brand` / `brandSoft` / `brandBorder` |
+| `--ok` / `--warn` / `--err`（各带 `-soft`、`-line`） | `success` / `warn` / `danger` + 对应 `*Soft`、`*Border` |
+| `--toast-err-bg` / `-text` / `-line` | `TOAST_ERROR[theme]` |
+| `--code-bg` / `--diff-add-bg` / `--diff-del-bg` | `boardCodeBg` / `diffAddBg` / `diffDelBg` |
 
-两套取值必须一致（深色纸黑 + 铜色强调，浅色暖纸 + 深棕强调），改一处就要同步另一处。
+`board*` 前缀的键（`boardSpecular`、`boardModalShadow`、`boardCodeBg`）是壳层独有的表面，留在 `PALETTE` 里作为唯一来源，但不经 `--dshw-*` 暴露给项目详情。
 
-`PANEL_CSS`（`src/client/styles.ts` 顶部）是叠加层，被追加到 `CSS` 与 `WORKBENCH_CSS` 末尾，用同一组规则同时约束两套 shell：按钮三档高度、chip 方标、分区自增编号、键值点线引导、左栏 34px 文本轴、统一焦点环。改版式规则优先进这里，而不是在两个样式表里各改一遍。
+浅色主题的 diff 底色已与 `PALETTE` 的 `diffAddBg` / `diffDelBg` 对齐（原先是 `rgba(16,185,129,.10)` / `rgba(220,38,38,.08)` 的旧壳层值）；同时把浅色 `--ok` 从 `#3f7a4a` 加深到 `#336b3d`，因为前者在成功软底 chip 上只有 4.17、在 diff 加行上只有 4.3，11.5px 正文不达 AA。两项都是可单独审查的显式换色，不是 token 搬移的副作用。
+
+`PANEL_CSS`（`src/client/styles/panel.ts`）是叠加层，被追加到 `CSS` 与 `WORKBENCH_CSS` 末尾，用同一组规则同时约束两套 shell：按钮三档高度、chip 方标、分区自增编号、键值点线引导、左栏 34px 文本轴、统一焦点环。改版式规则优先进这里，而不是在两个样式表里各改一遍。
 
 规则：
 
-- 看板换色只改 `WORKBENCH_CSS` 顶部两组 token；项目详情/设置页换色只改 `PALETTE`。
+- 改颜色只改 `PALETTE`。看板 token 块里出现 hex/rgba 就是第二个来源，`test/client-workbench-tokens.test.ts` 会失败；块外重复已声明的颜色同样失败。
 - 强调色只用于：运行态、领先提交数、主操作、选中行左侧条。其余状态用降饱和的成功/警告/危险色。
-- 文本三级色必须满足 AA，且要在**实际承载它的抬升面**上达标（rail `--bg-rail`、surface2、surface3，不只画布）：深色 `#8b877f`、浅色 `#6b6659`，两套 token 同步定义在 `src/client/palette.ts` 与 `src/client/styles/workbench.ts`，并由 `test/client-contrast.test.ts` 用真实色值防回归。
+- 文本三级色必须在**实际承载它的面**上满足 AA：画布、rail、stage、elevated、modal、代码块逐一对齐（深 `#8b877f`、浅 `#6b6659`）；软底 chip 和 diff 行另外单独测，因为半透明底色会把有效对比度拉低。
 - 看板主题由 `.dshw-board[data-theme]` 控制，默认跟随宿主亮度，用户切换后写入 `localStorage` 的 `dshw-board:theme`。
-- 项目详情/设置页跟随宿主 `dshw-dark` 类；该类由 `useStyles()` 根据宿主文本颜色自动维护并监听主题变化。
-- 看板语义 token 包括：画布/栏底/舞台/浮层背景、悬停/激活、边框、三级文本、主 CTA、强调色、成功/警告/危险、代码块、diff 增删底色。
+- 项目详情/设置页跟随宿主 `dshw-dark` 类；该类由 `useStyles()` 根据宿主文本颜色自动维护并监听主题变化，但当它嵌在 `.dshw-board` 内时以看板 `data-theme` 为准。
+- 看板语义 token 包括：画布/栏底/舞台/浮层背景、悬停/激活、边框、三级文本、主 CTA、强调色、成功/警告/危险、toast、代码块、diff 增删底色。
 - 看板状态点、chip 和验收操作共用 `src/client/model.ts` 的状态映射，不单独维护近似色。
+- `designs/` 下的 Open Artifact `tokens.css` 只是设计副本：不进入构建，不作为运行时资源，也不允许 `.dc.html` 被拷成生产组件。
+- 已知遗留：`--dshw-mono` 被 `PANEL_CSS` 读取但两套样式表都没声明，`font-family` 会静默失效；测试把它固定成唯一已知例外，补 fallback 属于单独一次可见改动。
 
 ### 5.2 状态色语义
 
@@ -215,26 +234,26 @@ Git 状态与会话状态分开：
 
 ### 6.3 任务行
 
-- 两行结构：
-  - 第一行：状态圆点、任务标题。
-  - 第二行：状态 chip、会话中断/异常 chip、优先级 chip、标签 chip、领先提交数、未提交改动数。
-- 优先级只显示两端：`high` 用告警色 chip（「高」/“High”），`low` 用弱化 chip（「低」/“Low”），`normal` 不占位。行内最多显示 2 个 `#tag` chip，多出的以 `+N` 表示，悬停可看完整标签列表；无标签时整组不渲染。
-- 会话最近一轮中断或失败时，状态圆点转为警告/错误色，并显示「会话中断」/「会话异常」。
-- “选中任务”和“打开会话”是两个平级按钮。
-- 无会话时打开按钮禁用，避免无反馈点击。
-- 置顶按钮与打开按钮平级，使用 `aria-pressed` 表示状态；置顶任务在标题前显示图钉标记，按钮文案在「置顶任务 / 取消置顶」间切换。
-- 置顶只是展示排序：同一项目内先按 `pinnedAt` 倒序，再按优先级（`high` > `normal` > `low`），最后按创建时间倒序；重复置顶不刷新首次置顶时间。服务端项目视图与客户端发布后的增量列表共用同一个比较函数，避免两处排序不一致。
-- 停滞任务在行内显示「停滞 N 天」chip（警告色，`title` 补充最近活动时间）；「停滞」同时是一个注意力分类，行级 chip 与汇总条计数来自同一份注意力映射。
-- 截止日期 chip 只显示近端：逾期用错误色「逾期 N 天」，今天到期与 3 天内到期用警告色；更远的日期只保留在详情里，避免行内噪音。「逾期」是独立注意力分类，与停滞可以同时成立。
-- 未完成前置显示「等待 N 项前置」chip（警告色，`title` 列出前置标题）；前置全部合并 / 清理后 chip 消失。依赖只是提示，不改变任务状态或排序。
-- 已估算任务显示 `N 点` chip（弱化色，`title` 说明是相对规模）；未估算不占位。计时中的任务显示「计时中」chip（强调色，`title` 说明开始时间）；停止后 chip 消失。
-- 标题溢出省略，完整标题通过 `title` 提供。
+- 三行结构（信息层级，不是全部信号都往一行塞）：
+  - 第一行：状态圆点、任务标题、Git 统计（领先提交数 / 未提交改动数）。
+  - 第二行：短分支、相对时间（归档任务显示「已归档」）。
+  - 第三行：状态 chip + **至多一个**最高优先级提醒。
+- 「显示哪个提醒」由纯函数 `railRowSignals()`（`src/client/rail-summary.ts`）决定，视图只负责渲染：候选集合、去重（按 kind）、排序都在那里，测试不需要渲染。排序表 `SIGNAL_RANK`：recovery 10、broken 12、post-merge 20、overdue 22、session 30、deps 40、due-today 42、due-soon 44、stalled 46、criteria 50、timer 55、priority-high 60。它只决定显示顺序，不解释、不修改任务状态，也不改变排序与筛选。
+- 状态 chip 是常驻位：待批准 / 待审计划 / 待回答时直接取代状态文案（同一个位置，不再额外重复一个 pending chip）。
+- 提醒候选：需要恢复、异常任务、基线已前移、逾期、今天到期、N 天后到期、会话中断/异常、等待 N 项前置、停滞 N 天、验收进度（仅待验收且未核对完）、计时中、高优先级。
+- 其余提醒进入已有的「更多状态」弹层：按钮只在存在额外提醒时出现，`aria-label` 带条数，弹层每项带图标 + 文本 + 完整 `title`，不依赖颜色区分（图标按 `signalIcon()`：异常/会话用警示、验收用勾、计时用钟、优先级用箭头）。
+- 静态信息不是提醒：标签、估算点数、普通/低优先级、远期截止日期都不占行内 chips，完整值保留在详情的元信息区与悬停标题里。搜索能力不退化——`tag:`、`priority:`、`status:` 结构化查询走服务端/模型过滤，与行内 chip 无关。
+- 运行中的新 turn 让旧会话健康变成历史：会话运行期间不显示「会话中断/异常」。
+- 保留原有行级能力：置顶（`aria-pressed` + 图钉标记，排序 `pinnedAt` 倒序 → 优先级 → 创建时间倒序）、快捷操作按钮、搜索、筛选、保存视图、排序；状态圆点、选中态与 `aria-current` 不变。
+- 长标签单行省略（`max-width: 100%` + ellipsis），chips 允许换行，长文案不会撑破 Rail；完整值通过 `title` 提供。
 
 ### 6.4 任务摘要
 
 - 顶部为项目 / 分支面包屑、任务标题和描述。
-- 描述下方以列表展示验收标准（有则显示），每行一条；待验收 / 进行中等可写状态渲染为复选项，点击即标记已核对、再点取消，状态随任务记录持久化。已合并 / 已清理任务保持只读并统一显示为完成。
-- 验收标准分区标题显示进度（「验收标准 · 已核对 n/total」），全部核对后显示「全部核对完成」；勾选写入进行中时复选项禁用。复选项使用 `button` + `role="checkbox"` + `aria-checked`，保留键盘 Tab / Space 操作与可见焦点环。
+- 顺序为「验收标准 → 描述 → 元信息 → 时间线」：验收标准定义「做完是什么样」，因此排在描述之前；Live 与 Diff 不变。
+- 验收标准以列表展示（有则显示），每行一条；待验收 / 进行中等可写状态渲染为可勾选项，点击即标记已核对、再点取消，状态随任务记录持久化。已合并 / 已清理任务保持只读并统一显示为完成（历史全完成语义不变），`criteriaBusy` 时禁用。
+- 验收标准分区标题显示进度（「验收标准 · 已核对 n/total」），全部核对后显示「全部核对完成」。标题下方是与条目数一一对应的分段进度条：只做视觉重复，`aria-hidden="true"`，文本 `n/total` 始终是完整信息，色块不是唯一信号；没有条目时不渲染空进度条。
+- 复选项使用 `<label>` + 原生 `<input type="checkbox">`，保留键盘 Tab / Space 与可见焦点环；长验收文本换行（`overflow-wrap: anywhere`），勾选框与首行对齐而不是垂直居中。
 - 验收标准分区标题右侧固定两个 ghost mini 按钮：「复制报告」把 Markdown 报告写入剪贴板，「下载 .md」保存为 `acceptance-<id8>-<YYYYMMDD>-<HHmm>.md`。报告由当前快照与已加载的 diff 生成，内容为当前界面语言，包含标题、项目 / 分支 / 状态 / HEAD / 合并提交 / 会话 / 生成时间、标签、优先级、任务描述、验收进度、备注、提交列表、改动文件表（路径、变更类型、行数增删）与工作区统计；只含路径与计数，**不含 diff 正文**。
 - 报告对各状态均降级为可读文本：无验收标准、无提交、无改动、worktree 已清理 / 找不到 merge-base / 读取失败各有一句说明；diff 被截断时明确提示。表格内的 `|` 与换行会被转义，路径不会撑破表格。
 - 任一操作进行中时两个按钮同时禁用，避免重复点击或读到移动中的快照；复制失败（无剪贴板权限）或下载失败以 Toast 报错，成功同样有 Toast 反馈。回调未注入（例如 SSR 渲染或只读嵌入）时按钮不渲染。
@@ -340,6 +359,13 @@ Git 状态与会话状态分开：
 - 路径、分支均提供复制按钮。
 - worktree 已清理时隐藏已失效的分支和改动行，只保留路径记录和说明。
 
+### 6.8.1 合并预检（Inspector 首屏）
+
+- 首屏是一句明确的合并判决（`dshwd-insp-verdict`，按 ok / warn / err / muted 取色，前置圆点 `aria-hidden`），其后是对应的目标基线 `@ sha` 与任务 HEAD `sha`；判决文案来自 `mergeSummaryText()`，与按钮禁用理由、Stage 阻挡条同源。
+- 风险只在存在时出现：一个风险 chip（冲突 / 重叠 / 基线前移）+ 涉及文件（`title` 里给全量）+「同步基线」入口；无会话的任务改为复制手动命令，禁用原因走 `title`。
+- 不重复 Stage 的阻挡条完整列表：Stage 负责逐条说明，Inspector 只用同一批 `mergeReasons` 汇成判决，避免同一句话出现两次。
+- 技术信息（分支、会话 ID、worktree 路径）保持换行不截断 + 复制按钮；危险区、stash 卡片与只读的已清理状态不变。
+
 ### 6.9 危险操作
 
 - 单独卡片，使用危险色边框和标题。
@@ -396,6 +422,8 @@ Git 状态与会话状态分开：
 - 关闭后将焦点恢复到触发元素。
 - 页脚操作固定与正文分离；危险弹窗默认聚焦取消。
 - 操作失败时错误显示在当前弹窗内，不要求用户关闭弹窗后再找原因。
+- 合并确认按「结论 → 对象 → 风险 → 操作」自上而下组织：标题与正文是结论，分组行是对象（分支、目标基线、提交数、未提交改动、验收进度）与风险（重叠/冲突文件、基线前移），底部按钮才是操作。分组由 `ConfirmDialog` 的 `sections` 渲染，不是另造的 Modal；`runMerge` 继续提供全部数据与提交参数（`expectedTip` / `expectedBase` / `switchToBase` / `restoreTo` / `dirtyStrategy`）。
+- 没有风险时不渲染「风险」分组标题；预检无冲突不等于整个流程通过——项目启用验收门禁时，未核对完不进可执行确认（`mergeGateMissing`），只给提示。
 
 ### 6.14 按钮
 
@@ -582,8 +610,9 @@ src/client/
 ├─ primitives.ts              # 基础组件与 Modal/Field/Toast
 ├─ hooks.ts                   # useBranchInfo、useToast
 ├─ board.ts                   # WorkbenchBoardPage、WorkbenchBoardIcon、数据轮询
-├─ rail.ts                    # 左栏 Rail
-├─ stage.ts                   # 中栏 Stage（概览/实时会话/diff）
+├─ rail.ts                    # 左栏 Rail（视图）
+├─ rail-summary.ts            # Rail 行级展示决策：候选信号、去重、排序、图标
+├─ stage.ts                   # 中栏 Stage（概览/实时会话/diff；AcceptanceSection 在此）
 ├─ inspector.ts               # 右栏 Inspector
 ├─ publish.ts                 # 发布任务弹窗
 ├─ add-project.ts             # 新增项目弹窗
@@ -619,6 +648,7 @@ src/client/
 - [ ] 任务项显示状态点、标题、统计、分支和最近提交时间；键盘 Enter/Space 可选中。
 - [ ] Stage 的「概览 / 实时会话 / 代码改动」切换正确，切换任务后回到概览。
 - [ ] Inspector 的合并预检、技术信息和生命周期操作对应选中任务。
+- [ ] 视觉待验（本机未做浏览器截图验收）：桌面 dark/light 三栏、981/980、721/720、480、键盘 Tab/Shift+Tab/Esc 与触摸长按。
 - [ ] 有 `pendingStashes` 时 Inspector 列出暂存，可查看 patch / 恢复 / 丢弃；丢弃需二次确认。
 - [ ] 清理弹窗可勾选强制、删除分支、强制删除未合并分支；删除记录单独二次确认。
 - [ ] 合并后自动切回原分支失败时，Inspector 出现「切回原分支」并可恢复。

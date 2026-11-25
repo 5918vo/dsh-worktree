@@ -68,3 +68,14 @@ export function dismissDrawer(state: DrawerState, narrow: boolean, hasInspector:
   if (!side) return { state, closed: null }
   return { state: closeDrawer(state, side), closed: side }
 }
+
+/**
+ * Selecting a task from the rail sheet: the sheet gets out of the way so the
+ * stage it reveals is visible, and focus follows the selection there. Wide
+ * layouts keep both columns exactly as they are — collapsing a column on click
+ * there would be a surprise.
+ */
+export function selectionDrawerState(state: DrawerState, narrow: boolean): { state: DrawerState; focusStage: boolean } {
+  if (!narrow || state.railHidden) return { state, focusStage: false }
+  return { state: { ...state, railHidden: true }, focusStage: true }
+}

@@ -120,10 +120,14 @@ export function Inspector(props: InspectorProps) {
           onClick: props.onClose,
         }, '×'))
       : null,
-    h('section', { className: 'dshwd-insp-sec' },
-      h('div', { className: 'dshwd-insp-title' }, t.mergeCheck, h('span', { className: dotClass }, '●')),
-      h('div', { style: { fontSize: '12px', color: summary.tone === 'err' ? 'var(--err)' : summary.tone === 'warn' ? 'var(--warn)' : 'var(--text-2)', lineHeight: '1.5' } },
-        mergeSummaryText(t, summary)),
+    // First screen is the verdict: one sentence, then the two shas it is about,
+    // then the risks and the way to clear them. The stage still owns the full
+    // blocker list, so this panel never repeats it.
+    h('section', { className: 'dshwd-insp-sec dshwd-insp-merge' },
+      h('div', { className: 'dshwd-insp-title' }, t.mergeCheck),
+      h('div', { className: 'dshwd-insp-verdict dshwd-verdict-' + (summary.tone || 'muted') },
+        h('span', { className: 'dshwd-verdict-dot ' + dotClass, 'aria-hidden': 'true' }, '●'),
+        h('span', { className: 'dshwd-verdict-text' }, mergeSummaryText(t, summary))),
       h('div', { className: 'dshwd-kv', style: { marginTop: '8px' } },
         h('span', { className: 'dshwd-kv-k' }, t.boardTargetBase),
         h('span', { className: 'dshwd-kv-v dshwd-mono', title: props.baseSha }, `${props.baseLabel} @ ${shortSha(props.baseSha)}`)),

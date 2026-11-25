@@ -290,6 +290,27 @@ function actionButton(t: any, action: BoardAction, labelKey: string, props: Stag
 
 function Overview(props: StageProps) {
   const { t } = props
+  return h('div', { className: 'dshwd-measure' },
+    // Acceptance first: what "done" means, then what the work is about, then
+    // the task's own metadata and history.
+    h(AcceptanceSection, props),
+    h('section', { className: 'dshwd-block' },
+      h('div', { className: 'dshwd-block-label' }, t.taskDescription),
+      h('div', { className: 'dshwd-prose' }, props.taskView.task.description || '—')),
+    h(TaskMetaSection, props),
+    h(TaskLifecycleSection, props))
+}
+
+/**
+ * Acceptance criteria: the checks that define "done" for this task.
+ *
+ * The `n/total` text is the information; the segment bar only repeats it
+ * visually, so it is hidden from assistive tech and a task without criteria
+ * renders no empty bar. Merged/cleaned tasks keep their history as read-only
+ * checks rather than disappearing.
+ */
+function AcceptanceSection(props: StageProps) {
+  const { t } = props
   const status = props.taskView.snapshot.status
   const items = criteria(props.taskView.task, status)
   const progress = criteriaProgress(items)
@@ -299,51 +320,52 @@ function Overview(props: StageProps) {
     ? String(t.boardCriteriaAllDone)
     : String(t.boardCriteriaProgress).replace('{n}', String(progress.checked)).replace('{total}', String(progress.total))
   const hint = acceptanceHintFor(t, status, Number(props.taskView.snapshot.postMergeAhead) || 0)
-  return h('div', { className: 'dshwd-measure' },
-    h('section', { className: 'dshwd-block' },
-      h('div', { className: 'dshwd-block-label' }, t.taskDescription),
-      h('div', { className: 'dshwd-prose' }, props.taskView.task.description || '—')),
-    h(TaskMetaSection, props),
-    h(TaskLifecycleSection, props),
-    h('section', { className: 'dshwd-block' },
-      h('div', { className: 'dshwd-block-head' },
-        h('div', { className: 'dshwd-block-label' }, items.length ? `${t.acceptanceCriteria} · ${progressText}` : t.acceptanceCriteria),
-        props.onCopyReport || props.onDownloadReport
-          ? h('div', { className: 'dshwd-block-actions' },
-            props.onCopyReport
-              ? h('button', {
-                type: 'button',
-                className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini',
-                disabled: !!props.reportBusy,
-                title: props.reportBusy ? t.working : t.reportCopy,
-                onClick: props.onCopyReport,
-              }, t.reportCopy)
-              : null,
-            props.onDownloadReport
-              ? h('button', {
-                type: 'button',
-                className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini',
-                disabled: !!props.reportBusy,
-                title: props.reportBusy ? t.working : t.reportDownload,
-                onClick: props.onDownloadReport,
-              }, t.reportDownload)
-              : null)
-          : null),
-      items.length
-        ? h('div', { className: 'dshwd-check-list' }, items.map((item, i) => (toggle
-          ? h('label', { key: i, className: 'dshwd-check-item dshwd-check-toggle' },
-            h('input', {
-              type: 'checkbox',
-              checked: item.checked,
-              disabled: !!props.criteriaBusy,
-              onChange: () => toggle(item.text, !item.checked),
-            }),
-            h('span', null, item.text))
-          : h('div', { key: i, className: 'dshwd-check-item dshwd-check-readonly' },
-            h('span', { className: 'dshwd-check-box' + (item.checked ? '' : ' dshwd-todo'), 'aria-hidden': 'true' }, item.checked ? '✓' : ''),
-            h('span', null, item.text)))))
-        : h('div', { className: 'dshwd-hint' }, t.boardNoCriteria),
-      hint ? h('div', { className: 'dshwd-hint', style: { marginTop: '6px' } }, hint) : null))
+  return h('section', { className: 'dshwd-block dshwd-acceptance' },
+    h('div', { className: 'dshwd-block-head' },
+      h('div', { className: 'dshwd-block-label' }, items.length ? `${t.acceptanceCriteria} · ${progressText}` : t.acceptanceCriteria),
+      props.onCopyReport || props.onDownloadReport
+        ? h('div', { className: 'dshwd-block-actions' },
+          props.onCopyReport
+            ? h('button', {
+              type: 'button',
+              className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini',
+              disabled: !!props.reportBusy,
+              title: props.reportBusy ? t.working : t.reportCopy,
+              onClick: props.onCopyReport,
+            }, t.reportCopy)
+            : null,
+          props.onDownloadReport
+            ? h('button', {
+              type: 'button',
+              className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini',
+              disabled: !!props.reportBusy,
+              title: props.reportBusy ? t.working : t.reportDownload,
+              onClick: props.onDownloadReport,
+            }, t.reportDownload)
+            : null)
+        : null),
+    items.length
+      ? h('div', { className: 'dshwd-check-progress', 'aria-hidden': 'true' },
+        items.map((item, i) => h('span', {
+          key: i,
+          className: 'dshwd-check-segment' + (item.checked ? ' dshwd-check-segment-on' : ''),
+        })))
+      : null,
+    items.length
+      ? h('div', { className: 'dshwd-check-list' }, items.map((item, i) => (toggle
+        ? h('label', { key: i, className: 'dshwd-check-item dshwd-check-toggle' },
+          h('input', {
+            type: 'checkbox',
+            checked: item.checked,
+            disabled: !!props.criteriaBusy,
+            onChange: () => toggle(item.text, !item.checked),
+          }),
+          h('span', null, item.text))
+        : h('div', { key: i, className: 'dshwd-check-item dshwd-check-readonly' },
+          h('span', { className: 'dshwd-check-box' + (item.checked ? '' : ' dshwd-todo'), 'aria-hidden': 'true' }, item.checked ? '✓' : ''),
+          h('span', null, item.text)))))
+      : h('div', { className: 'dshwd-hint' }, t.boardNoCriteria),
+    hint ? h('div', { className: 'dshwd-hint', style: { marginTop: '6px' } }, hint) : null)
 }
 
 type DependencyRowItem = { id: string; title: string; done: boolean; missing?: boolean }

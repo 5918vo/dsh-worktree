@@ -132,3 +132,76 @@ export function reviewStaleCount(status: string, snapshot: any): number {
   if (status !== 'reviewing') return 0
   return Math.max(0, Number((snapshot && snapshot.reviewBehind) || 0))
 }
+
+/** One row inside a confirmation-dialog section. */
+export interface ConfirmRow {
+  label: string
+  value: string
+  mono?: boolean
+}
+
+/** A labelled group of rows; see `mergeDialogSections`. */
+export interface ConfirmSection {
+  key: string
+  label: string
+  rows: ConfirmRow[]
+}
+
+export interface MergeDialogInput {
+  branch: string
+  baseBranch: string
+  ahead: number
+  dirty: number
+  criteriaChecked: number
+  criteriaTotal: number
+  /** The cached preview may be missing; treat that as "no known risk". */
+  conflict: boolean
+  conflictFiles: string[]
+  overlapFiles: string[]
+  baseAhead: number
+}
+
+/**
+ * Structured rows for the merge confirmation: the dialog reads top-down as
+ * conclusion (title + body, owned by the caller) → what merges → what could go
+ * wrong → actions.
+ *
+ * The object section always exists. The risk section is omitted when there is
+ * nothing to warn about, so an empty "Risk" heading never dilutes a clean
+ * merge; when it does exist it names the files first and the baseline shift
+ * second. A pre-flight without conflicts is not a pass: the gate and the
+ * pre-flight are checked elsewhere, and this function never upgrades a risk to
+ * a pass or hides a known one.
+ */
+export function mergeDialogSections(t: any, input: MergeDialogInput): ConfirmSection[] {
+  const object: ConfirmRow[] = [
+    { label: t.branchLabel, value: input.branch || '—', mono: true },
+    { label: t.boardTargetBase, value: input.baseBranch || '—', mono: true },
+    { label: t.commits, value: String(input.ahead) },
+    { label: t.uncommitted, value: input.dirty ? `${input.dirty} ${t.changesUnit} · ${t.mergeNoAutoStash}` : t.clean },
+  ]
+  if (input.criteriaTotal > 0) {
+    object.push({
+      label: t.acceptanceCriteria,
+      value: String(t.boardCriteriaProgress).replace('{n}', String(input.criteriaChecked)).replace('{total}', String(input.criteriaTotal)),
+    })
+  }
+  const conflictFiles = Array.isArray(input.conflictFiles) ? input.conflictFiles.filter(Boolean) : []
+  const overlapFiles = Array.isArray(input.overlapFiles) ? input.overlapFiles.filter(Boolean) : []
+  const risk: ConfirmRow[] = []
+  if (input.conflict || conflictFiles.length) {
+    risk.push({
+      label: t.mergeRiskConflictFiles,
+      value: previewFilesText(conflictFiles.length ? conflictFiles : overlapFiles),
+      mono: true,
+    })
+  } else if (overlapFiles.length) {
+    risk.push({ label: t.mergeOverlapLabel, value: previewFilesText(overlapFiles), mono: true })
+  }
+  if (Number(input.baseAhead) > 0) {
+    risk.push({ label: t.mergeRiskBaseline, value: String(t.mergePreviewBaseAhead).replace('{n}', String(input.baseAhead)) })
+  }
+  const sections: ConfirmSection[] = [{ key: 'object', label: t.mergeSectionObject, rows: object }]
+  if (risk.length) sections.push({ key: 'risk', label: t.mergeSectionRisk, rows: risk })
+  return sections
+}
