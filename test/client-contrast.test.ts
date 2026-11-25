@@ -94,6 +94,12 @@ test('meetsAA distinguishes body text from large text thresholds', () => {
 
 const boardVars = (theme: 'light' | 'dark') => new Map(workbenchVarPairs(theme))
 
+/** Paint a translucent layer (`rgba`) over an opaque surface. */
+function paint(fg: string, bg: string): string {
+  const colour = composite(parseColor(fg)!, parseColor(bg)!)
+  return `rgba(${colour.r},${colour.g},${colour.b},${colour.a})`
+}
+
 test('body, secondary and metadata ink clear AA on every board surface', () => {
   const surfaces = ['--bg-canvas', '--bg-rail', '--bg-stage', '--bg-elevated', '--bg-modal', '--code-bg']
   for (const theme of ['light', 'dark'] as const) {
@@ -116,6 +122,34 @@ test('the primary button reads as text in both states', () => {
       const bg = vars.get(bgToken)!
       assert.ok(meetsAA(ink, bg), `${theme} CTA text on ${bgToken} = ${contrastOf(ink, bg)}`)
     }
+  }
+})
+
+test('tone chips keep AA on the surfaces a row can sit on', () => {
+  // A chip paints `--X-soft` over the row background and writes `--X` on top,
+  // so the effective ratio is always lower than the bare token pair.
+  const tones: Array<[string, string]> = [['--warn', '--warn-soft'], ['--err', '--err-soft'], ['--ok', '--ok-soft'], ['--accent', '--accent-soft']]
+  const surfaces = ['--bg-stage', '--bg-rail', '--bg-elevated']
+  for (const theme of ['light', 'dark'] as const) {
+    const vars = boardVars(theme)
+    for (const surface of surfaces) {
+      for (const [ink, soft] of tones) {
+        const bg = paint(vars.get(soft)!, vars.get(surface)!)
+        const fg = vars.get(ink)!
+        assert.ok(meetsAA(fg, bg), `${theme} ${ink} chip on ${surface} = ${contrastOf(fg, bg)} < 4.5`)
+      }
+    }
+  }
+})
+
+test('diff lines stay AA on their own tinted rows', () => {
+  for (const theme of ['light', 'dark'] as const) {
+    const vars = boardVars(theme)
+    const code = vars.get('--code-bg')!
+    const addBg = paint(vars.get('--diff-add-bg')!, code)
+    const delBg = paint(vars.get('--diff-del-bg')!, code)
+    assert.ok(meetsAA(vars.get('--ok')!, addBg), `${theme} added line = ${contrastOf(vars.get('--ok')!, addBg)}`)
+    assert.ok(meetsAA(vars.get('--err')!, delBg), `${theme} removed line = ${contrastOf(vars.get('--err')!, delBg)}`)
   }
 })
 

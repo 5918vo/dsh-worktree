@@ -52,7 +52,7 @@ export const PALETTE = {
     text2: '#4d4a42', // --text-2
     text3: '#6b6659', // --text-3  (4.60:1 on surface-3, 4.90:1 on tree-bg — AA for 11–12px)
 
-    brand: '#9a5619', // --accent (copper, darkened for light paper)
+    brand: '#945215', // --accent (copper; darkened from #9a5619 for AA on accent-soft chips over the rail)
     brandStrong: '#7a4314',
     brandSolid: '#17150f', // --cta-bg (ink stamp)
     brandSolidHover: '#2b2820', // --cta-hover
@@ -60,11 +60,11 @@ export const PALETTE = {
     brandBorder: 'rgba(154,86,25,.30)', // --accent-line
     onBrand: '#f8f5ef', // --cta-text
 
-    success: '#3f7a4a', // --ok
+    success: '#336b3d', // --ok: darkened from #3f7a4a so chip and diff ink clear AA on soft tints
     successSoft: 'rgba(63,122,74,.10)',
     successBorder: 'rgba(63,122,74,.28)',
 
-    warn: '#8a5a12', // --warn
+    warn: '#86570f', // --warn: darkened from #8a5a12 for AA on warn-soft chips over the rail
     warnSoft: 'rgba(138,90,18,.10)',
     warnBorder: 'rgba(138,90,18,.28)',
 
@@ -104,10 +104,6 @@ export const PALETTE = {
     boardCodeBg: '#f6f5f0', // --code-bg: the workbench diff / block well
     diffAddBg: 'rgba(63,122,74,.10)',
     diffDelBg: 'rgba(168,58,52,.09)',
-    // Legacy board values, kept byte-identical by the token move; the palette
-    // pair above is the intended ink and is aligned in a separate commit.
-    boardDiffAddBg: 'rgba(16,185,129,.10)',
-    boardDiffDelBg: 'rgba(220,38,38,.08)',
 
     termBg: '#141310',
     termBorder: '#26231d',
@@ -199,8 +195,6 @@ export const PALETTE = {
     boardCodeBg: '#070708', // --code-bg: the workbench diff / block well
     diffAddBg: 'rgba(143,191,148,.12)',
     diffDelBg: 'rgba(224,119,111,.12)',
-    boardDiffAddBg: 'rgba(143,191,148,.12)',
-    boardDiffDelBg: 'rgba(224,119,111,.12)',
 
     termBg: '#070708',
     termBorder: '#1c1c1e',
@@ -280,8 +274,8 @@ export function workbenchVarPairs(theme: ThemeName): Array<[string, string]> {
     ['--toast-err-text', toast.text],
     ['--toast-err-line', toast.border],
     ['--code-bg', p.boardCodeBg],
-    ['--diff-add-bg', p.boardDiffAddBg],
-    ['--diff-del-bg', p.boardDiffDelBg],
+    ['--diff-add-bg', p.diffAddBg],
+    ['--diff-del-bg', p.diffDelBg],
   ]
 }
 

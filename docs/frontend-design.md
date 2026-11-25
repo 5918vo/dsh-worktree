@@ -143,9 +143,11 @@ grid-template-columns: 272px minmax(0, 1fr) 284px;
 | `--accent` / `--accent-soft` / `--accent-line` | `brand` / `brandSoft` / `brandBorder` |
 | `--ok` / `--warn` / `--err`（各带 `-soft`、`-line`） | `success` / `warn` / `danger` + 对应 `*Soft`、`*Border` |
 | `--toast-err-bg` / `-text` / `-line` | `TOAST_ERROR[theme]` |
-| `--code-bg` / `--diff-add-bg` / `--diff-del-bg` | `boardCodeBg` / `boardDiffAddBg` / `boardDiffDelBg` |
+| `--code-bg` / `--diff-add-bg` / `--diff-del-bg` | `boardCodeBg` / `diffAddBg` / `diffDelBg` |
 
-`board*` 前缀的键（`boardSpecular`、`boardModalShadow`、`boardCodeBg`、`boardDiffAddBg`、`boardDiffDelBg`）是壳层独有的表面，留在 `PALETTE` 里作为唯一来源，但不经 `--dshw-*` 暴露给项目详情。
+`board*` 前缀的键（`boardSpecular`、`boardModalShadow`、`boardCodeBg`）是壳层独有的表面，留在 `PALETTE` 里作为唯一来源，但不经 `--dshw-*` 暴露给项目详情。
+
+浅色主题的 diff 底色已与 `PALETTE` 的 `diffAddBg` / `diffDelBg` 对齐（原先是 `rgba(16,185,129,.10)` / `rgba(220,38,38,.08)` 的旧壳层值）；同时把浅色 `--ok` 从 `#3f7a4a` 加深到 `#336b3d`，因为前者在成功软底 chip 上只有 4.17、在 diff 加行上只有 4.3，11.5px 正文不达 AA。两项都是可单独审查的显式换色，不是 token 搬移的副作用。
 
 `PANEL_CSS`（`src/client/styles/panel.ts`）是叠加层，被追加到 `CSS` 与 `WORKBENCH_CSS` 末尾，用同一组规则同时约束两套 shell：按钮三档高度、chip 方标、分区自增编号、键值点线引导、左栏 34px 文本轴、统一焦点环。改版式规则优先进这里，而不是在两个样式表里各改一遍。
 

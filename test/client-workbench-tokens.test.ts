@@ -68,8 +68,8 @@ test('every board variable maps to a PALETTE source', () => {
       ['--toast-err-text', toast.text],
       ['--toast-err-line', toast.border],
       ['--code-bg', p.boardCodeBg],
-      ['--diff-add-bg', p.boardDiffAddBg],
-      ['--diff-del-bg', p.boardDiffDelBg],
+      ['--diff-add-bg', p.diffAddBg],
+      ['--diff-del-bg', p.diffDelBg],
     ]
     assert.deepEqual(workbenchVarPairs(theme), expected, `${theme} board mapping drifted`)
   }
