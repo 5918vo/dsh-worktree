@@ -6,7 +6,7 @@
 
 import { getJson, post, postLong } from '../context'
 import { openNativeSession, sendSessionPrompt, startTask } from '../actions'
-import { SYNC_BUSY, syncPromptText } from '../review-surfaces'
+import { SYNC_BUSY, mergeDialogSections, syncPromptText } from '../review-surfaces'
 import type { BoardAction } from '../model'
 import { cleanupPrimaryLabel, criteria, criteriaProgress, mergeGateMissing, switchConfirmText } from '../model'
 import { copyText, downloadText } from '../format'
@@ -147,21 +147,22 @@ export function useBoardActions(args: UseBoardActionsArgs) {
       const dirty = Number(selectedTask.snapshot.worktree && selectedTask.snapshot.worktree.dirtyCount) || 0
       const checklist = criteria(task, selectedTask.snapshot.status)
       const progress = criteriaProgress(checklist)
-      const criteriaText = String(t.boardCriteriaProgress).replace('{n}', String(progress.checked)).replace('{total}', String(progress.total))
-      const details = [
-        { label: t.branchLabel, value: task.branch || '—', mono: true },
-        { label: t.boardTargetBase, value: task.baseBranch || '—', mono: true },
-        { label: t.commits, value: String(ahead) },
-        { label: t.uncommitted, value: dirty ? `${dirty} ${t.changesUnit} · ${t.mergeNoAutoStash}` : t.clean },
-      ]
-      // Only tasks that actually carry a checklist get a progress row; "0/0"
-      // would read like a broken counter.
-      if (progress.total > 0) details.push({ label: t.acceptanceCriteria, value: criteriaText, mono: false })
+      // The dialog is a decision surface, not a log: conclusion (title + body)
+      // → what merges → what could go wrong → buttons. runMerge still owns every
+      // value; review-surfaces only groups and localizes the rows.
       const cached = previewState && (previewState.preview || (previewState.previous && previewState.previous.preview))
-      const overlapFiles = cached && Array.isArray(cached.overlapFiles) ? cached.overlapFiles.filter(Boolean) : []
-      // The panel warned about overlapping files; the last dialog before the
-      // merge must not be the quietest surface about them.
-      if (overlapFiles.length) details.push({ label: t.mergeOverlapLabel, value: overlapFiles.join(', '), mono: true })
+      const sections = mergeDialogSections(t, {
+        branch: task.branch || '',
+        baseBranch: task.baseBranch || '',
+        ahead,
+        dirty,
+        criteriaChecked: progress.checked,
+        criteriaTotal: progress.total,
+        conflict: !!(cached && cached.conflict),
+        conflictFiles: cached && Array.isArray(cached.conflictFiles) ? cached.conflictFiles : [],
+        overlapFiles: cached && Array.isArray(cached.overlapFiles) ? cached.overlapFiles : [],
+        baseAhead: Number((cached && cached.baseAhead) || 0),
+      })
       const mergeBody = String(t.boardMergeConfirm).replace('{branch}', task.branch).replace('{base}', task.baseBranch)
         + (progress.missing > 0
           ? ` ${String(t.boardMergeCriteriaMissing).replace('{n}', String(progress.missing))}`
@@ -169,7 +170,7 @@ export function useBoardActions(args: UseBoardActionsArgs) {
       setConfirm({
         title: String(t.mergeTitle).replace('{base}', task.baseBranch),
         body: mergeBody,
-        details,
+        sections,
         label: t.mergeConfirm,
         // Merging is additive and reversible with a revert; red reads as delete.
         danger: false,

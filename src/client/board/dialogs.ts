@@ -4,6 +4,7 @@
 
 import { React, h } from '../ui'
 import { useDialogFocus } from '../dialog-focus'
+import type { ConfirmSection } from '../review-surfaces'
 
 let dialogSeq = 0
 
@@ -21,6 +22,8 @@ export interface ConfirmState {
   body: string
   /** Structured facts (branch, baseline, commits...) shown above the checks. */
   details?: ConfirmDetail[]
+  /** Grouped facts; wins over `details` when both are given. */
+  sections?: ConfirmSection[]
   label: string
   danger?: boolean
   checks?: ConfirmCheck[]
@@ -51,6 +54,7 @@ export interface ConfirmDialogProps {
   title: string
   body: string
   details?: ConfirmDetail[]
+  sections?: ConfirmSection[]
   label: string
   danger?: boolean
   checks?: ConfirmCheck[]
@@ -112,11 +116,19 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
       props.pre
         ? h('pre', { className: 'dshwd-diff-pre', style: { maxHeight: '38vh', overflow: 'auto', margin: 0 } }, props.pre)
         : null,
-      Array.isArray(props.details) && props.details.length
-        ? h('div', { className: 'dshwd-confirm-details' }, props.details.map((d, i) => h('div', { key: i, className: 'dshwd-kv' },
-          h('span', { className: 'dshwd-kv-k' }, d.label),
-          h('span', { className: 'dshwd-kv-v' + (d.mono ? ' dshwd-mono' : ''), title: d.value }, d.value))))
-        : null,
+      // Conclusion first (title + body), then what merges, then what could go
+      // wrong; the buttons below are the last step.
+      Array.isArray(props.sections) && props.sections.length
+        ? h('div', { className: 'dshwd-confirm-details' }, props.sections.map((section) => h('div', { key: section.key, className: 'dshwd-confirm-section' },
+          h('div', { className: 'dshwd-confirm-section-label' }, section.label),
+          section.rows.map((d, i) => h('div', { key: i, className: 'dshwd-kv' },
+            h('span', { className: 'dshwd-kv-k' }, d.label),
+            h('span', { className: 'dshwd-kv-v' + (d.mono ? ' dshwd-mono' : ''), title: d.value }, d.value))))))
+        : Array.isArray(props.details) && props.details.length
+          ? h('div', { className: 'dshwd-confirm-details' }, props.details.map((d, i) => h('div', { key: i, className: 'dshwd-kv' },
+            h('span', { className: 'dshwd-kv-k' }, d.label),
+            h('span', { className: 'dshwd-kv-v' + (d.mono ? ' dshwd-mono' : ''), title: d.value }, d.value))))
+          : null,
       checks.length
         ? h('div', { className: 'dshwd-check-list' }, checks.map((c) => {
           const allowed = enabled(c) && !c.disabled

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { BOARD_FILTERS, acceptanceHintFor, boardBranch, boardCta, boardStat, boardStatTitle, boardStatus, branchHeadSha, cleanupPrimaryLabel, collectTags, commitRangeText, criteria, criteriaProgress, diffBaseSha, diffCount, diffHeadSha, diffLineKind, filterProjectViews, matchesSearch, mergeSummary, mergeSummaryText, pathPreview, railEmptyKind, railStatsText, shortSha, switchConfirmText, taskMergeSummary, themeFor, isBoardFilter, type BoardStatus } from '../src/client/model.js'
+import { BOARD_FILTERS, acceptanceHintFor, boardBranch, boardCta, boardStat, boardStatTitle, boardStatus, branchHeadSha, cleanupPrimaryLabel, collectTags, commitRangeText, criteria, criteriaProgress, diffBaseSha, diffCount, diffHeadSha, diffLineKind, filterProjectViews, matchesSearch, mergeGateMissing, mergeSummary, mergeSummaryText, pathPreview, railEmptyKind, railStatsText, shortSha, switchConfirmText, taskMergeSummary, themeFor, isBoardFilter, type BoardStatus } from '../src/client/model.js'
 import { compareTaskOrder } from '../src/task-meta.js'
 import { CATEGORY_ORDER } from '../src/client/task-attention.js'
 
@@ -445,4 +445,16 @@ test('BOARD_FILTERS covers every attention category exactly once', () => {
   for (const value of ['', 'merged', 'all ', 'ALL', null, undefined, 1, {}, []]) {
     assert.equal(isBoardFilter(value), false)
   }
+})
+
+test('the criteria gate only blocks an unaccepted task, never a merged one', () => {
+  const task: any = { acceptanceCriteria: ['a', 'b', 'c'], checkedCriteria: ['a'] }
+  const gate = { mergeGate: 'criteria' }
+  assert.equal(mergeGateMissing(gate, task, 'review'), 2)
+  // A post-merge follow-up commit is already past acceptance.
+  assert.equal(mergeGateMissing(gate, task, 'merged'), 0)
+  assert.equal(mergeGateMissing(gate, task, 'cleaned'), 0)
+  // Projects without the gate only see the reminder in the dialog.
+  assert.equal(mergeGateMissing({ mergeGate: 'none' }, task, 'review'), 0)
+  assert.equal(mergeGateMissing(null, task, 'review'), 0)
 })

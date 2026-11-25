@@ -362,6 +362,17 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-blocker-list { margin: 0; padding-left: 16px; font-size: 11.5px; line-height: 1.55; color: var(--text-2); overflow-wrap: anywhere; }
 .dshw-board .dshwd-confirm-details { margin-top: 10px; padding: 8px 10px; border-radius: 7px; background: var(--bg-rail); border: 1px solid var(--line); }
 .dshw-board .dshwd-confirm-details .dshwd-kv { gap: 10px; }
+/* Groups inside the confirmation: what merges, then what could go wrong. */
+.dshw-board .dshwd-confirm-section + .dshwd-confirm-section { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.dshw-board .dshwd-confirm-section-label { font-size: 10px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3); margin-bottom: 2px; }
+/* The verdict is the inspector's first sentence, not a chip in a title row. */
+.dshw-board .dshwd-insp-verdict { display: flex; align-items: flex-start; gap: 7px; margin-bottom: 6px; font-size: 13px; font-weight: 600; line-height: 1.45; }
+.dshw-board .dshwd-verdict-dot { font-size: 10px; line-height: 1.6; flex-shrink: 0; }
+.dshw-board .dshwd-verdict-text { color: var(--text-1); overflow-wrap: anywhere; }
+.dshw-board .dshwd-verdict-ok .dshwd-verdict-text { color: var(--ok); }
+.dshw-board .dshwd-verdict-warn .dshwd-verdict-text { color: var(--warn); }
+.dshw-board .dshwd-verdict-err .dshwd-verdict-text { color: var(--err); }
+.dshw-board .dshwd-verdict-muted .dshwd-verdict-text { color: var(--text-2); }
 .dshw-board .dshwd-kv-path { gap: 8px; }
 .dshw-board .dshwd-kv-path-copy { display: flex; align-items: flex-start; justify-content: flex-end; gap: 4px; min-width: 0; flex: 1 1 auto; }
 .dshw-board .dshwd-path-wrap { min-width: 0; text-align: right; white-space: normal; overflow-wrap: anywhere; }
