@@ -9,6 +9,9 @@ import { buildProjectReport, projectReportFilename } from './project-report'
 import { buildProjectInsights } from './project-insights'
 import { buildDependencyGraph, DEP_GRAPH_LIMIT } from './dependency-graph'
 import { buildProjectRisk } from './project-risk'
+import { CalibrationCard } from './retro-calibration'
+import { ActivityCard } from './retro-activity'
+import { WeeklyCard } from './retro-weekly'
 import { fill } from './markdown'
 import { DEFAULT_WORKTREE_DIR } from '../worktree-layout'
 import { panelToggleAttrs, stageGridClass } from './detail-layout'
@@ -246,6 +249,7 @@ export function ProjectDetail(props: any) {
               h(MenuItem, { icon: 'copy', onClick: () => { void copyText(project.repoPath).then((ok) => props.notify(ok ? t.copied : t.copyFailed, ok ? 'ok' : 'error')) } }, t.copyRepoPath))))),
       h('nav', { className: 'dshw-tabs' },
         tabBtn('overview', t.overview),
+        tabBtn('retro', t.retroTab),
         tabBtn('settings', t.projectSettings)))
 
     const recent = v.tasks.slice()
@@ -492,13 +496,16 @@ export function ProjectDetail(props: any) {
               })),
         ])
 
+    // One status mapping for every export surface (project report and weekly
+    // digest), so the two can never label the same task differently.
+    const statusLabelOf = (item: any) => boardStatusLabel(t, boardStatus(item.snapshot.status, isRunning(item.task)))
     // The project report is generated locally from the views already on screen;
     // copying and downloading must never disagree, so both share one text.
     const projectReportText = () => buildProjectReport({
       project,
       views: v.tasks,
       t,
-      statusLabel: (item: any) => boardStatusLabel(t, boardStatus(item.snapshot.status, isRunning(item.task))),
+      statusLabel: statusLabelOf,
     })
     const copyProjectReport = async () => {
       if (actionRef.current || busy) return
@@ -585,6 +592,25 @@ export function ProjectDetail(props: any) {
             }))
             : h('div', { className: 'dshw-hint' }, t.noTasks))))
 
+    // Retro tab: one clock read for all three cards, so the heatmap grid, the
+    // calibration samples and the digest range share the same "today".
+    const retroNow = Date.now()
+    const retroBody = h('div', { className: 'dshw-stage-body' },
+      h('div', { className: 'dshw-measure' },
+        h('p', { className: 'dshw-card-sub' }, t.retroHint),
+        h('div', { className: 'dshwd-retro-grid' },
+          h(CalibrationCard, { key: 'calibration', views: v.tasks, t, now: retroNow }),
+          h(ActivityCard, { key: 'activity', views: v.tasks, t, now: retroNow }),
+          h(WeeklyCard, {
+            key: 'weekly',
+            project,
+            views: v.tasks,
+            t,
+            statusLabel: statusLabelOf,
+            notify: props.notify,
+            now: retroNow,
+          }))))
+
     const settingsBody = h('div', { className: 'dshw-stage-body' },
       h('div', { className: 'dshw-measure' },
         h(Card, null,
@@ -656,7 +682,7 @@ export function ProjectDetail(props: any) {
         h(Btn, { variant: 'danger', icon: 'trash', disabled: busy !== '' || reviewingTasks.length > 0, onClick: openDelete }, t.deleteProject)))
 
     return h('div', { className: stageGridClass(!!props.inspectorHidden) },
-      h('div', { className: 'dshw-stage' }, topbar, stageHead, tab === 'settings' ? settingsBody : overviewBody),
+      h('div', { className: 'dshw-stage' }, topbar, stageHead, tab === 'settings' ? settingsBody : tab === 'retro' ? retroBody : overviewBody),
       inspector,
       deleteModal)
   }
