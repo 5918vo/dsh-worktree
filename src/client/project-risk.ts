@@ -16,6 +16,7 @@
 import type { TaskStatus, TaskView } from '../models'
 import { criteria, criteriaProgress } from './model'
 import { dueStateOf } from '../task-meta'
+import { workBudgetProgress } from '../task-budget'
 import { stalledDays } from './staleness'
 import { dependencyStatus } from '../task-deps'
 
@@ -28,6 +29,7 @@ export type RiskReasonCode =
   | 'stalled'
   | 'blocked'
   | 'criteria'
+  | 'budget'
 
 export interface RiskReason {
   code: RiskReasonCode
@@ -64,6 +66,7 @@ export const RISK_WEIGHTS = {
   stalled: 2,
   blocked: 2,
   criteria: 1,
+  budget: 2,
 } as const
 
 export const RISK_SCORE_MAX = 10
@@ -176,6 +179,14 @@ export function buildProjectRisk(views: TaskView[], now: number = Date.now()): P
     if (blockedCount > 0) {
       score += RISK_WEIGHTS.blocked
       reasons.push({ code: 'blocked', n: blockedCount })
+    }
+
+    // Over-budget is a planning signal on top of the deadline/stall weights:
+    // only an actual overrun counts, the 80% mark stays a stage hint.
+    const budget = workBudgetProgress(task, at)
+    if (budget && budget.state === 'over') {
+      score += RISK_WEIGHTS.budget
+      reasons.push({ code: 'budget', n: budget.percent })
     }
 
     if (status === 'review' || status === 'reviewing') {

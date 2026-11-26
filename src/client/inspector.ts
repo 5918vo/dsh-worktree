@@ -34,6 +34,8 @@ export interface InspectorProps {
   onSyncBaseline: (files: string[]) => void
   onArchive: () => void
   onUnarchive: () => void
+  /** Duplicate into a publish draft; the button hides while unset. */
+  onClone?: () => void
   onCleanup: () => void
   onDelete: () => void
   onRestore: () => void
@@ -214,13 +216,23 @@ export function Inspector(props: InspectorProps) {
       // Archive is reversible and stays a normal action; the destructive pair
       // is grouped under its own heading with graded weight (outline cleanup vs
       // solid delete), so the two never read as equal-weight neighbours.
-      h('div', { style: { marginTop: '8px' } },
+      h('div', { style: { marginTop: '8px', display: 'flex', gap: '6px', flexWrap: 'wrap' } },
         h('button', {
           className: 'dshwd-btn',
           disabled: props.busy !== '' || (!props.canArchive && !props.archived),
           title: !props.canArchive && !props.archived ? props.archiveReason : undefined,
           onClick: props.archived ? props.onUnarchive : props.onArchive,
-        }, props.archived ? t.unarchive : t.archive)),
+        }, props.archived ? t.unarchive : t.archive),
+        // Duplicating is a publish action, so it stays available regardless of
+        // archive state; only a busy action blocks it.
+        props.onClone
+          ? h('button', {
+            className: 'dshwd-btn',
+            disabled: props.busy !== '',
+            title: t.cloneTaskHint,
+            onClick: () => props.onClone && props.onClone(),
+          }, t.cloneTask)
+          : null),
       h('div', { className: 'dshwd-insp-danger' },
         h('div', { className: 'dshwd-insp-title' }, t.dangerZone),
         h('div', { className: 'dshwd-danger-stack' },

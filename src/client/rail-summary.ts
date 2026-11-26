@@ -12,6 +12,8 @@
  */
 import { fill } from './markdown'
 import { pendingLabel, postMergeLabel } from './status'
+import { formatWorkDuration } from '../task-timer'
+import { workDurationUnits } from './work-format'
 
 export type RailTone = '' | 'weak' | 'accent' | 'warn' | 'err' | 'ok' | 'tag'
 
@@ -51,6 +53,11 @@ export interface RailSignalsInput {
   due: { kind: string; days: number } | null
   /** Acceptance progress; only consulted while the task waits for review. */
   criteria: RailCriteria
+  /**
+   * Work budget overrun, or null. Only set once the timed work is past the
+   * budget: 80% is a hint in the stage, an overrun is an alarm here.
+   */
+  budget: { overMs: number; percent: number } | null
   /** Points estimate, or null when unset. Reported as static metadata. */
   estimate: number | null
   tags: string[] | null | undefined
@@ -85,6 +92,7 @@ export const SIGNAL_RANK: Record<string, number> = {
   deps: 40,
   'due-today': 42,
   'due-soon': 44,
+  budget: 45,
   stalled: 46,
   criteria: 50,
   timer: 55,
@@ -97,7 +105,7 @@ export const STATIC_METADATA = ['tags', 'estimate', 'priority-low'] as const
 /** Icon for a signal, so the popover does not rely on colour alone. */
 export function signalIcon(kind: string): string {
   if (kind === 'criteria') return 'checkCircle'
-  if (kind === 'timer') return 'clock'
+  if (kind === 'timer' || kind === 'budget') return 'clock'
   if (kind === 'priority-high') return 'arrowUp'
   if ((STATIC_METADATA as readonly string[]).includes(kind)) return 'circle'
   return 'alert'
@@ -172,6 +180,13 @@ export function railSignals(input: RailSignalsInput): RailSignal[] {
   if (input.deps && input.deps.blocked && input.deps.open.length > 0) {
     const titles = input.deps.open.map((item) => item.title).join(', ')
     push({ kind: 'deps', label: fill(t.taskDepsBlocked, { n: input.deps.open.length }), tone: 'warn', title: titles })
+  }
+
+  // An overrun is an alarm (the 80% mark stays a quiet hint in the stage), so the
+  // row never spends its single slot on a budget that is merely close.
+  if (input.budget && input.budget.overMs > 0) {
+    const label = fill(t.taskBudgetChip, { over: formatWorkDuration(input.budget.overMs, workDurationUnits(t)) })
+    push({ kind: 'budget', label, tone: 'err', title: t.taskBudgetHint })
   }
 
   // Acceptance progress is an alarm only while the task waits for review: that

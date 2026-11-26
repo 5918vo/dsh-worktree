@@ -491,6 +491,36 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-risk-score--low { color: var(--ok); border-color: var(--ok-line); background: var(--ok-soft); }
 .dshw-board .dshwd-risk-reasons { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 5px; }
 .dshw-board .dshwd-risk-chip { padding: 1px 6px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg-elevated); color: var(--text-2); font-size: 10.5px; }
+/* ---------- retro tab: calibration, activity heatmap, weekly digest ------- */
+.dshw-board .dshwd-retro-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.dshw-board .dshwd-retro-card--wide { grid-column: 1 / -1; }
+.dshw-board .dshwd-calib-figures { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 12px; }
+.dshw-board .dshwd-calib-figure { flex: 1 1 130px; min-width: 0; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-elevated); }
+.dshw-board .dshwd-calib-figure-num { font-family: "JetBrains Mono", "Cascadia Code", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 17px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.dshw-board .dshwd-calib-figure-label { margin-top: 2px; font-size: 10.5px; color: var(--text-3); }
+.dshw-board .dshwd-calib-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.dshw-board .dshwd-calib-table th { padding: 6px 8px; border-bottom: 1px solid var(--line); color: var(--text-3); font-size: 10.5px; font-weight: 600; text-align: left; }
+.dshw-board .dshwd-calib-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.dshw-board .dshwd-calib-table td.dshwd-mono, .dshw-board .dshwd-calib-table th.dshwd-mono { text-align: right; white-space: nowrap; }
+.dshw-board .dshwd-calib-task { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dshw-board .dshwd-calib-variance--over { color: var(--err); }
+.dshw-board .dshwd-calib-variance--under { color: var(--ok); }
+.dshw-board .dshwd-heatmap-wrap { display: flex; gap: 8px; align-items: flex-start; overflow-x: auto; padding: 4px 0 2px; }
+.dshw-board .dshwd-heatmap-weekdays { display: grid; grid-template-rows: repeat(7, 12px); gap: 3px; font-size: 9px; line-height: 12px; color: var(--text-3); flex: none; }
+.dshw-board .dshwd-heatmap { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 12px); grid-auto-columns: 12px; gap: 3px; flex: none; }
+.dshw-board .dshwd-heatmap-cell { width: 12px; height: 12px; border-radius: 2px; border: 1px solid var(--line); background: var(--bg-elevated); }
+.dshw-board .dshwd-heatmap-cell--l1 { border-color: transparent; background: var(--accent); opacity: .28; }
+.dshw-board .dshwd-heatmap-cell--l2 { border-color: transparent; background: var(--accent); opacity: .5; }
+.dshw-board .dshwd-heatmap-cell--l3 { border-color: transparent; background: var(--accent); opacity: .74; }
+.dshw-board .dshwd-heatmap-cell--l4 { border-color: transparent; background: var(--accent); opacity: 1; }
+.dshw-board .dshwd-heatmap-cell--future { visibility: hidden; }
+.dshw-board .dshwd-heatmap-legend { display: flex; align-items: center; gap: 5px; margin-top: 8px; font-size: 10.5px; color: var(--text-3); }
+.dshw-board .dshwd-heatmap-legend .dshwd-heatmap-cell { width: 10px; height: 10px; }
+.dshw-board .dshwd-weekly-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 10px 0 12px; }
+.dshw-board .dshwd-weekly-stat { min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-elevated); }
+.dshw-board .dshwd-weekly-stat-num { font-family: "JetBrains Mono", "Cascadia Code", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 16px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.dshw-board .dshwd-weekly-stat-label { margin-top: 2px; font-size: 10.5px; color: var(--text-3); }
+.dshw-board .dshwd-weekly-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 @container dshwboard (max-width: 980px) {
   .dshw-board .dshwd-app { grid-template-columns: 248px minmax(0,1fr) 0; }
   .dshw-board .dshwd-app.dshwd-hide-left { grid-template-columns: 0 minmax(0,1fr) 0; }
@@ -501,6 +531,8 @@ export const WORKBENCH_CSS = `
   .dshw-board .dshwd-stage-head { padding: 18px 20px 0; }
   .dshw-board .dshwd-stage-body { padding: 20px 20px 36px; }
   .dshw-board .dshwd-stage-title-row { flex-direction: column; }
+  .dshw-board .dshwd-retro-grid { grid-template-columns: minmax(0, 1fr); }
+  .dshw-board .dshwd-weekly-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @container dshwboard (max-width: 620px) {
   /* Only the paddings and metadata stacking still apply at this width: the

@@ -6,6 +6,7 @@ import type { ProjectView, TaskView } from '../models'
 import { boardBranch, boardStat, boardStatTitle, boardStatus, boardStatusLabel, criteria, criteriaProgress, type BoardFilter, type BoardTheme } from './model'
 import { dueStateOf, parseEstimate } from '../task-meta'
 import { isWorkTiming } from '../task-timer'
+import { workBudgetProgress } from '../task-budget'
 import { useDialogFocus } from './dialog-focus'
 import type { SavedView } from './saved-views'
 import { AttentionFilter } from './attention-filter'
@@ -390,6 +391,8 @@ function taskRow(
   const estimate = parseEstimate(task.estimate)
   const deps = props.depsOf ? props.depsOf(task) : null
   const due = dueStateOf(task.dueAt)
+  // Only a real overrun reaches the row; near-budget stays a quiet stage hint.
+  const budgetProgress = workBudgetProgress(task)
   const startedAt = isWorkTiming(task) ? new Date(Number(task.workStartedAt)) : null
   const signals = railRowSignals({
     t,
@@ -403,6 +406,9 @@ function taskRow(
     deps,
     due,
     criteria: criteriaProgress(criteria(task, tv.snapshot.status)),
+    budget: budgetProgress && budgetProgress.state === 'over'
+      ? { overMs: budgetProgress.overMs, percent: budgetProgress.percent }
+      : null,
     estimate: estimate.ok && estimate.value != null ? estimate.value : null,
     timerClock: startedAt ? pad2(startedAt.getHours()) + ':' + pad2(startedAt.getMinutes()) : '',
     postMergeAhead: Number((tv.snapshot && tv.snapshot.postMergeAhead) || 0),

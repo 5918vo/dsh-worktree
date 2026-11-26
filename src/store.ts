@@ -19,6 +19,7 @@ import { normalizeCriteria } from './criteria.js'
 import { normalizeDependencyIds, validateDependencyIds, type DependencyIssue } from './task-deps.js'
 import { NOTES_MAX_LENGTH, normalizePriority, normalizeTags, parseDueAt, parseEstimate, validateTags } from './task-meta.js'
 import { isWorkTiming, startWorkTimer, stopWorkTimer } from './task-timer.js'
+import { parseWorkBudgetHours } from './task-budget.js'
 import { StoreError } from './errors.js'
 
 // Re-exported for callers that catch store failures without importing errors.js.
@@ -86,6 +87,7 @@ export type TaskMetaPatch = {
   dependsOn?: unknown
   dueAt?: unknown
   estimate?: unknown
+  workBudgetHours?: unknown
 }
 
 /** Outcome of an atomic metadata update; callers map reasons to 404 / 400. */
@@ -100,6 +102,7 @@ export type TaskMetaResult =
       | 'priority-invalid'
       | 'due-invalid'
       | 'estimate-invalid'
+      | 'budget-invalid'
       | 'notes-too-long'
       | 'deps-too-many'
       | 'deps-self'
@@ -1233,6 +1236,9 @@ export class Store {
       const hasEstimate = has('estimate')
       const estimate = hasEstimate ? parseEstimate(patch.estimate) : null
       if (estimate && !estimate.ok) return { ok: false, reason: 'estimate-invalid' }
+      const hasBudget = has('workBudgetHours')
+      const budget = hasBudget ? parseWorkBudgetHours(patch.workBudgetHours) : null
+      if (budget && !budget.ok) return { ok: false, reason: 'budget-invalid' }
       const dependsOn = has('dependsOn') ? normalizeDependencyIds(patch.dependsOn) : null
       if (dependsOn && dependsOn.length) {
         const check = validateDependencyIds({
@@ -1244,7 +1250,7 @@ export class Store {
         })
         if (!check.ok) return { ok: false, reason: dependencyReason(check.error) }
       }
-      if (!tags && !priority && !hasDue && notes === null && dependsOn === null && !hasEstimate) return { ok: true, task }
+      if (!tags && !priority && !hasDue && notes === null && dependsOn === null && !hasEstimate && !hasBudget) return { ok: true, task }
 
       if (tags) {
         if (tags.length) task.tags = tags
@@ -1263,6 +1269,10 @@ export class Store {
       if (hasEstimate && estimate && estimate.ok) {
         if (estimate.value === null) delete task.estimate
         else task.estimate = estimate.value
+      }
+      if (hasBudget && budget && budget.ok) {
+        if (budget.value === null) delete task.workBudgetHours
+        else task.workBudgetHours = budget.value
       }
       if (notes !== null) {
         if (notes) task.notes = notes

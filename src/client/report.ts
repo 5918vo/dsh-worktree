@@ -11,7 +11,9 @@ import { fill, mdBlock, mdCodeCell, mdInline, reportTimestamp } from './markdown
 import { branchHeadSha, criteria, criteriaProgress } from './model'
 import { buildTaskLifecycle, lifecycleCycleDays, lifecycleLabelKey } from './task-lifecycle'
 import { dueInputValue, dueStateOf, parseEstimate } from '../task-meta'
-import { workTimingText } from './work-format'
+import { workBudgetProgress } from '../task-budget'
+import { formatWorkDuration } from '../task-timer'
+import { workDurationUnits, workTimingText } from './work-format'
 
 export interface ReportInput {
   task: WorktreeTask
@@ -78,6 +80,20 @@ function metaLine(label: any, value: string): string {
 }
 
 /**
+ * Work budget as one line: the cap in the board's duration words, with the
+ * overrun appended once the timed work has passed it. No budget reads as the
+ * dictionary's "not set", so the line is always present.
+ */
+function budgetText(t: Record<string, any>, task: WorktreeTask, now: number): string {
+  const progress = workBudgetProgress(task, now)
+  if (!progress) return String(t.taskBudgetEmpty)
+  const budget = formatWorkDuration(progress.budgetMs, workDurationUnits(t))
+  if (progress.state !== 'over') return budget
+  const over = formatWorkDuration(progress.overMs, workDurationUnits(t))
+  return budget + '\uff08' + fill(t.reportBudgetOver, { over }) + '\uff09'
+}
+
+/**
  * Build the report body. Sections keep a fixed order and never disappear: when a
  * source is unavailable the section states why, so the document stays readable
  * (and comparable) across every task state.
@@ -117,6 +133,7 @@ export function buildAcceptanceReport(input: ReportInput): string {
   // Hand-timed work, in the same words as the board; a running timer is marked
   // so a printed report never looks like a finished stretch.
   lines.push(metaLine(t.taskWork, workTimingText(t, task, now)))
+  lines.push(metaLine(t.reportBudget, budgetText(t, task, now)))
   const head = branchHeadSha(task, snapshot)
   lines.push(metaLine(t.reportHead, mdCodeCell(head || '—')))
   if (task.mergedCommit) lines.push(metaLine(t.reportMergedCommit, mdCodeCell(task.mergedCommit)))

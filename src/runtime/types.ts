@@ -39,6 +39,8 @@ export interface PublishInput {
   dueAt?: number | string | null
   /** Relative size (1/2/3/5/8 points); null/empty clears, other values are rejected. */
   estimate?: unknown
+  /** Cap on hand-timed work in hours (0.25..1000); null/empty means no budget. */
+  workBudgetHours?: unknown
 }
 
 export interface AddProjectInput {

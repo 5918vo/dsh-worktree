@@ -341,7 +341,7 @@ export function useBoardActions(args: UseBoardActionsArgs) {
    * Persist task metadata (tags / priority / notes) through one endpoint so the
    * server's atomic read-modify-write stays the only writer.
    */
-  async function runSaveMeta(patch: { tags?: string[]; priority?: string; notes?: string }) {
+  async function runSaveMeta(patch: { tags?: string[]; priority?: string; notes?: string; dependsOn?: string[]; dueAt?: number | null; estimate?: number | null; workBudgetHours?: number | null }) {
     if (!selectedTask || busy) return
     const id = selectedTask.task.id
     setBusy('meta')

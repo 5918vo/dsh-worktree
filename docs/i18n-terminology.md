@@ -42,6 +42,11 @@
 | 停滞 | 停滞 | stalled | `attentionStalled`；行内「停滞 {n} 天」`attentionStalledDays`，汇总 `attentionSummaryStalled` |
 | 项目验收报告 | 项目验收报告 | project acceptance report | `projectReport`；文件名 `project-<slug>-<YYYYMMDD>-<HHmm>.md`，与单任务 `acceptance report` 区分 |
 | 工时 | 工时 | work time | `taskWork`；未记录 `taskWorkEmpty`，计时中 `taskWorkTiming`，按钮 `taskWorkStart` / `taskWorkStop`；单位模板 `taskWorkUnderMinute` / `taskWorkMinutes` / `taskWorkHours` / `taskWorkHoursMinutes` / `taskWorkDays` / `taskWorkDaysHours`，计时中后缀 `taskWorkTimingSuffix`；报告复用这些键 |
+| 工时预算 | 工时预算 | work budget | `taskBudget`；未设置 `taskBudgetEmpty`，接近 `taskBudgetNear`，超出 `taskBudgetChip` / `taskBudgetOver`，进度 `taskBudgetProgress`，报告 `reportBudget` / `projectReportColBudget`；范围 0.25–1000 小时 |
+| 估算校准 | 估算校准 | estimate calibration | `calibrationTitle`；每点 `calibrationPerPoint`，样本 `calibrationSamples`，置信度 `calibrationConfidenceLow` / `calibrationConfidenceMedium` / `calibrationConfidenceHigh`，偏差 `calibrationOver` / `calibrationUnder` / `calibrationOnTarget`；不写「预估准确率」 |
+| 复制任务 | 复制任务 | duplicate task | `cloneTask`；提示 `cloneTaskHint`，后缀 `cloneTitleSuffix`，草稿冲突 `cloneDraftBusy`；是生成发布草稿，不复制运行时状态 |
+| 活动热力图 | 活动热力图 | activity heatmap | `activityTitle`；新建 / 合并 / 更新 `activityCreated` / `activityMerged` / `activityUpdated`，图例 `activityLess` / `activityMore`，空态 `activityEmpty` |
+| 每周摘要 | 每周摘要 | weekly digest | `weeklyTitle`；复制 / 下载 `weeklyCopy` / `weeklyDownload`，统计项 `weeklyNewTasks` / `weeklyMergedTasks` / `weeklyWork` / `weeklyEstimatesDone` / `weeklyBlocked` / `weeklyDueSoon` / `weeklyStale`；文件名 `project-<slug>-weekly-<YYYYMMDD>-<HHmm>.md` |
 | 规模估算 | 规模估算 | estimate | `taskEstimate`；点数 `{n} 点` / "{n} pt"，下拉空选项 `taskEstimateEmpty` / `taskEstimatePoints`；项目负载 `insightsWorkload` |
 | 依赖关系图 | 依赖关系图 | dependency graph | `depGraphTitle`；层 `depGraphLayer`，缺失 `depGraphMissing`，循环 `depGraphHasCycle` / `depGraphNoCycle` / `depGraphCycles`，截断 `depGraphTruncated` |
 | 风险雷达 | 风险雷达 | risk radar | `riskRadar`；高 / 中 / 低 `riskHigh` / `riskMedium` / `riskLow`，原因 `riskReasonOverdue` 等 |
@@ -57,7 +62,10 @@
 - 日期：截止日期输入与报告统一 `YYYY-MM-DD`，按本地日历日解释；不写「MM/DD」或相对日期。
 - 天数：逾期、剩余、停滞与周期统一用「天」；英文用 day(s)，不写 d。
 - 工时：中文用「小时」「分」，英文用 h / m；小于 1 分统一「不足 1 分」/ "under 1 min"，不显示秒。
+- 工时预算：输入单位统一为小时，允许 0.25 步进；展示复用工时单位模板，不另造「预算小时」缩写。中文「预算 4 小时 · 已用 3 小时 15 分（81%）」，英文 "Budget 4 h · used 3 h 15 m (81%)"。
 - 规模：中文用「点」，英文用 "pt"；只允许 `1/2/3/5/8`，不写小数。
+- 校准：每点耗时保留 1 位小数，中文「每点约 2.4 小时」，英文 "About 2.4 h per point"；偏差用整数百分比。
+- 热力图：日期统一 `YYYY-MM-DD`；强度只写「少 / 多」/"Less / More"，不写等级数字。
 - 风险分：中文「{n} 分」，英文 "{n} pts"；分数只作排序提示，不写百分比。
 
 ## 3. 占位符规则
@@ -67,6 +75,7 @@
 - `duration` 从历史 `{s}` 统一为 `{n}`（代码已同步替换逻辑，避免插值失败）。
 - 任何模板必须同时在中英两边保留相同占位符集合。
 - 工时 / 估算 / 风险新增占位符：`{n}`（时长数字、点数、分数、数量）、`{titles}`（阻塞任务标题）；中英两侧必须一致，不使用 `{hours}` 与 `{minutes}` 两套写法。
+- 预算 / 校准 / 热力图 / 周报新增占位符：`{budget}`、`{spent}`、`{percent}`、`{remaining}`、`{over}`（预算）、`{h}`（每点小时）、`{points}`、`{work}`（校准总量）、`{date}`、`{created}`、`{merged}`、`{updated}`（热力图日期提示）、`{status}`（周报状态）；中英两侧集合必须一致。
 
 ## 4. 英文复数
 

@@ -2,6 +2,33 @@
 
 本文件记录 `@5318vo/dsh-worktree` 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.16.0] - 2026-11-26 · 计划校准与吞吐复盘
+
+### 新增
+
+- 工时预算：任务记录新增可选 `workBudgetHours`（小时，0.25–1000）。任务详情新增「工时预算」行与编辑输入，显示预算、已用百分比、剩余或超出时长；达到 80% 提示「接近预算」，超过 100% 显示「超预算」。左栏任务行在超预算时显示告警 chip；项目风险雷达新增「超出工时预算」原因（+2 分）；单任务报告新增「工时预算」行，项目报告任务表新增「工时预算」列。预算由服务端在账本锁内校验与写入，发布 / `task/meta` / 模型工具三条入口一致；超预算不阻止合并、清理、归档或删除。
+- 估算校准：项目详情新增「复盘」页签，第一张卡片用「估算点数 + 已记录工时」的样本反推每个估算点约等于多少小时，显示样本数、累计点数 / 工时、置信度（样本少 / 可参考 / 较可靠）、估算覆盖率，以及按偏差排序的最多 5 个任务明细和「每点约 N 小时」的预算建议。运行中的计时计入样本；无样本时显示空态；纯派生、不写台账、不请求 Git。
+- 复制任务：任务详情右栏新增「复制任务」按钮，点击后生成发布草稿：标题加副本后缀，描述、验收标准、标签、优先级与估算照搬；会话、分支、worktree、状态、提交、合并记录、截止日期与备注不复制。已有未保存的发布草稿时提示先保存或丢弃，不静默覆盖。取消发布不产生任务。
+- 项目活动热力图：项目详情「复盘」页签新增 12 周 × 7 天日历热力图，按本地日历日统计新建、合并与更新事件，按最忙一天分 0–4 级着色；悬停显示日期与三类计数，未来格子隐藏，提供「少 → 多」图例与空态。周一对齐，跨月 / 跨年 / DST 不丢天，不写台账、不请求 Git。
+- 每周摘要：项目详情「复盘」页签新增最近 7 个本地日历日的周报卡片，显示新建、合并、记录工时、完成估算点、阻塞、7 天内到期与停滞七项指标；支持复制 / 下载 Markdown，包含项目元数据、统计区间、摘要与任务明细表，文件名 `project-<slug>-weekly-<YYYYMMDD>-<HHmm>.md`。窗口按本地午夜开区间，复制与下载共用同一份文本。
+
+### 接口
+
+- `WorktreeTask` 新增可选 `workBudgetHours?: number`，旧记录无需迁移；`TaskMetaPatch` 增加 `workBudgetHours`，`TaskMetaResult` 增加 `budget-invalid`。
+- `PublishInput` 增加 `workBudgetHours`；`POST publish` 与 `POST task/meta` 透传；`worktree_publish` 新增 `budget_hours`，`worktree_act` 的 `meta` 新增 `budget_hours`；任务 briefing 返回 `workBudgetHours`。
+- 新增纯函数模块 `src/task-budget.ts`（`parseWorkBudgetHours` / `workBudgetMsOf` / `workBudgetProgress` / `budgetHoursText`，`BUDGET_MIN_HOURS` / `BUDGET_MAX_HOURS`）。
+- 新增纯函数模块 `src/client/estimate-calibration.ts`（`buildEstimateCalibration`）、`src/client/task-clone.ts`（`cloneTaskDraft`）、`src/client/project-activity.ts`（`buildProjectActivity`，`ACTIVITY_WEEKS = 12`）、`src/client/project-weekly.ts`（`buildWeeklyDigest` / `weeklyDigestFilename`，`WEEKLY_DAYS = 7`）。
+- 项目详情新增 `retro` 页签；`project-risk` 新增 `budget` 风险原因；`rail-summary` 新增 `budget` 告警；单任务报告与项目报告新增预算输出。
+- 不新增 HTTP 路由，不引入新依赖。
+
+### 测试
+
+- 新增 6 个测试文件共 69 个用例（`task-budget` 12、`task-budget-store` 5、`client-estimate-calibration` 13、`client-task-clone` 12、`client-project-activity` 11、`client-project-weekly` 16），项目报告测试同步更新「工时预算」列；覆盖预算边界与时钟异常、校准样本与置信度、复制草稿字段、热力图本地日 / 跨年 / 未来格子、周报窗口边界与七项统计。全套 766 项测试通过，`npm run verify` 全部通过。
+
+### 文档
+
+- `README.md`、`CHANGELOG.md`、`docs/frontend-design.md`、`docs/i18n-terminology.md` 与 `feature.md` 同步更新到 1.16.0；`locale/zh.json` 与 `locale/en.json` 新增预算、校准、复制、热力图与周报文案，`npm run check:locale` 通过。
+
 ## [1.15.0] - 2026-11-23 · 执行节奏与风险可视化
 
 ### 新增
