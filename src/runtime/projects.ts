@@ -9,6 +9,7 @@ import { normalizeCriteria } from '../criteria.js'
 import * as gitx from '../gitx.js'
 import { Project, ProjectView, TaskView, WorktreeTask } from '../models.js'
 import { compareTaskOrder, normalizePriority, normalizeTags, parseDueAt, parseEstimate, validateTags } from '../task-meta.js'
+import { parseWorkBudgetHours } from '../task-budget.js'
 import { assertTaskBranchName, buildFirstPrompt, id8, normalizeModelSelection } from './prompt.js'
 import {
   absPath,
@@ -312,6 +313,9 @@ export async function publishTask(ctx: RuntimeContext, input: PublishInput): Pro
   if (due && !due.ok) throw new TaskError('截止日期无效')
   const estimate = input.estimate === undefined ? null : parseEstimate(input.estimate)
   if (estimate && !estimate.ok) throw new TaskError('规模估算只能是 1、2、3、5 或 8 点')
+  // A bad budget must not leave a project, branch or worktree behind either.
+  const budget = input.workBudgetHours === undefined ? null : parseWorkBudgetHours(input.workBudgetHours)
+  if (budget && !budget.ok) throw new TaskError('工时预算需在 0.25 到 1000 小时之间')
 
   const project = await ensureProject(ctx, input)
   const repoPath = project.repoPath
@@ -388,6 +392,7 @@ export async function publishTask(ctx: RuntimeContext, input: PublishInput): Pro
     ...(priority && priority !== 'normal' ? { priority } : {}),
     ...(due && due.ok && due.value !== null ? { dueAt: due.value } : {}),
     ...(estimate && estimate.ok && estimate.value !== null ? { estimate: estimate.value } : {}),
+    ...(budget && budget.ok && budget.value !== null ? { workBudgetHours: budget.value } : {}),
     sessionId: null,
     firstPrompt: '',
     startOnBind: input.start !== false && input.autoBind !== false,

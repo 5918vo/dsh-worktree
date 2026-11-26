@@ -6,7 +6,9 @@
 
 import type { Project, TaskView, WorktreeTask } from '../models'
 import { compareTaskOrder, dueInputValue, parseEstimate } from '../task-meta'
-import { workTimingText } from './work-format'
+import { workBudgetProgress } from '../task-budget'
+import { formatWorkDuration } from '../task-timer'
+import { workDurationUnits, workTimingText } from './work-format'
 import { pad2 } from './format'
 import { fill, mdBlock, mdCell, mdCodeCell, mdInline, reportTimestamp, safeSlug } from './markdown'
 import { branchHeadSha, criteria, criteriaProgress } from './model'
@@ -62,6 +64,20 @@ function workText(t: Record<string, any>, task: WorktreeTask, now: number): stri
   return workTimingText(t, task, now)
 }
 
+/**
+ * Budget as one cell / one line: the cap in the board's duration words, with
+ * the overrun appended once the timed work has passed it. No budget reads as
+ * the board's "not set", so the column never looks broken.
+ */
+function budgetText(t: Record<string, any>, task: WorktreeTask, now: number): string {
+  const progress = workBudgetProgress(task, now)
+  if (!progress) return String(t.taskBudgetEmpty)
+  const budget = formatWorkDuration(progress.budgetMs, workDurationUnits(t))
+  if (progress.state !== 'over') return budget
+  const over = formatWorkDuration(progress.overMs, workDurationUnits(t))
+  return budget + '\uff08' + fill(t.reportBudgetOver, { over }) + '\uff09'
+}
+
 function activityAt(view: TaskView): number {
   return Math.max(
     Number(view.task.updatedAt) || 0,
@@ -107,8 +123,8 @@ export function buildProjectReport(input: ProjectReportInput): string {
     lines.push(String(t.projectReportEmpty))
     return lines.join('\n') + '\n'
   }
-  lines.push(`| ${t.projectReportColNo} | ${t.projectReportColStatus} | ${t.projectReportColTask} | ${t.projectReportColBranch} | ${t.projectReportColProgress} | ${t.projectReportColPriority} | ${t.projectReportColEstimate} | ${t.projectReportColDue} | ${t.projectReportColWork} | ${t.projectReportColTags} | ${t.projectReportColActivity} |`)
-  lines.push('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |')
+  lines.push(`| ${t.projectReportColNo} | ${t.projectReportColStatus} | ${t.projectReportColTask} | ${t.projectReportColBranch} | ${t.projectReportColProgress} | ${t.projectReportColPriority} | ${t.projectReportColEstimate} | ${t.projectReportColDue} | ${t.projectReportColWork} | ${t.projectReportColBudget} | ${t.projectReportColTags} | ${t.projectReportColActivity} |`)
+  lines.push('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |')
   views.forEach((view, index) => {
     const { task, snapshot } = view
     const items = criteria(task, snapshot.status)
@@ -124,6 +140,7 @@ export function buildProjectReport(input: ProjectReportInput): string {
       mdCell(estimateText(t, task.estimate)),
       mdCell(dueInputValue(task.dueAt) || '—'),
       mdCell(workText(t, task, now)),
+      mdCell(budgetText(t, task, now)),
       mdCell(tags),
       activityAt(view) ? mdCell(reportTimestamp(activityAt(view))) : '—',
     ]
@@ -143,6 +160,7 @@ export function buildProjectReport(input: ProjectReportInput): string {
     lines.push(`- ${t.reportDue}: ${mdCell(dueInputValue(task.dueAt) || t.reportDueNone)}`)
     lines.push(`- ${t.taskEstimate}: ${mdCell(estimateText(t, task.estimate))}`)
     lines.push(`- ${t.taskWork}: ${mdCell(workText(t, task, now))}`)
+    lines.push(`- ${t.reportBudget}: ${mdCell(budgetText(t, task, now))}`)
     if (task.mergedCommit) lines.push(`- ${t.projectReportMergedCommit}: ${mdCodeCell(task.mergedCommit)}`)
     lines.push(`- ${t.projectReportHead}: ${mdCodeCell(branchHeadSha(task, snapshot) || '—')}`)
     lines.push('')

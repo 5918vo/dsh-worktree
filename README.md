@@ -1,6 +1,6 @@
 # DeepSeek Worktree 任务插件
 
-`@5318vo/dsh-worktree` · v1.14.0 · 最后更新：2026-11-23
+`@5318vo/dsh-worktree` · v1.16.0 · 最后更新：2026-11-26
 
 每个任务对应一个真实的 DSH 会话。发布任务时创建独立的 Git worktree 和任务分支，会话以 worktree 为工作目录出现在左侧工作区。任务对话、审批、追问、中止和继续均使用 DSH 原生能力，工作台负责发布、查看状态和验收。
 
@@ -33,6 +33,11 @@
 - **依赖关系图**：项目详情把前置依赖画成分层 DAG，区分未完成 / 已完成 / 缺失 / 循环节点；点击节点或按层列表可跳到任务，异常数据有安全兜底。
 - **项目风险雷达**：项目详情按 Git 异常、逾期、临近截止、停滞、未完成前置与验收缺口给开放任务打分，列出高 / 中 / 低计数与最该处理的前 5 项及原因。
 - **保存的筛选视图**：左栏可把搜索、注意力筛选、标签与归档开关保存为命名视图，一键恢复；同名保存更新原视图，手动修改后回到「自定义」，视图保存在浏览器本地。
+- **工时预算**：任务可设置可选的小时预算（0.25–1000）；任务详情显示已用百分比、剩余或超出时长，80% 提示「接近预算」、超过 100% 显示「超预算」。超预算任务在左栏显示告警并进入风险雷达；单任务与项目报告同步输出预算。预算不阻止合并 / 清理 / 归档。
+- **估算校准**：项目详情「复盘」页用「估算点数 + 已记录工时」的样本反推每个估算点约等于多少小时，显示样本数、置信度、估算覆盖率与偏差最大的任务，并给出「每点约 N 小时」的预算建议；纯派生、只读。
+- **复制任务**：任务详情右栏可把现有任务复制为发布草稿，保留标题（加副本后缀）、描述、验收标准、标签、优先级与估算；不复制会话、分支、状态与截止日期。已有未保存草稿时不会覆盖。
+- **活动热力图**：项目详情「复盘」页展示最近 12 周 × 7 天的日历热力图，按本地日统计新建、合并与更新事件并分 0–4 级着色；未来格子隐藏，跨月 / 跨年 / DST 不错位。
+- **每周摘要**：项目详情「复盘」页汇总最近 7 个本地日历日的新建、合并、工时、完成估算点、阻塞、7 天内到期与停滞任务，一键复制 / 下载 Markdown 周报，文件名 `project-<slug>-weekly-<YYYYMMDD>-<HHmm>.md`。
 - **停滞任务检测**：待开始 / 待验收 / 验收中超过 3 天、进行中超过 7 天没有活动（含提交）即标记为停滞，进入「停滞」筛选并在行内显示「停滞 N 天」；已合并 / 已清理 / 异常 / 已归档任务不参与判定。
 - **项目验收报告**：项目详情一键复制或下载整项目 Markdown 报告，包含项目元数据、状态统计、任务表与逐任务验收 / 备注，文件名 `project-<slug>-<YYYYMMDD>-<HHmm>.md`。
 - **会话快捷指令**：实时会话提供「继续 / 跑测试 / 总结进展 / 提交改动」四个快捷 chip 和指令输入框，`Ctrl/Cmd+Enter` 发送；运行中的会话自动排队，等待审批 / 回答时禁用。
@@ -240,7 +245,14 @@ src/client/
 ├─ project-insights.ts        # 项目周期 / 吞吐 / 验收覆盖率 / 估算负载纯函数
 ├─ task-lifecycle.ts          # 任务生命周期事件纯函数
 ├─ dependency-graph.ts        # 依赖关系图分层布局纯函数
-├─ project-risk.ts            # 项目风险评分纯函数
+├─ project-risk.ts            # 项目风险评分纯函数（含工时预算原因）
+├─ estimate-calibration.ts    # 估算点与实际工时校准纯函数
+├─ project-activity.ts        # 12 周活动热力图日历纯函数
+├─ project-weekly.ts          # 最近 7 天周报统计与 Markdown 纯函数
+├─ task-clone.ts              # 从任务生成发布草稿纯函数
+├─ retro-calibration.ts       # 复盘页：估算校准卡片
+├─ retro-activity.ts          # 复盘页：活动热力图卡片
+├─ retro-weekly.ts            # 复盘页：每周摘要卡片
 ├─ saved-views.ts             # 保存视图校验 / 序列化纯函数
 ├─ view-storage.ts            # 保存视图 localStorage 适配器
 ├─ quick-prompts.ts           # 会话快捷指令文本与禁用原因
@@ -250,7 +262,7 @@ src/client/
 ├─ hooks.ts                   # useBranchInfo、useToast
 ├─ board-data.ts              # 项目/任务视图派生
 ├─ merge-preview.ts           # 合并预检控制器
-├─ project-detail.ts          # 项目详情（Stage 中显示）
+├─ project-detail.ts          # 项目详情（Stage 中显示，含概览 / 复盘 / 设置页签）
 ├─ settings-page.ts
 ├─ board.ts                   # WorkbenchBoardPage、WorkbenchBoardIcon、数据轮询（按参考原型 1:1）
 ├─ rail.ts                    # 左栏：搜索/过滤/项目任务列表/主题
@@ -262,7 +274,7 @@ src/client/
 └─ model.ts                   # 状态、CTA、过滤与格式化派生
 ```
 
-宿主侧的 `src/task-meta.ts`（标签 / 优先级 / 截止日期 / 规模估算）、`src/task-deps.ts`（前置依赖校验与派生）与 `src/task-timer.ts`（工时累计 / 开始 / 停止 / 格式化）不依赖 React，供宿主、客户端与测试共用。
+宿主侧的 `src/task-meta.ts`（标签 / 优先级 / 截止日期 / 规模估算）、`src/task-deps.ts`（前置依赖校验与派生）、`src/task-timer.ts`（工时累计 / 开始 / 停止 / 格式化）与 `src/task-budget.ts`（工时预算解析 / 进度 / 状态）不依赖 React，供宿主、客户端与测试共用。
 
 约定：
 
@@ -312,9 +324,9 @@ POST task/timer
 - `templates` 只读接口返回全部发布模板；保存与删除在 Store 的跨进程锁内读改写，响应始终是完整的 `{ templates }` 列表。
 - `projects/update` 可带 `mergeGate: 'off' | 'criteria'`；其他取值返回 400。
 - `task/pin` 请求体 `{ id, pinned }`，只写入展示字段 `pinnedAt`，不改变任务状态与 Git。
-- `task/meta` 请求体 `{ id, tags?, priority?, notes?, dueAt?, dependsOn?, estimate? }`：只处理实际出现的键，`tags: []` / `priority: 'normal'` / `notes: ''` / `dueAt: null` / `dependsOn: []` / `estimate: null` 才是清空；标签、备注、日期格式、依赖数量 / 自依赖 / 跨项目 / 循环依赖、估算取值（`1/2/3/5/8`）不合法时返回 400，任务不存在返回 404。
+- `task/meta` 请求体 `{ id, tags?, priority?, notes?, dueAt?, dependsOn?, estimate?, workBudgetHours? }`：只处理实际出现的键，`tags: []` / `priority: 'normal'` / `notes: ''` / `dueAt: null` / `dependsOn: []` / `estimate: null` / `workBudgetHours: null` 才是清空；标签、备注、日期格式、依赖数量 / 自依赖 / 跨项目 / 循环依赖、估算取值（`1/2/3/5/8`）、预算范围（`0.25`–`1000` 小时）不合法时返回 400，任务不存在返回 404。
 - `task/timer` 请求体 `{ id, action: 'start' | 'stop' }`：开始 / 停止计时，时间戳由服务端在账本锁内写入；任务不存在返回 404，`merged` / `cleaned` / 已归档任务开始计时返回 400，停止计时仍可用。
-- `publish` 可带 `dueAt`（`YYYY-MM-DD` 或毫秒时间戳）；服务端归一到本地日历日零点，非法值返回 400。`dependsOn` 不在发布时接受，任务创建后在详情中维护。`publish` 也可带 `estimate`（`1/2/3/5/8`），非法值在创建分支 / worktree 之前返回 400。
+- `publish` 可带 `dueAt`（`YYYY-MM-DD` 或毫秒时间戳）；服务端归一到本地日历日零点，非法值返回 400。`dependsOn` 不在发布时接受，任务创建后在详情中维护。`publish` 也可带 `estimate`（`1/2/3/5/8`）与 `workBudgetHours`（`0.25`–`1000` 小时），非法值在创建分支 / worktree 之前返回 400。
 - `session` 用于申请工作台 token；`config`、`recents`、`branches` 是本地查询接口。
 - `cleanup` 可带 `force`、`deleteBranch`。
 - `publish` 未传 `branchName` 时使用 Hash 命名规则。
@@ -354,14 +366,14 @@ POST task/timer
 
 ```text
 worktree_projects {}
-worktree_publish { repository, base_branch?, title, task, branch_name?, parent_id?, start?, tags?, priority?, due_at?, estimate? }
+worktree_publish { repository, base_branch?, title, task, branch_name?, parent_id?, start?, tags?, priority?, due_at?, estimate?, budget_hours? }
 worktree_tasks   {}
-worktree_act     { id, action, force?, delete_branch?, tags?, priority?, notes?, due_at?, depends_on?, estimate?, timer_action? }
+worktree_act     { id, action, force?, delete_branch?, tags?, priority?, notes?, due_at?, depends_on?, estimate?, budget_hours?, timer_action? }
 ```
 
 `worktree_projects` 列出已登记的项目（仓库路径、默认基线分支、任务数与状态分布），`worktree_publish` 的 `project_id` 就取自这里。
 
-`due_at` 接受 `YYYY-MM-DD` 或毫秒时间戳，写入时统一归一到本地日历日零点；`estimate` 接受 `1/2/3/5/8`；`worktree_act` 的 `meta` 动作传 `null` 或空串清除。`worktree_act` 的 `timer` 动作需要 `timer_action: 'start' | 'stop'`。
+`due_at` 接受 `YYYY-MM-DD` 或毫秒时间戳，写入时统一归一到本地日历日零点；`estimate` 接受 `1/2/3/5/8`；`budget_hours` 接受 `0.25`–`1000` 小时；`worktree_act` 的 `meta` 动作传 `null` 或空串清除。`worktree_act` 的 `timer` 动作需要 `timer_action: 'start' | 'stop'`。
 
 `worktree_act.action` 取值：
 
@@ -538,3 +550,6 @@ npm run build       # 生产构建
 - 工时只记录用户主动开始到停止的区间，不自动计时；跨设备 / 多用户不同步，累计值随任务台账共享。
 - 保存视图保存在浏览器 `localStorage`（`dshw-board:saved-views:v1`），同一浏览器同源窗口共享，跨浏览器 / 跨机器不同步；存储被禁用或配额不足时功能降级，不影响看板其他部分。
 - 风险雷达的分值是启发式排序，不是 SLA 或承诺；权重调整会同步更新文档与测试。
+- 工时预算是计划字段，不是门禁：超出只影响展示、左栏告警、风险排序与报告，不阻止合并 / 清理 / 归档，也不做自动计时或成本核算。
+- 估算校准只使用同时有估算与工时的样本；样本少时置信度低，卡片只给建议，不自动改写估算或预算。
+- 活动热力图与每周摘要按浏览器本地日历日分桶，跨时区共用台账可能得到不同日桶；周报工时是窗口内活跃任务的当前累计值，不按天拆分；周报任务表最多列 30 条，统计项不受截断影响。

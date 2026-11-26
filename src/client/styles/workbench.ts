@@ -522,10 +522,6 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-weekly-stat-label { margin-top: 2px; font-size: 10.5px; color: var(--text-3); }
 .dshw-board .dshwd-weekly-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 @container dshwboard (max-width: 980px) {
-  .dshw-board .dshwd-retro-grid { grid-template-columns: minmax(0, 1fr); }
-  .dshw-board .dshwd-weekly-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@container dshwboard (max-width: 980px) {
   .dshw-board .dshwd-app { grid-template-columns: 248px minmax(0,1fr) 0; }
   .dshw-board .dshwd-app.dshwd-hide-left { grid-template-columns: 0 minmax(0,1fr) 0; }
   .dshw-board .dshwd-app.dshwd-hide-right { grid-template-columns: 248px minmax(0,1fr) 0; }
@@ -535,6 +531,8 @@ export const WORKBENCH_CSS = `
   .dshw-board .dshwd-stage-head { padding: 18px 20px 0; }
   .dshw-board .dshwd-stage-body { padding: 20px 20px 36px; }
   .dshw-board .dshwd-stage-title-row { flex-direction: column; }
+  .dshw-board .dshwd-retro-grid { grid-template-columns: minmax(0, 1fr); }
+  .dshw-board .dshwd-weekly-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @container dshwboard (max-width: 620px) {
   /* Only the paddings and metadata stacking still apply at this width: the

@@ -457,6 +457,7 @@ export function ProjectDetail(props: any) {
         case 'stalled': return fill(t.riskReasonStalled, { n: reason.n })
         case 'blocked': return fill(t.riskReasonBlocked, { n: reason.n })
         case 'criteria': return fill(t.riskReasonCriteria, { n: reason.n })
+        case 'budget': return t.riskReasonBudget
         default: return ''
       }
     }

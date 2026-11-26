@@ -222,6 +222,7 @@ export class Runtime {
           : result.reason === 'priority-invalid' ? '优先级只能是 low、normal 或 high'
             : result.reason === 'due-invalid' ? '截止日期无效'
               : result.reason === 'estimate-invalid' ? '规模估算只能是 1、2、3、5 或 8 点'
+                : result.reason === 'budget-invalid' ? '工时预算需在 0.25 到 1000 小时之间'
                 : result.reason === 'notes-too-long' ? '备注最多 2000 个字符'
                 : result.reason === 'deps-too-many' ? '前置任务最多 8 个'
                   : result.reason === 'deps-self' ? '不能依赖自己'

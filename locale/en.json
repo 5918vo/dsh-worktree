@@ -777,6 +777,7 @@
   "projectReportColEstimate": "Estimate",
   "projectReportColDue": "Due",
   "projectReportColWork": "Work time",
+  "projectReportColBudget": "Work budget",
   "projectReportColTags": "Tags",
   "projectReportColActivity": "Last activity",
   "projectReportTaskHead": "Task {n}: {title}",

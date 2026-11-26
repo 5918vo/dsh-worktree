@@ -777,6 +777,7 @@
   "projectReportColEstimate": "估算",
   "projectReportColDue": "截止",
   "projectReportColWork": "工时",
+  "projectReportColBudget": "工时预算",
   "projectReportColTags": "标签",
   "projectReportColActivity": "最近活动",
   "projectReportTaskHead": "任务 {n}：{title}",

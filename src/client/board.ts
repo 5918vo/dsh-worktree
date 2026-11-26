@@ -18,6 +18,7 @@ import { Inspector } from './inspector'
 import { activeDrawer, closeAllDrawers, closeDrawer, dismissDrawer, drawerFocusTrap, selectionDrawerState, toggleDrawer, type DrawerState, type DrawerSide } from './drawers'
 import { attachFocusTrap } from './dialog-focus'
 import { PublishModal } from './publish'
+import { cloneTaskDraft } from './task-clone'
 import { AddProjectModal } from './add-project'
 import { openNativeSession } from './actions'
 import { pendingLabel } from './status'
@@ -324,6 +325,19 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     setPublishProjectId(projectId || selectedProjectId || taskProjectId || (views[0] && views[0].project.id) || '')
     setPublishParentId(parentId)
     setPublishOpen(true)
+  }
+
+  /**
+   * Duplicate a task into a publish draft. A kept draft from an earlier
+   * publish session is the user's unsaved work: never overwrite it silently —
+   * ask them to save or discard it first.
+   */
+  const cloneTask = (task: any) => {
+    if (!task) return
+    if (publishDraft) { say(t.cloneDraftBusy, true); return }
+    setPublishDraft(cloneTaskDraft(task, String(t.cloneTitleSuffix || '')))
+    openPublish(task.projectId || selectedProjectId)
+    say(t.cloneOpened)
   }
 
   React.useEffect(() => {
@@ -782,6 +796,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           onSyncBaseline: actions.runSyncBaseline,
           onArchive: () => actions.archiveTask(false),
           onUnarchive: () => actions.archiveTask(true),
+          onClone: () => cloneTask(selectedTask.task),
           onCleanup: actions.runCleanup,
           onDelete: actions.runDeleteTask,
           onRestore: actions.runMergeRestore,

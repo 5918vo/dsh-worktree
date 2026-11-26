@@ -119,6 +119,12 @@ export interface WorktreeTask {
   workMs?: number
   /** Start of the currently running timer (ms); absent means the timer is idle. */
   workStartedAt?: number
+  /**
+   * Optional cap on hand-timed work, in hours (0.25..1000). Absent means the
+   * task has no budget; legacy records need no migration, they simply read as
+   * unbudgeted.
+   */
+  workBudgetHours?: number
   /** Optional per-task acceptance criteria (one trimmed line per item). */
   acceptanceCriteria?: string[]
   /** Verified criterion texts; intersected with acceptanceCriteria for display. */

@@ -10,8 +10,9 @@ import { fallbackEntries, type TimelineEntry } from './timeline'
 import { entryTag, entryTitle, liveStatsText, modelLabel, modelLabelFull, nearBottom, pressurePercent, readLive, shouldFollowLive, stepStatusLabel, tokenSummary } from './live-session'
 import { postMergeCount, reviewStaleCount } from './review-surfaces'
 import { NOTES_MAX_LENGTH, dueInputValue, dueStateOf, parseDueAt, parseEstimate, parseTagText, TASK_ESTIMATES, validateTags } from '../task-meta'
-import { isWorkTiming } from '../task-timer'
-import { workTotalText } from './work-format'
+import { isWorkTiming, formatWorkDuration } from '../task-timer'
+import { workBudgetProgress, parseWorkBudgetHours } from '../task-budget'
+import { workDurationUnits, workTotalText } from './work-format'
 import { DEPENDENCY_LIMIT } from '../task-deps'
 import { fill } from './markdown'
 
@@ -43,8 +44,8 @@ export interface StageProps {
   onDownloadReport?: () => void
   /** A report action is in flight; both report buttons stay disabled. */
   reportBusy?: boolean
-  /** Persist tags / priority / notes / dependencies / deadline; omitted keeps the info block read-only. */
-  onSaveMeta?: (patch: { tags?: string[]; priority?: string; notes?: string; dependsOn?: string[]; dueAt?: number | null; estimate?: number | null }) => Promise<void>
+  /** Persist tags / priority / notes / dependencies / deadline / work budget; omitted keeps the info block read-only. */
+  onSaveMeta?: (patch: { tags?: string[]; priority?: string; notes?: string; dependsOn?: string[]; dueAt?: number | null; estimate?: number | null; workBudgetHours?: number | null }) => Promise<void>
   /** A metadata write is in flight; the editors stay disabled. */
   metaBusy?: boolean
   /**
@@ -445,6 +446,36 @@ function TaskWorkRow(props: {
 }
 
 /**
+ * Work budget against the timed work, in the same words as every other surface.
+ *
+ * The cap is always shown; the chip states where the task stands — over (err),
+ * near (warn) or the plain progress — and stays quiet (hint) when no budget is
+ * set. Zero extra requests: the value is derived from the task already on screen.
+ */
+function budgetValueNode(t: any, task: WorktreeTask) {
+  const units = workDurationUnits(t)
+  const progress = workBudgetProgress(task)
+  if (!progress) return h('span', { className: 'dshwd-hint', title: t.taskBudgetHint }, t.taskBudgetEmpty)
+  const budget = formatWorkDuration(progress.budgetMs, units)
+  const spent = formatWorkDuration(progress.spentMs, units)
+  const chip = progress.state === 'over'
+    ? h('span', { className: 'dshwd-chip dshwd-err' }, fill(t.taskBudgetChip, { over: formatWorkDuration(progress.overMs, units) }))
+    : progress.state === 'near'
+      ? h('span', { className: 'dshwd-chip dshwd-warn' }, t.taskBudgetNear)
+      : h('span', { className: 'dshwd-chip' }, fill(t.taskBudgetProgress, { budget, spent, percent: progress.percent }))
+  return h('div', { className: 'dshwd-meta-chips', title: t.taskBudgetHint },
+    h('span', { className: 'dshwd-mono' }, budget),
+    chip)
+}
+
+function TaskBudgetRow(props: { t: any; task: WorktreeTask }) {
+  const { t, task } = props
+  return h('div', { className: 'dshwd-meta-row' },
+    h('div', { className: 'dshwd-meta-label' }, t.taskBudget),
+    h('div', { className: 'dshwd-meta-value' }, budgetValueNode(t, task)))
+}
+
+/**
  * Read-only task info. Deliberately hook-free so the shallow-render tests can
  * walk it; the editable variant is only created when a save callback exists.
  */
@@ -494,6 +525,7 @@ function TaskMetaSection(props: StageProps) {
               : null)
           : h('span', { className: 'dshwd-hint' }, t.taskDueEmpty))),
       h(TaskWorkRow, { t, task, busy: !!props.metaBusy, onTimer: props.onTimer }),
+      h(TaskBudgetRow, { t, task }),
       h('div', { className: 'dshwd-meta-row' },
         h('div', { className: 'dshwd-meta-label' }, t.taskNotes),
         h('div', { className: 'dshwd-prose dshwd-notes' }, task.notes || t.taskNotesEmpty)),
@@ -564,6 +596,10 @@ function TaskMetaEditor(props: StageProps) {
   const estimate = parseEstimate(task.estimate)
   const estimatePoints = estimate.ok ? estimate.value : null
   const [estimateDraft, setEstimateDraft] = React.useState(estimatePoints == null ? '' : String(estimatePoints))
+  // Budget draft as an hours string; '' means "no budget".
+  const budgetStored = parseWorkBudgetHours(task.workBudgetHours)
+  const [budgetDraft, setBudgetDraft] = React.useState(budgetStored.ok && budgetStored.value != null ? String(budgetStored.value) : '')
+  const [budgetError, setBudgetError] = React.useState('')
   const [dueDraft, setDueDraft] = React.useState(dueInputValue(task.dueAt))
   const [dueError, setDueError] = React.useState('')
   const [editingTags, setEditingTags] = React.useState(false)
@@ -599,12 +635,16 @@ function TaskMetaEditor(props: StageProps) {
   React.useEffect(() => {
     setEstimateDraft(estimatePoints == null ? '' : String(estimatePoints))
   }, [task.id, task.estimate])
-  // A refresh can replace the task while the editor is open; reset the date
-  // buffer only when the stored deadline actually changed.
   React.useEffect(() => {
     setDueDraft(dueInputValue(task.dueAt))
     setDueError('')
   }, [task.id, task.dueAt])
+  // Reset the budget buffer on a task switch (and when the stored value changes).
+  React.useEffect(() => {
+    const parsed = parseWorkBudgetHours(task.workBudgetHours)
+    setBudgetDraft(parsed.ok && parsed.value != null ? String(parsed.value) : '')
+    setBudgetError('')
+  }, [task.id, task.workBudgetHours])
 
   const startEditTags = () => {
     setTagText(tags.join(', '))
@@ -669,6 +709,40 @@ function TaskMetaEditor(props: StageProps) {
       return
     }
     void save({ dueAt: parsed.value }).catch(() => setDueDraft(previous))
+  }
+
+  // Budget edits save on blur / Enter: an empty field clears the budget, an
+  // out-of-range or non-numeric value only raises an inline error and never
+  // reaches the server.
+  const saveBudget = async () => {
+    if (!save) return
+    const raw = budgetDraft.trim()
+    const stored = budgetStored.ok && budgetStored.value != null ? budgetStored.value : null
+    if (raw === '') {
+      setBudgetError('')
+      // A blur without an edit must not touch the task: a no-op write would
+      // still bump updatedAt and show up in activity / weekly surfaces.
+      if (stored === null) return
+      try {
+        await save({ workBudgetHours: null })
+      } catch {
+        return
+      }
+      return
+    }
+    const parsed = parseWorkBudgetHours(raw)
+    if (!parsed.ok || parsed.value == null) {
+      setBudgetError(t.taskBudgetInvalid)
+      return
+    }
+    setBudgetError('')
+    if (stored === parsed.value) return
+    try {
+      await save({ workBudgetHours: parsed.value })
+    } catch {
+      // The board already surfaced the server message; keep the draft.
+      return
+    }
   }
 
   return h('section', { className: 'dshwd-block dshwd-task-meta' },
@@ -766,6 +840,30 @@ function TaskMetaEditor(props: StageProps) {
             h('div', { className: 'dshwd-hint' }, t.taskDueHint),
             dueError ? h('div', { className: 'dshwd-alert', role: 'alert' }, dueError) : null))),
       h(TaskWorkRow, { t, task, busy, onTimer: props.onTimer }),
+      h('div', { className: 'dshwd-meta-row' },
+        h('div', { className: 'dshwd-meta-label' }, t.taskBudget),
+        h('div', { className: 'dshwd-meta-value' },
+          h('div', { className: 'dshwd-meta-editor' },
+            h('input', {
+              type: 'number',
+              className: 'dshwd-input' + (budgetError ? ' dshwd-invalid' : ''),
+              value: budgetDraft,
+              step: 0.25,
+              min: 0.25,
+              max: 1000,
+              disabled: busy,
+              placeholder: t.taskBudgetPlaceholder,
+              'aria-label': t.taskBudgetInput,
+              'aria-invalid': budgetError ? 'true' : 'false',
+              onChange: (e: any) => { setBudgetDraft(e.target.value); setBudgetError('') },
+              onBlur: () => { void saveBudget() },
+              onKeyDown: (e: any) => {
+                if (e.key === 'Enter' && !(e.nativeEvent && e.nativeEvent.isComposing)) { e.preventDefault(); void saveBudget() }
+              },
+            }),
+            h('div', { className: 'dshwd-hint' }, t.taskBudgetHint),
+            budgetValueNode(t, task),
+            budgetError ? h('div', { className: 'dshwd-alert', role: 'alert' }, budgetError) : null))),
       h('div', { className: 'dshwd-meta-row' },
         h('div', { className: 'dshwd-meta-label' }, t.taskNotes),
         h('div', { className: 'dshwd-meta-value' },
