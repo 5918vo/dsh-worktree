@@ -682,6 +682,6 @@ export function weeklyDigestFilename(project: Project, now?: number): string
 ### 10.4 交付
 
 - 分支：`t3/daily-5-feature-batch`
-- PR：创建后回填
+- PR：[#35](https://github.com/5918vo/dsh-worktree/pull/35)
 - 版本：`package.json` / `package-lock.json` 已升至 `1.16.0`
 - 不新增依赖，不新增 HTTP 路由。
