@@ -590,5 +590,48 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--bg-rail); position: sticky; top: 0; z-index: 1; }
 .dshw-board .dshwd-drawer-title { font-size: 12px; font-weight: 600; color: var(--text-2); }
 .dshw-board .dshwd-drawer-close { flex: none; width: 32px; height: 32px; padding: 0; }
+
+/* ---------- cross-project portfolio ---------------------------------------- */
+.dshw-board .dshwd-overview-row { padding: 0 12px 8px; }
+.dshw-board .dshwd-overview-btn { width: 100%; justify-content: flex-start; gap: 7px; height: 28px; font-size: 12px; }
+.dshw-board .dshwd-overview-btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+.dshw-board .dshwd-overview-btn .dshw-ico { width: 14px; height: 14px; flex: none; }
+.dshw-board .dshwd-portfolio { min-height: 0; }
+.dshw-board .dshwd-portfolio-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 22px 32px 32px; display: flex; flex-direction: column; gap: 22px; }
+.dshw-board .dshwd-portfolio-head { display: flex; flex-direction: column; gap: 6px; }
+.dshw-board .dshwd-portfolio-title { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -.025em; line-height: 1.3; color: var(--text-1); }
+.dshw-board .dshwd-portfolio-totals { display: flex; flex-direction: column; gap: 10px; }
+.dshw-board .dshwd-portfolio-total-extra { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.dshw-board .dshwd-portfolio-metric { display: inline-flex; align-items: baseline; gap: 6px; font-size: 11.5px; color: var(--text-3); min-width: 0; }
+.dshw-board .dshwd-portfolio-metric-v { color: var(--text-1); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dshw-board .dshwd-portfolio-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dshw-board .dshwd-portfolio-sec-head .dshw-block-label { margin-bottom: 0; flex: 1; }
+.dshw-board .dshwd-portfolio-sec-count { flex: none; font-size: 11px; color: var(--text-3); }
+.dshw-board .dshwd-portfolio-projects { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.dshw-board .dshwd-portfolio-table { border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; overflow-y: hidden; background: var(--bg-elevated); }
+.dshw-board .dshwd-portfolio-columns, .dshw-board .dshwd-portfolio-row { display: grid; grid-template-columns: minmax(180px, 1.8fr) repeat(8, minmax(56px, .5fr)); align-items: center; gap: 10px; min-width: 760px; padding: 8px 12px; box-sizing: border-box; }
+.dshw-board .dshwd-portfolio-columns { border-bottom: 1px solid var(--line); font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3); }
+.dshw-board .dshwd-portfolio-columns > span:not(:first-child) { text-align: right; }
+.dshw-board .dshwd-portfolio-row { width: 100%; border: none; border-bottom: 1px solid var(--line); background: transparent; color: var(--text-1); text-align: left; cursor: pointer; font: inherit; }
+.dshw-board .dshwd-portfolio-row:last-child { border-bottom: none; }
+.dshw-board .dshwd-portfolio-row:hover { background: var(--bg-hover); }
+.dshw-board .dshwd-portfolio-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.dshw-board .dshwd-portfolio-row--hot { box-shadow: inset 2px 0 0 var(--warn); }
+.dshw-board .dshwd-portfolio-project { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dshw-board .dshwd-portfolio-project-name { font-size: 12.5px; font-weight: 500; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dshw-board .dshwd-portfolio-project-path { font-size: 10.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dshw-board .dshwd-portfolio-cell { font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-1); white-space: nowrap; }
+.dshw-board .dshwd-portfolio-cell--text { overflow: hidden; text-overflow: ellipsis; }
+.dshw-board .dshwd-portfolio-cell--weak { color: var(--text-3); }
+.dshw-board .dshwd-portfolio-cell--warn { color: var(--warn); }
+.dshw-board .dshwd-portfolio-cell--err { color: var(--err); }
+.dshw-board .dshwd-portfolio-empty { border: 1px dashed var(--line-strong); border-radius: 8px; min-height: 220px; }
+.dshw-board .dshwd-portfolio-chart { margin-top: 0; }
+.dshw-board .dshwd-portfolio-chart .dshwd-insights-days { max-width: 100%; }
+@media (max-width: 860px) {
+  .dshw-board .dshwd-portfolio-body { padding: 16px 14px 24px; gap: 18px; }
+  .dshw-board .dshwd-portfolio-title { font-size: 17px; }
+  .dshw-board .dshwd-portfolio-columns, .dshw-board .dshwd-portfolio-row { grid-template-columns: minmax(150px, 1.6fr) repeat(8, minmax(48px, .5fr)); gap: 8px; min-width: 680px; }
+}
 ${PANEL_CSS}
 `

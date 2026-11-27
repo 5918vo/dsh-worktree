@@ -57,6 +57,9 @@ export interface RailProps {
   onToggleArchived: () => void
   onSelectTask: (taskId: string, projectId: string) => void
   onSelectProject: (projectId: string) => void
+  /** True when the stage shows the cross-project portfolio. */
+  overviewActive?: boolean
+  onSelectOverview: () => void
   onQuick: (action: QuickAction, view: TaskView, projectId: string) => void
   onPublish: () => void
   onAddProject: () => void
@@ -120,6 +123,16 @@ export function Rail(props: RailProps) {
           onClick: props.onAddProject,
         }, '⊞'),
         h('button', { className: 'dshwd-btn dshwd-btn-cta', style: { height: '25px', padding: '0 9px', fontSize: '11.5px' }, title: String(t.boardPublishShortcut), onClick: props.onPublish }, '+ ', t.publish))),
+
+    h('div', { className: 'dshwd-overview-row' },
+      h('button', {
+        type: 'button',
+        className: 'dshwd-btn dshwd-btn-ghost dshwd-overview-btn',
+        'aria-pressed': props.overviewActive ? 'true' : 'false',
+        title: t.portfolioTitle,
+        'aria-label': t.portfolioTitle,
+        onClick: props.onSelectOverview,
+      }, h(Icon, { name: 'grid' }), h('span', null, t.portfolioTitle))),
 
     h('div', { className: 'dshwd-rail-controls' },
       environmentWarnings(props.environment).map((kind) => h('div', {

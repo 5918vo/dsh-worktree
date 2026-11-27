@@ -10,6 +10,7 @@ import { getJson } from './context'
 import { upsertPublishedTask, visibleProjectViews } from './board-data'
 import { copyText } from './format'
 import { ProjectDetail } from './project-detail'
+import { PortfolioView } from './portfolio-view'
 import type { ProjectView, TaskView } from '../models'
 import { WORKBENCH_CSS } from './styles'
 import { Rail } from './rail'
@@ -373,6 +374,10 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     setSelectedProjectId(id)
     setSelectedTaskId('')
   }
+  const selectOverview = () => {
+    setSelectedProjectId('')
+    setSelectedTaskId('')
+  }
   const toggleTheme = () => {
     const next = theme === 'dark' ? 'light' : 'dark'
     setTheme(next)
@@ -652,6 +657,8 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
         onToggleArchived: toggleArchived,
         onSelectTask: selectTask,
         onSelectProject: selectProject,
+        overviewActive: !selectedTaskId && !selectedProjectId,
+        onSelectOverview: selectOverview,
         onQuick: runQuick,
         onPublish: () => openPublish(),
         onPinTask: actions.runPin,
@@ -742,7 +749,19 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
                 onSelectTask: (id: string) => selectTask(id, selectedProject.project.id),
                 onDeleted: refresh,
               })))
-          : h('main', { className: 'dshwd-stage' },
+          : loaded && !err
+            ? h(PortfolioView, {
+              t,
+              views,
+              attentionOf,
+              railHidden,
+              narrow,
+              onToggleRail: () => toggleSide('rail'),
+              onSelectProject: selectProject,
+              onPublish: () => openPublish(),
+              onAddProject: () => setAddOpen(true),
+            })
+            : h('main', { className: 'dshwd-stage' },
             h('div', { className: 'dshwd-topbar' },
               h('div', { className: 'dshwd-topbar-left' },
                 h('button', {
