@@ -1000,25 +1000,30 @@ export interface ProjectInsights {
 
 ## 10. 验收记录
 
-- **状态**：待实施。
+- **状态**：五个功能已集成，待独立复核与 PR。
 
 ### 10.1 实施来源
 
 | 功能 | 子 agent 分支 | 子 agent HEAD | 集成提交 |
 | --- | --- | --- | --- |
-| 跨项目总览 | `t3/v116-portfolio-overview` | 待填 | 待填 |
-| 今日焦点 | `t3/v116-focus-queue` | 待填 | 待填 |
-| 任务复制 | `t3/v116-duplicate-task` | 待填 | 待填 |
-| 交接简报 | `t3/v116-handoff-brief` | 待填 | 待填 |
-| 估算校准 | `t3/v116-estimate-calibration` | 待填 | 待填 |
+| 跨项目总览 | `t3/portfolio-overview` | `332a177` | `c71c97e` |
+| 今日焦点 | `t3/focus-queue` | `3d8e080` | `c8d64ec` |
+| 任务复制 | `t3/duplicate-task` | `144fc0f` | `e0ed660` |
+| 交接简报 | `t3/handoff-brief` | `61c744e` | `f2ec53f` |
+| 估算校准 | `t3/estimate-calibration` | `f2f1b97` | `b2d0714` |
 
 ### 10.2 主线程复核修正
 
-- 待实施后填写。
+- locale 冲突：总览 39 个与交接简报 40 个 `portfolio*` / `handoff*` key 追加在同一位置，手工合并并把总览末项补上逗号；中英 key 数与占位符集合保持一致。
+- 今日焦点：把 `focusOpen` 补进看板全局快捷键的屏蔽条件与依赖数组，避免对话框打开时 `n`、`/`、`[`、`]` 仍从背后触发发布、搜索或栏目开关。
+- 跨项目总览：按 1.5 / 1.6 验收口径补「近 7 天合并」项目列与全局统计，并同步 `portfolioRowLabel`、grid 列宽与中英文案（`ede74e6`）。
+- 交接简报：`diffReasonText` 仅提升为导出以复用原因文案，不复制实现。
 
 ### 10.3 验证结果
 
-- 待实施后填写。
+- `npm run typecheck` 通过；`npm run check:locale` 通过（zh=en=969，引用 key 全部存在）。
+- `npm test` 已在中途集成点验证：功能 5 子分支 707；集成 5+1 后 721、再加 3 后 734、再加 4 后 757、再加 2 后 773，全部通过；基线 697，本批次新增 76 条。
+- `npm run verify` 通过：typecheck、check:locale、`npm test` 773/773、`npm run build` 均无错误。
 
 ### 10.4 验收审批
 

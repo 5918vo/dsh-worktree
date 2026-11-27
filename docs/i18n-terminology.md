@@ -46,6 +46,15 @@
 | 依赖关系图 | 依赖关系图 | dependency graph | `depGraphTitle`；层 `depGraphLayer`，缺失 `depGraphMissing`，循环 `depGraphHasCycle` / `depGraphNoCycle` / `depGraphCycles`，截断 `depGraphTruncated` |
 | 风险雷达 | 风险雷达 | risk radar | `riskRadar`；高 / 中 / 低 `riskHigh` / `riskMedium` / `riskLow`，原因 `riskReasonOverdue` 等 |
 | 保存的视图 | 保存的视图 | saved views | `savedViewSelect`；自定义 `savedViewCustom`，保存 `savedViewSave`，删除 `savedViewDelete`，保存失败 `savedViewSaveFailed`，仅本次会话 `savedViewSessionOnly` |
+| 跨项目总览 | 总览 | overview | `portfolioTitle`；项目行 `portfolioCol*` / `portfolioRowLabel`，空态 `portfolioEmptyTitle` / `portfolioEmptyHint`，近 7 天 `portfolioDaily` / `portfolioMerged7d` |
+| 今日焦点 | 今日焦点 | focus queue | `focusTitle` / `focusButton`；可立即推进 `focusReady`，等待前置 `focusWaiting`，原因 chip `focusReason*`，空态 `focusEmpty` |
+| 可立即推进 | 可立即推进 | ready to start | `focusReady`；指没有未完成 / 缺失前置的开放任务，不等于任务状态 `ready` |
+| 等待前置 | 等待前置 | waiting on prerequisites | `focusWaiting`；被未完成 / 缺失前置阻塞的任务只计数，不进入焦点列表 |
+| 任务复制 | 复制为新任务 | duplicate task | `taskDuplicate`；说明 `taskDuplicateHint`；新任务自动生成分支，不复制截止 / 备注 / 依赖 |
+| 交接简报 | 交接简报 | handoff brief | `handoffTitle`；复制 `handoffCopy` / `handoffCopied` / `handoffCopyFailed`，章节 `handoffGoal` / `handoffState` / `handoffCode` / `handoffNext` / `handoffNotes` |
+| 估算校准 | 估算校准 | estimate calibration | `insightsCalibration`；空态 `insightsCalibrationEmpty`，明细 `insightsCalibrationDetail`，分桶 `insightsCalibrationBucket`，中位数 `insightsCalibrationMedian` |
+| 每点小时数 | 每点 {hours} 小时 | {hours} h per point | `insightsCalibration` / `insightsCalibrationMedian`；加权值为总工时 / 总点数，不是每任务比值的平均 |
+| 分桶 | 点数 | point bucket | `insightsCalibrationBucket`；固定 `1/2/3/5/8` 五个桶，无样本桶不显示在明细里 |
 
 ## 2. 单位规则
 
@@ -67,6 +76,8 @@
 - `duration` 从历史 `{s}` 统一为 `{n}`（代码已同步替换逻辑，避免插值失败）。
 - 任何模板必须同时在中英两边保留相同占位符集合。
 - 工时 / 估算 / 风险新增占位符：`{n}`（时长数字、点数、分数、数量）、`{titles}`（阻塞任务标题）；中英两侧必须一致，不使用 `{hours}` 与 `{minutes}` 两套写法。
+- 总览 / 焦点 / 校准新增占位符：`{open}`、`{attention}`、`{overdue}`、`{blocked}`、`{review}`、`{merged}`、`{risk}`、`{points}`、`{oldest}`、`{project}`（`portfolioRowLabel`）、`{high}` / `{medium}`（风险列）、`{rank}` / `{title}` / `{project}`（`focusItemLabel`）、`{samples}` / `{hours}` / `{points}`（校准）、`{n}`（统计、焦点原因与计数）；中英两侧集合必须一致。
+- 交接简报新增占位符：`{title}`、`{base}`、`{sha}`、`{n}`、`{titles}`、`{files}`、`{add}`、`{del}`；不要在一份模板里混用 `{count}` 与 `{n}`。
 
 ## 4. 英文复数
 
@@ -82,6 +93,8 @@
 - `handlePending` → "Respond"；`toolTodos` → "Todos"；`liveLastPrompt` → "Last activity"。
 - `duration` 占位符 `{s}` → `{n}`；`cleanupDirtyGone` 中文单位「个」→「处」。
 - 删除评审确认废弃的 key（confirmDelete/confirmMerge/confirmCleanup/liveQueued/liveSubagents/livePerms/liveTurns/liveTurnN/onBranch/tasksUnit/detail/description/mergeCleanHint）。
+- 1.16.0 新增术语统一为「总览 / 今日焦点 / 可立即推进 / 等待前置 / 复制为新任务 / 交接简报 / 估算校准 / 每点小时数 / 分桶」；英文对应 overview / focus queue / ready to start / waiting on prerequisites / duplicate task / handoff brief / estimate calibration / hours per point / point bucket。焦点列表中的「可立即推进」不是任务状态 `ready` 的翻译，两者不要混用。
+- 校准数值统一保留 1 位小数；英文用 "h" 表示小时、"pt" 表示点数，不写 "hours" 全称与 "point(s)" 混排。
 
 ## 6. CI
 

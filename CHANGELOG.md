@@ -2,6 +2,30 @@
 
 本文件记录 `@5318vo/dsh-worktree` 的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.16.0] - 2026-11-27 · 全局视野与工作闭环
+
+### 新增
+
+- 跨项目总览：未选中任务或项目时，中栏展示所有项目的全局统计、按关注度排序的项目行、近 7 天新建 / 合并双柱图；每行显示进行中、需要关注、逾期、阻塞、待验收、近 7 天合并、风险与进行中估算点数。点击项目行进入项目详情，左栏顶部「总览」按钮随时返回；空项目时给出添加入口。所有数字由现有任务字段派生，不新增接口、不写台账。
+- 今日焦点：左栏注意力汇总条下方新增跨项目行动入口，打开对话框列出最多 10 个可立即推进的任务，按风险雷达分值加「等待回答 / 待验收 / 高优先级 / 置顶 / 完成可解锁任务数」排序，并用原因 chip 解释排名。被未完成 / 缺失前置阻塞的任务只计入「等待前置」，不进入行动列表；焦点只做提示与跳转，不改变看板排序。
+- 任务复制：任务详情顶部新增「复制为新任务」，用现有任务的标题、描述、验收标准、标签、优先级、规模估算与原基线预填发布表单；新任务仍自动生成分支，截止日期、备注、依赖、会话与勾选状态不复制。普通发布入口会清空复制草稿，避免残留。
+- 交接简报：任务概览在任务信息与生命周期之间新增「交接简报」区块，一键复制面向下一个 Agent 或同事的 Markdown，包含任务目标、当前进度、代码现状（最近提交 / 改动概览 / 未提交改动 / stash）、下一步建议与注意事项。与验收报告共享字段口径，但不输出 diff 正文，定位为面向未来的行动交接。
+- 估算校准：项目洞察新增校准统计，对已合并且同时具备有效估算与正工时的任务计算加权「每点小时数」、每任务每点小时数的中位数，以及 1/2/3/5/8 点分桶的样本数、总工时与平均工时；样本不足或没有合并任务时显示本地化空态，不产生 `NaN` / `Infinity`。
+
+### 接口
+
+- 本批次不新增 HTTP 路由、不修改任务台账字段、不引入新依赖；五个功能均为客户端派生视图、导出文本与发布预填。
+- 客户端新增纯函数模块 `src/client/portfolio.ts`（跨项目聚合）、`src/client/focus-queue.ts`（行动排序）、`src/client/handoff.ts`（交接简报）、`src/client/portfolio-view.ts`、`src/client/focus-queue-view.ts`；`ProjectInsights` 新增 `calibration`（`EstimateCalibration`），`PublishDraft` 新增可选 `baseBranch`，并新增 `draftFromTask`。
+- 今日焦点的风险基础分复用 `buildProjectRisk`；总览复用项目洞察的 7 天窗口与风险雷达；交接简报复用验收报告的 Markdown 助手与任务字段口径；校准复用 `elapsedWorkMs` 与 `parseEstimate`。
+
+### 测试
+
+- 新增 `client-portfolio` / `client-focus-queue` / `client-duplicate-task` / `client-handoff` 用例，并扩展 `client-project-insights` 的估算校准覆盖；总计 773 条测试（基线 697，新增 76），`npm run verify`（typecheck + check:locale + test + build）全部通过。
+
+### 文档
+
+- `README.md`、`docs/frontend-design.md`、`docs/i18n-terminology.md`、`feature.md` 与 `locale/zh.json` / `locale/en.json` 同步更新到 1.16.0。
+
 ## [1.15.0] - 2026-11-23 · 执行节奏与风险可视化
 
 ### 新增
