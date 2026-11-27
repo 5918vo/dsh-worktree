@@ -698,6 +698,8 @@
   "taskEstimatePoints": "{n} 点",
   "taskEstimateInvalid": "规模估算只能是 1、2、3、5 或 8 点",
   "taskEstimateHint": "相对规模，不是小时数。",
+  "taskDuplicate": "复制为新任务",
+  "taskDuplicateHint": "用此任务的规格打开发布弹窗；分支、截止日期与备注不会复制",
   "taskNotes": "备注",
   "taskNotesPlaceholder": "补充上下文、待确认事项…",
   "taskNotesEmpty": "暂无备注",

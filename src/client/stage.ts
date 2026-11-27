@@ -14,6 +14,7 @@ import { isWorkTiming } from '../task-timer'
 import { workTotalText } from './work-format'
 import { DEPENDENCY_LIMIT } from '../task-deps'
 import { fill } from './markdown'
+import { Icon } from './primitives'
 
 export type BoardTab = 'overview' | 'live' | 'diff'
 
@@ -82,6 +83,8 @@ export interface StageProps {
   partial?: { message: string } | null
   onDismissPartial?: () => void
   onBackToList?: () => void
+  /** Copy this task's spec into a new publish draft; omitted hides the entry. */
+  onDuplicate?: () => void
   /** Send a free-form prompt into this task's session. */
   onSendPrompt?: (text: string) => Promise<void>
   promptBusy?: boolean
@@ -192,6 +195,15 @@ export function Stage(props: StageProps) {
             h('span', { className: 'dshwd-mono', style: { color: 'var(--text-3)', fontSize: '11px' }, title: commitRangeText(t, { baseSha: props.baseSha, headSha: props.headSha, merged: taskView.snapshot.merged, baseBranch: task.baseBranch }) },
               commitRangeText(t, { baseSha: props.baseSha, headSha: props.headSha, merged: taskView.snapshot.merged, baseBranch: task.baseBranch }) + ' · ' + relTime(updated, t)))),
         h('div', { style: { display: 'flex', gap: '8px', flexShrink: '0' } },
+          props.onDuplicate
+            ? h('button', {
+              type: 'button',
+              className: 'dshwd-btn dshwd-btn-ghost',
+              title: t.taskDuplicateHint,
+              'aria-label': t.taskDuplicate + ' · ' + task.title,
+              onClick: () => props.onDuplicate && props.onDuplicate(),
+            }, h(Icon, { name: 'copy' }), h('span', { className: 'dshwd-btn-label' }, t.taskDuplicate))
+            : null,
           ctas.secondary ? actionButton(t, ctas.secondary.action, ctas.secondary.label, props, false) : null,
           actionButton(t, ctas.primary.action, ctas.primary.label, props, true))),
 

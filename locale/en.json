@@ -698,6 +698,8 @@
   "taskEstimatePoints": "{n} pts",
   "taskEstimateInvalid": "Estimate must be 1, 2, 3, 5 or 8 points",
   "taskEstimateHint": "Relative size, not hours.",
+  "taskDuplicate": "Duplicate as new task",
+  "taskDuplicateHint": "Open the publish dialog with this task’s spec; branch, deadline and notes are not copied",
   "taskNotes": "Notes",
   "taskNotesPlaceholder": "Context, open questions…",
   "taskNotesEmpty": "No notes",

@@ -19,6 +19,7 @@ import { Inspector } from './inspector'
 import { activeDrawer, closeAllDrawers, closeDrawer, dismissDrawer, drawerFocusTrap, selectionDrawerState, toggleDrawer, type DrawerState, type DrawerSide } from './drawers'
 import { attachFocusTrap } from './dialog-focus'
 import { PublishModal } from './publish'
+import { draftFromTask } from './publish-state'
 import { AddProjectModal } from './add-project'
 import { openNativeSession } from './actions'
 import { pendingLabel } from './status'
@@ -317,14 +318,20 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     if (btn && typeof btn.focus === 'function') btn.focus()
   }, [selectedTaskId, tab])
 
-  const openPublish = (projectId?: string, parentId = '') => {
+  const openPublish = (projectId?: string, parentId = '', draft: any = null) => {
     // Prefer what the user is looking at now; `views` is ordered by recent
     // activity, so its first entry is the "last used" project and must not win
     // over the current selection.
     const taskProjectId = selectedTask && selectedTask.task.projectId ? selectedTask.task.projectId : ''
     setPublishProjectId(projectId || selectedProjectId || taskProjectId || (views[0] && views[0].project.id) || '')
     setPublishParentId(parentId)
+    // 显式设置：普通发布（draft 为 null）清掉上一次未提交的复制草稿。
+    setPublishDraft(draft)
     setPublishOpen(true)
+  }
+
+  const duplicateTask = (tv: TaskView) => {
+    openPublish(tv.task.projectId || selectedProjectId, '', draftFromTask(tv.task))
   }
 
   React.useEffect(() => {
@@ -693,6 +700,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           disabledActions: busy ? { merge: t.working, checkout: t.working, back: t.working, cleanup: t.working, open: t.working, create: t.working, start: t.working, retry: t.working, continue: t.working } : actionGate.disabled,
           actionReasons: actionGate.reasons,
           onAction: actions.runAction,
+          onDuplicate: selectedTask ? () => duplicateTask(selectedTask) : undefined,
           criteriaBusy: !!busy,
           onToggleCriterion: actions.runCriterion,
           onSaveMeta: actions.runSaveMeta,
