@@ -339,7 +339,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (publishOpen || addOpen || confirm || stashView) {
+      if (publishOpen || addOpen || confirm || stashView || focusOpen) {
         // Every overlay owns its own Escape/focus lifecycle (shared dialog
         // hook or the host modal), so the board must not close them twice.
         return
@@ -365,7 +365,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [query, publishOpen, addOpen, confirm, stashView, busy, selectedProjectId, views, narrow, railHidden, inspectorHidden, selectedTaskId])
+  }, [query, publishOpen, addOpen, confirm, stashView, focusOpen, busy, selectedProjectId, views, narrow, railHidden, inspectorHidden, selectedTaskId])
 
   const selectTask = (id: string, projectId?: string) => {
     const found = views.flatMap((v: ProjectView) => v.tasks).find((x: TaskView) => x.task.id === id)
