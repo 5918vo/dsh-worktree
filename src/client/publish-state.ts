@@ -1,5 +1,6 @@
-import type { TaskTemplate } from '../models'
+import type { TaskTemplate, WorktreeTask } from '../models'
 import { TASK_ESTIMATES } from '../task-meta'
+import { normalizeCriteria } from '../criteria'
 
 /**
  * Pure helpers for the publish modal's in-session draft and for reconciling a
@@ -23,6 +24,8 @@ export interface PublishDraft {
   dueAt: string
   /** One of '', '1', '2', '3', '5', '8'; '' means unestimated. */
   estimate: string
+  /** 复制任务时沿用的基线分支；'' 表示使用项目默认基线。 */
+  baseBranch?: string
 }
 
 /** Estimate choices rendered by the publish select; '' (unestimated) is separate. */
@@ -55,6 +58,33 @@ export function initialPublishForm(draft?: any, fallbackTitle = ''): PublishDraf
     priority: d.priority === 'low' || d.priority === 'high' ? String(d.priority) : 'normal',
     dueAt: String(d.dueAt || ''),
     estimate: estimateText(d.estimate),
+    baseBranch: String(d.baseBranch || ''),
+  }
+}
+
+/**
+ * 从现有任务生成发布草稿。
+ * - 标题 / 描述 / 验收标准 / 标签 / 优先级 / 估算 / 基线沿用；
+ * - 分支名、截止日期、备注、勾选状态、依赖不复制。
+ * - 字段缺失或非法时按「未设置」处理，不抛异常。
+ */
+export function draftFromTask(task: WorktreeTask): PublishDraft {
+  const src: any = task || {}
+  const tags = Array.isArray(src.tags)
+    ? src.tags.map((tag: any) => String(tag == null ? '' : tag).trim()).filter(Boolean).join(', ')
+    : ''
+  return {
+    title: String(src.title || ''),
+    description: String(src.description || ''),
+    // 全部进手动标准：勾选状态不复制，模板库勾选也不参与。
+    manualCriteria: normalizeCriteria(src.acceptanceCriteria).join('\n'),
+    pickedCriteria: [],
+    branchName: '',
+    tags,
+    priority: src.priority === 'low' || src.priority === 'high' ? String(src.priority) : 'normal',
+    dueAt: '',
+    estimate: estimateText(src.estimate),
+    baseBranch: String(src.baseBranch || ''),
   }
 }
 
@@ -76,6 +106,7 @@ export function publishDraftDirty(initial: PublishDraft, current: PublishDraft):
     || initial.priority !== current.priority
     || initial.dueAt !== current.dueAt
     || initial.estimate !== current.estimate
+    || String(initial.baseBranch || '') !== String(current.baseBranch || '')
 }
 
 /**

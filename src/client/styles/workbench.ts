@@ -351,6 +351,8 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-alert-info { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent); }
 .dshw-board .dshwd-alert-warn { border-color: var(--warn-line); background: var(--warn-soft); color: var(--warn); }
 .dshw-board .dshwd-hint { color: var(--text-3); font-size: 11px; line-height: 1.5; }
+/* Handoff brief: the hint sits under the block label and never spans the card. */
+.dshw-board .dshwd-handoff .dshwd-handoff-hint { max-width: 560px; }
 /* Persistent inline notice: same text as the error toast, but it stays put. */
 .dshw-board .dshwd-notice { align-items: flex-start; margin-bottom: 14px; }
 .dshw-board .dshwd-notice-text { min-width: 0; overflow-wrap: anywhere; line-height: 1.5; }
@@ -426,6 +428,13 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-insights-swatch { width: 8px; height: 8px; border-radius: 2px; background: var(--accent); }
 .dshw-board .dshwd-insights-swatch--merged { background: var(--ok); }
 
+/* ---------- estimate calibration ------------------------------------------ */
+.dshw-board .dshwd-calibration { margin-top: 12px; }
+.dshw-board .dshwd-calibration-detail { margin-top: 6px; font-size: 11px; color: var(--text-2); }
+.dshw-board .dshwd-calibration-detail > summary { cursor: pointer; }
+.dshw-board .dshwd-calibration-list { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; color: var(--text-3); }
+.dshw-board .dshwd-calibration-median { margin-top: 4px; }
+
 /* ---------- dependency graph: layered DAG --------------------------------- */
 .dshw-board .dshwd-depgraph-legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px; color: var(--text-3); }
 .dshw-board .dshwd-depgraph-legend-item { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
@@ -491,6 +500,35 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-risk-score--low { color: var(--ok); border-color: var(--ok-line); background: var(--ok-soft); }
 .dshw-board .dshwd-risk-reasons { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 5px; }
 .dshw-board .dshwd-risk-chip { padding: 1px 6px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg-elevated); color: var(--text-2); font-size: 10.5px; }
+/* Focus queue: left-rail entry plus the dialog. The dialog body renders through
+   the shared Modal portal, so its rules match the modal shell as well. */
+.dshw-board .dshwd-focus-entry { display: flex; align-items: center; gap: 7px; width: 100%; padding: 8px 12px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--text-2); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.dshw-board .dshwd-focus-entry:hover { background: var(--bg-hover); color: var(--text-1); }
+.dshw-board .dshwd-focus-entry:focus-visible { outline: 2px solid var(--accent-line); outline-offset: -2px; }
+.dshw-board .dshwd-focus-entry-icon { display: inline-flex; flex: none; color: var(--accent); }
+.dshw-board .dshwd-focus-entry-icon svg { width: 14px; height: 14px; }
+.dshw-board .dshwd-focus-entry-text { flex: 1; min-width: 0; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dshw-board .dshwd-focus-entry-count { flex: none; min-width: 20px; height: 18px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; border: 1px solid var(--accent-line); background: var(--accent-soft); color: var(--accent); font-size: 10.5px; font-weight: 700; }
+.dshw-modal .dshwd-focus-counts, .dshw-board .dshwd-focus-counts { display: flex; flex-wrap: wrap; gap: 8px; }
+.dshw-modal .dshwd-focus-count, .dshw-board .dshwd-focus-count { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line, var(--dshw-border-soft)); background: var(--bg-elevated, transparent); color: var(--text-2, var(--dshw-text, inherit)); font-size: 11px; font-weight: 500; }
+.dshw-modal .dshwd-focus-count--ready, .dshw-board .dshwd-focus-count--ready { border-color: var(--ok-line, var(--dshw-border-soft)); background: var(--ok-soft, transparent); color: var(--ok, var(--dshw-success, inherit)); }
+.dshw-modal .dshwd-focus-count--waiting, .dshw-board .dshwd-focus-count--waiting { border-color: var(--warn-line, var(--dshw-border-soft)); background: var(--warn-soft, transparent); color: var(--warn, var(--dshw-warn, inherit)); }
+.dshw-modal .dshwd-focus-count--total, .dshw-board .dshwd-focus-count--total { color: var(--text-3, var(--dshw-text-3, inherit)); }
+.dshw-modal .dshwd-focus-list, .dshw-board .dshwd-focus-list { display: flex; flex-direction: column; border-top: 1px solid var(--line, var(--dshw-border-soft)); }
+.dshw-modal .dshwd-focus-row, .dshw-board .dshwd-focus-row { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 2px 10px; align-items: center; width: 100%; padding: 10px 2px; border: 0; border-bottom: 1px solid var(--line, var(--dshw-border-soft)); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.dshw-modal .dshwd-focus-row:hover, .dshw-board .dshwd-focus-row:hover { background: var(--bg-hover, var(--dshw-hover)); }
+.dshw-modal .dshwd-focus-row:focus-visible, .dshw-board .dshwd-focus-row:focus-visible { outline: 2px solid var(--accent-line, var(--dshw-brand)); outline-offset: -2px; }
+.dshw-modal .dshwd-focus-rank, .dshw-board .dshwd-focus-rank { align-self: start; padding-top: 1px; color: var(--text-3, var(--dshw-text-3, inherit)); font-size: 11px; font-weight: 700; text-align: right; }
+.dshw-modal .dshwd-focus-main, .dshw-board .dshwd-focus-main { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.dshw-modal .dshwd-focus-title, .dshw-board .dshwd-focus-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-1, var(--dshw-text, inherit)); font-size: 12.5px; font-weight: 500; }
+.dshw-modal .dshwd-focus-project, .dshw-board .dshwd-focus-project { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3, var(--dshw-text-3, inherit)); font-size: 11px; }
+.dshw-modal .dshwd-focus-score, .dshw-board .dshwd-focus-score { min-width: 22px; height: 20px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; border: 1px solid var(--line, var(--dshw-border-soft)); background: var(--bg-elevated, transparent); color: var(--text-2, var(--dshw-text, inherit)); font-size: 11px; font-weight: 700; }
+.dshw-modal .dshwd-focus-reasons, .dshw-board .dshwd-focus-reasons { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 5px; }
+.dshw-modal .dshwd-focus-chip, .dshw-board .dshwd-focus-chip { padding: 1px 6px; border-radius: 999px; border: 1px solid var(--line, var(--dshw-border-soft)); background: var(--bg-elevated, transparent); color: var(--text-2, var(--dshw-text, inherit)); font-size: 10.5px; line-height: 1.5; }
+.dshw-modal .dshwd-focus-empty, .dshw-board .dshwd-focus-empty { padding: 28px 12px; text-align: center; }
+.dshw-modal .dshwd-focus-empty-title, .dshw-board .dshwd-focus-empty-title { color: var(--text-1, var(--dshw-text, inherit)); font-size: 13px; font-weight: 600; }
+.dshw-modal .dshwd-focus-empty-hint, .dshw-board .dshwd-focus-empty-hint { margin-top: 4px; color: var(--text-3, var(--dshw-text-3, inherit)); font-size: 11.5px; }
+.dshw-modal .dshwd-focus-foot-meta, .dshw-board .dshwd-focus-foot-meta { color: var(--text-3, var(--dshw-text-3, inherit)); font-size: 11px; }
 @container dshwboard (max-width: 980px) {
   .dshw-board .dshwd-app { grid-template-columns: 248px minmax(0,1fr) 0; }
   .dshw-board .dshwd-app.dshwd-hide-left { grid-template-columns: 0 minmax(0,1fr) 0; }
@@ -510,6 +548,7 @@ export const WORKBENCH_CSS = `
   .dshw-board .dshwd-topbar { padding: 0 14px; }
   /* Metadata rows stack label over value once the stage is narrow. */
   .dshw-board .dshwd-meta-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .dshw-board .dshwd-focus-entry { padding: 8px 10px; }
 }
 /* Below ~720px the board is one column: rail and inspector become overlay
    sheets, stage/task view keeps the full width, and nothing may overflow. */
@@ -558,6 +597,10 @@ export const WORKBENCH_CSS = `
   .dshw-board .dshwd-stage-sub > .dshwd-mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dshw-board .dshwd-stage-sub > .dshwd-btn,
   .dshw-board .dshwd-stage-sub > button { flex: none; }
+  /* Focus rows drop the score column and keep rank, title and chips. */
+  .dshw-modal .dshwd-focus-row, .dshw-board .dshwd-focus-row { grid-template-columns: 20px minmax(0, 1fr); }
+  .dshw-modal .dshwd-focus-score, .dshw-board .dshwd-focus-score { display: none; }
+  .dshw-modal .dshwd-focus-reasons, .dshw-board .dshwd-focus-reasons { grid-column: 2; }
 }
 
 /* Motion and touch are preferences, not decoration. */
@@ -583,5 +626,48 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--bg-rail); position: sticky; top: 0; z-index: 1; }
 .dshw-board .dshwd-drawer-title { font-size: 12px; font-weight: 600; color: var(--text-2); }
 .dshw-board .dshwd-drawer-close { flex: none; width: 32px; height: 32px; padding: 0; }
+
+/* ---------- cross-project portfolio ---------------------------------------- */
+.dshw-board .dshwd-overview-row { padding: 0 12px 8px; }
+.dshw-board .dshwd-overview-btn { width: 100%; justify-content: flex-start; gap: 7px; height: 28px; font-size: 12px; }
+.dshw-board .dshwd-overview-btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+.dshw-board .dshwd-overview-btn .dshw-ico { width: 14px; height: 14px; flex: none; }
+.dshw-board .dshwd-portfolio { min-height: 0; }
+.dshw-board .dshwd-portfolio-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 22px 32px 32px; display: flex; flex-direction: column; gap: 22px; }
+.dshw-board .dshwd-portfolio-head { display: flex; flex-direction: column; gap: 6px; }
+.dshw-board .dshwd-portfolio-title { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -.025em; line-height: 1.3; color: var(--text-1); }
+.dshw-board .dshwd-portfolio-totals { display: flex; flex-direction: column; gap: 10px; }
+.dshw-board .dshwd-portfolio-total-extra { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.dshw-board .dshwd-portfolio-metric { display: inline-flex; align-items: baseline; gap: 6px; font-size: 11.5px; color: var(--text-3); min-width: 0; }
+.dshw-board .dshwd-portfolio-metric-v { color: var(--text-1); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dshw-board .dshwd-portfolio-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dshw-board .dshwd-portfolio-sec-head .dshw-block-label { margin-bottom: 0; flex: 1; }
+.dshw-board .dshwd-portfolio-sec-count { flex: none; font-size: 11px; color: var(--text-3); }
+.dshw-board .dshwd-portfolio-projects { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.dshw-board .dshwd-portfolio-table { border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; overflow-y: hidden; background: var(--bg-elevated); }
+.dshw-board .dshwd-portfolio-columns, .dshw-board .dshwd-portfolio-row { display: grid; grid-template-columns: minmax(180px, 1.8fr) repeat(9, minmax(56px, .5fr)); align-items: center; gap: 10px; min-width: 840px; padding: 8px 12px; box-sizing: border-box; }
+.dshw-board .dshwd-portfolio-columns { border-bottom: 1px solid var(--line); font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3); }
+.dshw-board .dshwd-portfolio-columns > span:not(:first-child) { text-align: right; }
+.dshw-board .dshwd-portfolio-row { width: 100%; border: none; border-bottom: 1px solid var(--line); background: transparent; color: var(--text-1); text-align: left; cursor: pointer; font: inherit; }
+.dshw-board .dshwd-portfolio-row:last-child { border-bottom: none; }
+.dshw-board .dshwd-portfolio-row:hover { background: var(--bg-hover); }
+.dshw-board .dshwd-portfolio-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.dshw-board .dshwd-portfolio-row--hot { box-shadow: inset 2px 0 0 var(--warn); }
+.dshw-board .dshwd-portfolio-project { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dshw-board .dshwd-portfolio-project-name { font-size: 12.5px; font-weight: 500; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dshw-board .dshwd-portfolio-project-path { font-size: 10.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dshw-board .dshwd-portfolio-cell { font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-1); white-space: nowrap; }
+.dshw-board .dshwd-portfolio-cell--text { overflow: hidden; text-overflow: ellipsis; }
+.dshw-board .dshwd-portfolio-cell--weak { color: var(--text-3); }
+.dshw-board .dshwd-portfolio-cell--warn { color: var(--warn); }
+.dshw-board .dshwd-portfolio-cell--err { color: var(--err); }
+.dshw-board .dshwd-portfolio-empty { border: 1px dashed var(--line-strong); border-radius: 8px; min-height: 220px; }
+.dshw-board .dshwd-portfolio-chart { margin-top: 0; }
+.dshw-board .dshwd-portfolio-chart .dshwd-insights-days { max-width: 100%; }
+@media (max-width: 860px) {
+  .dshw-board .dshwd-portfolio-body { padding: 16px 14px 24px; gap: 18px; }
+  .dshw-board .dshwd-portfolio-title { font-size: 17px; }
+  .dshw-board .dshwd-portfolio-columns, .dshw-board .dshwd-portfolio-row { grid-template-columns: minmax(150px, 1.6fr) repeat(9, minmax(48px, .5fr)); gap: 8px; min-width: 750px; }
+}
 ${PANEL_CSS}
 `

@@ -41,6 +41,12 @@ export interface RailProps {
   counts: Record<string, number>
   attentionTotal: number
   attentionStale: boolean
+  /** Focus queue: rows shown (max 10), ready / waiting / open counts. */
+  focusCount?: number
+  focusReady?: number
+  focusWaiting?: number
+  focusTotal?: number
+  onOpenFocus?: () => void
   lastOkAt: number
   emptyKind: RailEmptyKind
   /** False until the first project fetch lands; the foot shows placeholders. */
@@ -57,6 +63,9 @@ export interface RailProps {
   onToggleArchived: () => void
   onSelectTask: (taskId: string, projectId: string) => void
   onSelectProject: (projectId: string) => void
+  /** True when the stage shows the cross-project portfolio. */
+  overviewActive?: boolean
+  onSelectOverview: () => void
   onQuick: (action: QuickAction, view: TaskView, projectId: string) => void
   onPublish: () => void
   onAddProject: () => void
@@ -120,6 +129,16 @@ export function Rail(props: RailProps) {
           onClick: props.onAddProject,
         }, '⊞'),
         h('button', { className: 'dshwd-btn dshwd-btn-cta', style: { height: '25px', padding: '0 9px', fontSize: '11.5px' }, title: String(t.boardPublishShortcut), onClick: props.onPublish }, '+ ', t.publish))),
+
+    h('div', { className: 'dshwd-overview-row' },
+      h('button', {
+        type: 'button',
+        className: 'dshwd-btn dshwd-btn-ghost dshwd-overview-btn',
+        'aria-pressed': props.overviewActive ? 'true' : 'false',
+        title: t.portfolioTitle,
+        'aria-label': t.portfolioTitle,
+        onClick: props.onSelectOverview,
+      }, h(Icon, { name: 'grid' }), h('span', null, t.portfolioTitle))),
 
     h('div', { className: 'dshwd-rail-controls' },
       environmentWarnings(props.environment).map((kind) => h('div', {
@@ -205,6 +224,20 @@ export function Rail(props: RailProps) {
       lastOkAt: props.lastOkAt,
       onView: props.onFilter,
     }),
+
+    props.focusTotal && props.focusTotal > 0
+      ? h('button', {
+        type: 'button',
+        className: 'dshwd-focus-entry',
+        'aria-haspopup': 'dialog',
+        'aria-label': String(t.focusEntryLabel).replace('{n}', String(props.focusReady || 0)),
+        title: t.focusEntryTitle,
+        onClick: props.onOpenFocus,
+      },
+        h('span', { className: 'dshwd-focus-entry-icon', 'aria-hidden': 'true' }, h(Icon, { name: 'circle' })),
+        h('span', { className: 'dshwd-focus-entry-text' }, t.focusTitle),
+        h('span', { className: 'dshwd-focus-entry-count dshwd-mono' }, String(props.focusCount || 0)))
+      : null,
 
     h('div', { className: 'dshwd-rail-list' },
       props.emptyKind === 'no-projects'

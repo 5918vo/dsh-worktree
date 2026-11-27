@@ -14,6 +14,7 @@ import { isWorkTiming } from '../task-timer'
 import { workTotalText } from './work-format'
 import { DEPENDENCY_LIMIT } from '../task-deps'
 import { fill } from './markdown'
+import { Icon } from './primitives'
 
 export type BoardTab = 'overview' | 'live' | 'diff'
 
@@ -43,6 +44,10 @@ export interface StageProps {
   onDownloadReport?: () => void
   /** A report action is in flight; both report buttons stay disabled. */
   reportBusy?: boolean
+  /** Copy the handoff brief; omitted hides the entry (SSR / tests). */
+  onCopyHandoff?: () => void
+  /** A handoff copy is in flight; the button stays disabled. */
+  handoffBusy?: boolean
   /** Persist tags / priority / notes / dependencies / deadline; omitted keeps the info block read-only. */
   onSaveMeta?: (patch: { tags?: string[]; priority?: string; notes?: string; dependsOn?: string[]; dueAt?: number | null; estimate?: number | null }) => Promise<void>
   /** A metadata write is in flight; the editors stay disabled. */
@@ -82,6 +87,8 @@ export interface StageProps {
   partial?: { message: string } | null
   onDismissPartial?: () => void
   onBackToList?: () => void
+  /** Copy this task's spec into a new publish draft; omitted hides the entry. */
+  onDuplicate?: () => void
   /** Send a free-form prompt into this task's session. */
   onSendPrompt?: (text: string) => Promise<void>
   promptBusy?: boolean
@@ -192,6 +199,15 @@ export function Stage(props: StageProps) {
             h('span', { className: 'dshwd-mono', style: { color: 'var(--text-3)', fontSize: '11px' }, title: commitRangeText(t, { baseSha: props.baseSha, headSha: props.headSha, merged: taskView.snapshot.merged, baseBranch: task.baseBranch }) },
               commitRangeText(t, { baseSha: props.baseSha, headSha: props.headSha, merged: taskView.snapshot.merged, baseBranch: task.baseBranch }) + ' · ' + relTime(updated, t)))),
         h('div', { style: { display: 'flex', gap: '8px', flexShrink: '0' } },
+          props.onDuplicate
+            ? h('button', {
+              type: 'button',
+              className: 'dshwd-btn dshwd-btn-ghost',
+              title: t.taskDuplicateHint,
+              'aria-label': t.taskDuplicate + ' · ' + task.title,
+              onClick: () => props.onDuplicate && props.onDuplicate(),
+            }, h(Icon, { name: 'copy' }), h('span', { className: 'dshwd-btn-label' }, t.taskDuplicate))
+            : null,
           ctas.secondary ? actionButton(t, ctas.secondary.action, ctas.secondary.label, props, false) : null,
           actionButton(t, ctas.primary.action, ctas.primary.label, props, true))),
 
@@ -298,6 +314,7 @@ function Overview(props: StageProps) {
       h('div', { className: 'dshwd-block-label' }, t.taskDescription),
       h('div', { className: 'dshwd-prose' }, props.taskView.task.description || '—')),
     h(TaskMetaSection, props),
+    h(HandoffSection, props),
     h(TaskLifecycleSection, props))
 }
 
@@ -512,6 +529,33 @@ function TaskMetaSection(props: StageProps) {
             : allDone
               ? h('div', { className: 'dshwd-hint' }, t.taskDepsAllDone)
               : null))))
+}
+
+/**
+ * Handoff brief: a forward-looking summary for the next agent or teammate.
+ *
+ * The acceptance report archives what the task did; this block explains where
+ * to continue, so the text is built by `handoff.ts` in the board action. The
+ * section still renders without the callback so SSR and tests can read it.
+ */
+function HandoffSection(props: StageProps) {
+  const { t } = props
+  const task = props.taskView.task
+  return h('section', { className: 'dshwd-block dshwd-handoff' },
+    h('div', { className: 'dshwd-block-head' },
+      h('div', { className: 'dshwd-block-label' }, t.handoffTitle),
+      props.onCopyHandoff
+        ? h('div', { className: 'dshwd-block-actions' },
+          h('button', {
+            type: 'button',
+            className: 'dshwd-btn dshwd-btn-ghost dshwd-btn-mini',
+            disabled: !!props.handoffBusy,
+            title: props.handoffBusy ? t.working : t.handoffCopy,
+            'aria-label': t.handoffCopy + ' · ' + task.title,
+            onClick: props.onCopyHandoff,
+          }, t.handoffCopy))
+        : null),
+    h('div', { className: 'dshwd-hint dshwd-handoff-hint' }, t.handoffHint))
 }
 
 /**

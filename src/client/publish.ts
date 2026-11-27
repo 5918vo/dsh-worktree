@@ -47,10 +47,15 @@ export function PublishModal(props: PublishModalProps) {
 
   const form0Ref = React.useRef(null as PublishDraft | null)
   if (form0Ref.current === null) {
-    form0Ref.current = initialPublishForm(
+    const seed = initialPublishForm(
       props.draft,
       parentTask ? String(parentTask.title) + String(t.continueTitleSuffix) : '',
     )
+    // 草稿没带基线时，基线就是马上要用的项目默认值；否则一打开就算「已修改」。
+    if (!seed.baseBranch) {
+      seed.baseBranch = parentTask ? String(parentTask.baseBranch || '') : (initial ? String(initial.project.baseBranch || '') : '')
+    }
+    form0Ref.current = seed
   }
   const form0 = form0Ref.current
 
@@ -58,7 +63,9 @@ export function PublishModal(props: PublishModalProps) {
   const view = props.views.find((v) => v.project.id === projectId) || initial
   const project = view ? view.project : null
   // Continuing always starts from the predecessor's real merge target.
-  const [base, setBase] = React.useState(parentTask ? parentTask.baseBranch : project ? project.baseBranch : '')
+  const [base, setBase] = React.useState(
+    parentTask ? parentTask.baseBranch : (form0.baseBranch || (project ? project.baseBranch : '')),
+  )
   const [title, setTitle] = React.useState(form0.title)
   const [description, setDescription] = React.useState(form0.description)
   // A restored branch, tag, estimate or non-normal priority means the advanced
@@ -187,7 +194,7 @@ export function PublishModal(props: PublishModalProps) {
     setShowAllBranches(false)
   }, [projectId])
 
-  const currentForm = (): PublishDraft => ({ title, description, manualCriteria: manual, pickedCriteria: picked, branchName: branch, tags, priority, dueAt, estimate })
+  const currentForm = (): PublishDraft => ({ title, description, manualCriteria: manual, pickedCriteria: picked, branchName: branch, tags, priority, dueAt, estimate, baseBranch: base })
   const dirty = publishDraftDirty(form0, currentForm())
   const handleClose = () => {
     if (busy) return

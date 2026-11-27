@@ -10,6 +10,7 @@ import { getJson } from './context'
 import { upsertPublishedTask, visibleProjectViews } from './board-data'
 import { copyText } from './format'
 import { ProjectDetail } from './project-detail'
+import { PortfolioView } from './portfolio-view'
 import type { ProjectView, TaskView } from '../models'
 import { WORKBENCH_CSS } from './styles'
 import { Rail } from './rail'
@@ -18,7 +19,10 @@ import { Inspector } from './inspector'
 import { activeDrawer, closeAllDrawers, closeDrawer, dismissDrawer, drawerFocusTrap, selectionDrawerState, toggleDrawer, type DrawerState, type DrawerSide } from './drawers'
 import { attachFocusTrap } from './dialog-focus'
 import { PublishModal } from './publish'
+import { draftFromTask } from './publish-state'
 import { AddProjectModal } from './add-project'
+import { buildFocusQueue } from './focus-queue'
+import { FocusQueueDialog } from './focus-queue-view'
 import { openNativeSession } from './actions'
 import { pendingLabel } from './status'
 import {
@@ -119,6 +123,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
   // Runtime worktree dir: what a project without its own `dirName` inherits.
   const [configDirName, setConfigDirName] = React.useState('')
   const [addOpen, setAddOpen] = React.useState(false)
+  const [focusOpen, setFocusOpen] = React.useState(false)
   const [publishProjectId, setPublishProjectId] = React.useState('')
   const [publishParentId, setPublishParentId] = React.useState('')
   const [confirm, setConfirm] = React.useState(null as ConfirmState | null)
@@ -316,19 +321,25 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     if (btn && typeof btn.focus === 'function') btn.focus()
   }, [selectedTaskId, tab])
 
-  const openPublish = (projectId?: string, parentId = '') => {
+  const openPublish = (projectId?: string, parentId = '', draft: any = null) => {
     // Prefer what the user is looking at now; `views` is ordered by recent
     // activity, so its first entry is the "last used" project and must not win
     // over the current selection.
     const taskProjectId = selectedTask && selectedTask.task.projectId ? selectedTask.task.projectId : ''
     setPublishProjectId(projectId || selectedProjectId || taskProjectId || (views[0] && views[0].project.id) || '')
     setPublishParentId(parentId)
+    // 显式设置：普通发布（draft 为 null）清掉上一次未提交的复制草稿。
+    setPublishDraft(draft)
     setPublishOpen(true)
+  }
+
+  const duplicateTask = (tv: TaskView) => {
+    openPublish(tv.task.projectId || selectedProjectId, '', draftFromTask(tv.task))
   }
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (publishOpen || addOpen || confirm || stashView) {
+      if (publishOpen || addOpen || confirm || stashView || focusOpen) {
         // Every overlay owns its own Escape/focus lifecycle (shared dialog
         // hook or the host modal), so the board must not close them twice.
         return
@@ -354,7 +365,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [query, publishOpen, addOpen, confirm, stashView, busy, selectedProjectId, views, narrow, railHidden, inspectorHidden, selectedTaskId])
+  }, [query, publishOpen, addOpen, confirm, stashView, focusOpen, busy, selectedProjectId, views, narrow, railHidden, inspectorHidden, selectedTaskId])
 
   const selectTask = (id: string, projectId?: string) => {
     const found = views.flatMap((v: ProjectView) => v.tasks).find((x: TaskView) => x.task.id === id)
@@ -371,6 +382,10 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
   }
   const selectProject = (id: string) => {
     setSelectedProjectId(id)
+    setSelectedTaskId('')
+  }
+  const selectOverview = () => {
+    setSelectedProjectId('')
     setSelectedTaskId('')
   }
   const toggleTheme = () => {
@@ -454,6 +469,14 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
   const cta = selectedTask && status ? boardCta(status, !!selectedTask.task.sessionId) : null
   const statusLabel = status ? boardStatusLabel(t, status) : ''
 
+  // Every task's view, unfiltered: the handoff brief resolves prerequisites
+  // even when they are archived or hidden by the current filter.
+  const allViews: TaskView[] = React.useMemo(() => {
+    const out: TaskView[] = []
+    for (const view of views) for (const tv of view.tasks) out.push(tv)
+    return out
+  }, [views])
+
   const actions = useBoardActions({
     t,
     remotes,
@@ -461,6 +484,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     selectedProjectId,
     projectOfTask,
     diff,
+    tasks: allViews.map((tv) => tv.task),
     statusLabel,
     busy,
     setBusy,
@@ -517,11 +541,6 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
 
   // One attention map feeds the rows, the filter counts and the summary bar, so
   // they can never disagree about what needs attention.
-  const allViews: TaskView[] = React.useMemo(() => {
-    const out: TaskView[] = []
-    for (const view of views) for (const tv of view.tasks) out.push(tv)
-    return out
-  }, [views])
   const shownViews = React.useMemo(() => visibleProjectViews(views, showArchived), [views, showArchived])
   // Tag options come from every task, archived or not, so the dropdown does not
   // flicker while the archive toggle changes what the list shows.
@@ -554,6 +573,10 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     return map
   }, [allViews, pendingMap, sessionMap, healthMap, err])
   const attentionOf = React.useCallback((tv: TaskView) => attentionMap.get(tv.task.id) || EMPTY_ATTENTION, [attentionMap])
+  // The focus queue reuses the risk radar score as its base and the same
+  // attention map for the "waiting on an answer" weight. It reads the complete,
+  // unfiltered project views: search and tag filters never change the queue.
+  const focus = React.useMemo(() => buildFocusQueue({ views, attentionOf, now: Date.now() }), [views, attentionOf])
   // Dependencies are resolved against every task, archived or not, so a chip
   // never flaps while the archive toggle changes what the list shows.
   const taskLookup = React.useMemo(() => {
@@ -639,6 +662,11 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
         counts,
         attentionTotal: counts.total,
         attentionStale: !!err,
+        focusCount: focus.items.length,
+        focusReady: focus.ready,
+        focusWaiting: focus.waiting,
+        focusTotal: focus.total,
+        onOpenFocus: () => setFocusOpen(true),
         lastOkAt,
         emptyKind,
         loaded,
@@ -652,6 +680,8 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
         onToggleArchived: toggleArchived,
         onSelectTask: selectTask,
         onSelectProject: selectProject,
+        overviewActive: !selectedTaskId && !selectedProjectId,
+        onSelectOverview: selectOverview,
         onQuick: runQuick,
         onPublish: () => openPublish(),
         onPinTask: actions.runPin,
@@ -686,6 +716,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           disabledActions: busy ? { merge: t.working, checkout: t.working, back: t.working, cleanup: t.working, open: t.working, create: t.working, start: t.working, retry: t.working, continue: t.working } : actionGate.disabled,
           actionReasons: actionGate.reasons,
           onAction: actions.runAction,
+          onDuplicate: selectedTask ? () => duplicateTask(selectedTask) : undefined,
           criteriaBusy: !!busy,
           onToggleCriterion: actions.runCriterion,
           onSaveMeta: actions.runSaveMeta,
@@ -697,6 +728,8 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           onDownloadReport: actions.runDownloadReport,
           // Any in-flight action freezes the snapshot the report would read.
           reportBusy: !!busy,
+          onCopyHandoff: actions.runCopyHandoff,
+          handoffBusy: !!busy,
           entries,
           entriesReady,
           live,
@@ -742,7 +775,19 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
                 onSelectTask: (id: string) => selectTask(id, selectedProject.project.id),
                 onDeleted: refresh,
               })))
-          : h('main', { className: 'dshwd-stage' },
+          : loaded && !err
+            ? h(PortfolioView, {
+              t,
+              views,
+              attentionOf,
+              railHidden,
+              narrow,
+              onToggleRail: () => toggleSide('rail'),
+              onSelectProject: selectProject,
+              onPublish: () => openPublish(),
+              onAddProject: () => setAddOpen(true),
+            })
+            : h('main', { className: 'dshwd-stage' },
             h('div', { className: 'dshwd-topbar' },
               h('div', { className: 'dshwd-topbar-left' },
                 h('button', {
@@ -838,6 +883,18 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
             say(String(copy).replace('{name}', project.name || ''))
           }
           void refresh()
+        },
+      })
+      : null,
+
+    focusOpen
+      ? h(FocusQueueDialog, {
+        t,
+        queue: focus,
+        onClose: () => setFocusOpen(false),
+        onSelectTask: (taskId: string, projectId: string) => {
+          setFocusOpen(false)
+          selectTask(taskId, projectId)
         },
       })
       : null,

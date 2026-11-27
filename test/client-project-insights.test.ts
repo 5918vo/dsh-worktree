@@ -254,3 +254,183 @@ test('estimate coverage is null with no open tasks and rounds to a whole percent
   ], NOW)
   assert.equal(third.estimateCoveragePercent, 33)
 })
+
+/* ---------- estimate calibration ---------------------------------------- */
+
+const HOUR = 3600000
+
+function hours(n: number): number {
+  return n * HOUR
+}
+
+test('calibration: no samples yields nulls and five empty buckets', () => {
+  const empty = buildProjectInsights([], NOW)
+  assert.equal(empty.calibration.samples, 0)
+  assert.equal(empty.calibration.points, 0)
+  assert.equal(empty.calibration.workMs, 0)
+  assert.equal(empty.calibration.hours, 0)
+  assert.equal(empty.calibration.hoursPerPoint, null)
+  assert.equal(empty.calibration.medianHoursPerPoint, null)
+  assert.deepEqual(empty.calibration.buckets.map((b) => b.points), [1, 2, 3, 5, 8])
+  for (const bucket of empty.calibration.buckets) {
+    assert.equal(bucket.samples, 0)
+    assert.equal(bucket.workMs, 0)
+    assert.equal(bucket.hours, 0)
+    assert.equal(bucket.averageHours, null)
+  }
+
+  // Estimates without work time, and work time without estimates, are not samples.
+  const noWork = buildProjectInsights([mergedTask(1, { estimate: 3 })], NOW)
+  assert.equal(noWork.merged, 1)
+  assert.equal(noWork.calibration.samples, 0)
+  assert.equal(noWork.calibration.hoursPerPoint, null)
+
+  const noEstimate = buildProjectInsights([mergedTask(1, { workMs: hours(4) })], NOW)
+  assert.equal(noEstimate.calibration.samples, 0)
+})
+
+test('calibration: a single sample makes weighted and median values identical', () => {
+  const r = buildProjectInsights([mergedTask(2, { estimate: 3, workMs: hours(6) })], NOW)
+  const c = r.calibration
+  assert.equal(c.samples, 1)
+  assert.equal(c.points, 3)
+  assert.equal(c.workMs, hours(6))
+  assert.equal(c.hours, 6)
+  assert.equal(c.hoursPerPoint, 2)
+  assert.equal(c.medianHoursPerPoint, 2)
+  assert.deepEqual(c.buckets.find((b) => b.points === 3), {
+    points: 3,
+    samples: 1,
+    workMs: hours(6),
+    hours: 6,
+    averageHours: 6,
+  })
+  assert.equal(c.buckets.find((b) => b.points === 1)?.averageHours, null)
+})
+
+test('calibration: weighted hours-per-point differs from the median of ratios', () => {
+  const r = buildProjectInsights([
+    mergedTask(1, { estimate: 1, workMs: hours(1) }),
+    mergedTask(1, { estimate: 8, workMs: hours(16) }),
+  ], NOW)
+  const c = r.calibration
+  assert.equal(c.samples, 2)
+  assert.equal(c.points, 9)
+  assert.equal(c.workMs, hours(17))
+  assert.equal(c.hours, 17)
+  // Weighted: 17h / 9pt ≈ 1.888 -> 1.9. Median of ratios [1, 2] = 1.5.
+  assert.equal(c.hoursPerPoint, 1.9)
+  assert.equal(c.medianHoursPerPoint, 1.5)
+})
+
+test('calibration: median of an even count averages the middle pair, odd count takes the middle', () => {
+  const even = buildProjectInsights([
+    mergedTask(1, { estimate: 1, workMs: hours(1) }),
+    mergedTask(1, { estimate: 1, workMs: hours(2) }),
+    mergedTask(1, { estimate: 1, workMs: hours(5) }),
+    mergedTask(1, { estimate: 1, workMs: hours(8) }),
+  ], NOW)
+  assert.equal(even.calibration.medianHoursPerPoint, 3.5)
+
+  const odd = buildProjectInsights([
+    mergedTask(1, { estimate: 1, workMs: hours(9) }),
+    mergedTask(1, { estimate: 1, workMs: hours(1) }),
+    mergedTask(1, { estimate: 1, workMs: hours(5) }),
+  ], NOW)
+  assert.equal(odd.calibration.medianHoursPerPoint, 5)
+})
+
+test('calibration: buckets aggregate samples, work time and average hours', () => {
+  const r = buildProjectInsights([
+    mergedTask(1, { estimate: 1, workMs: hours(2) }),
+    mergedTask(1, { estimate: 1, workMs: hours(4) }),
+    mergedTask(1, { estimate: 8, workMs: hours(12) }),
+  ], NOW)
+  const byPoints = new Map(r.calibration.buckets.map((b) => [b.points, b]))
+  assert.deepEqual(byPoints.get(1), { points: 1, samples: 2, workMs: hours(6), hours: 6, averageHours: 3 })
+  assert.deepEqual(byPoints.get(8), { points: 8, samples: 1, workMs: hours(12), hours: 12, averageHours: 12 })
+  for (const points of [2, 3, 5]) {
+    const bucket = byPoints.get(points)!
+    assert.equal(bucket.samples, 0)
+    assert.equal(bucket.averageHours, null)
+  }
+  assert.equal(r.calibration.buckets.length, 5)
+})
+
+test('calibration: open, unmerged and cleaned-without-merge records never count', () => {
+  const r = buildProjectInsights([
+    // Open task with both fields: still in progress, not a finished sample.
+    view({ estimate: 3, workMs: hours(9) }, 'review'),
+    // Merged status without any merge stamp still counts.
+    view({ estimate: 2, workMs: hours(2) }, 'merged'),
+    // Cleaned with no merge record: excluded.
+    view({ estimate: 5, workMs: hours(10) }, 'cleaned'),
+    // Cleaned with a valid merge stamp: included.
+    view({ estimate: 1, workMs: hours(1), mergedAt: NOW - DAY }, 'cleaned'),
+  ], NOW)
+  assert.equal(r.calibration.samples, 2)
+  assert.equal(r.calibration.points, 3)
+  assert.equal(r.calibration.workMs, hours(3))
+})
+
+test('calibration: invalid estimates and work values are ignored, never NaN or Infinity', () => {
+  const r = buildProjectInsights([
+    mergedTask(1, { estimate: 0 as any, workMs: hours(1) }),
+    mergedTask(1, { estimate: 4 as any, workMs: hours(1) }),
+    mergedTask(1, { estimate: 'x' as any, workMs: hours(1) }),
+    mergedTask(1, { estimate: 3, workMs: -hours(1) }),
+    mergedTask(1, { estimate: 3, workMs: Number.NaN }),
+    mergedTask(1, { estimate: 3, workMs: Number.POSITIVE_INFINITY }),
+    // A start stamp in the future means a zero interval, so no elapsed work.
+    mergedTask(1, { estimate: 3, workStartedAt: NOW + hours(1) }),
+  ], NOW)
+  assert.equal(r.calibration.samples, 0)
+  assert.equal(r.calibration.hoursPerPoint, null)
+  assert.equal(r.calibration.medianHoursPerPoint, null)
+  assert.ok(Number.isFinite(r.calibration.hours))
+  assert.ok(Number.isFinite(r.calibration.workMs))
+})
+
+test('calibration: a merged task still timing contributes its elapsed value', () => {
+  const r = buildProjectInsights([
+    mergedTask(1, { estimate: 2, workMs: hours(1), workStartedAt: NOW - hours(0.5) }),
+  ], NOW)
+  assert.equal(r.calibration.samples, 1)
+  assert.equal(r.calibration.workMs, hours(1.5))
+  assert.equal(r.calibration.hours, 1.5)
+  assert.equal(r.calibration.hoursPerPoint, 0.8)
+})
+
+test('calibration: values round to one decimal and totals stay finite at the safe-integer cap', () => {
+  const r = buildProjectInsights([
+    mergedTask(1, { estimate: 3, workMs: hours(1) }),
+    mergedTask(1, { estimate: 3, workMs: hours(2) }),
+    mergedTask(1, { estimate: 3, workMs: hours(2) }),
+  ], NOW)
+  // 5h / 9pt = 0.5555 -> 0.6; median of [0.333, 0.667, 0.667] = 0.7.
+  assert.equal(r.calibration.hoursPerPoint, 0.6)
+  assert.equal(r.calibration.medianHoursPerPoint, 0.7)
+
+  const huge = buildProjectInsights([
+    mergedTask(1, { estimate: 1, workMs: Number.MAX_SAFE_INTEGER }),
+    mergedTask(1, { estimate: 1, workMs: Number.MAX_SAFE_INTEGER }),
+  ], NOW)
+  assert.ok(Number.isFinite(huge.calibration.workMs))
+  assert.ok(huge.calibration.workMs <= Number.MAX_SAFE_INTEGER)
+  assert.ok(Number.isFinite(huge.calibration.hours))
+  assert.ok(Number.isFinite(huge.calibration.hoursPerPoint as number))
+})
+
+test('calibration: legacy tasks without the new fields return a zero calibration', () => {
+  const legacy = buildProjectInsights([view({}, 'review'), view({}, 'merged')], NOW)
+  assert.equal(legacy.calibration.samples, 0)
+  assert.equal(legacy.calibration.points, 0)
+  assert.equal(legacy.calibration.workMs, 0)
+  assert.equal(legacy.calibration.hoursPerPoint, null)
+  assert.equal(legacy.calibration.medianHoursPerPoint, null)
+  // Existing figures keep working alongside the new field.
+  assert.equal(legacy.total, 2)
+  assert.equal(legacy.merged, 1)
+  assert.equal(legacy.open, 1)
+  assert.equal(legacy.daily.length, INSIGHTS_DAYS)
+})
