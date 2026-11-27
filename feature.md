@@ -1027,7 +1027,9 @@ export interface ProjectInsights {
 
 ### 10.4 验收审批
 
-- 计划使用 `delegate_task` + `role: review` 的独立 reviewer；待实施后填写结论。
+- 独立 reviewer（`delegate_task` + `role: review`，magpie `mm/workbuddy/glm-5.3`）：**可提交 PR**，无 BLOCKER / MAJOR。
+- 复核确认五个功能均满足 feature.md 1–5 的验收标准；服务端、任务模型、HTTP 路由与新依赖均未改动。
+- MINOR 处理：`mdInline` 已折叠空白，备注多行不会破坏列表（不成立）；总览「需要关注」与左栏筛选计数的差异已在 `docs/frontend-design.md` 6.17 注明；总览 memo 化与视图层渲染测试列为可选优化，不在本批次范围内。
 
 ### 10.5 PR
 
