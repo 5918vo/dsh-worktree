@@ -21,6 +21,8 @@ import { attachFocusTrap } from './dialog-focus'
 import { PublishModal } from './publish'
 import { draftFromTask } from './publish-state'
 import { AddProjectModal } from './add-project'
+import { buildFocusQueue } from './focus-queue'
+import { FocusQueueDialog } from './focus-queue-view'
 import { openNativeSession } from './actions'
 import { pendingLabel } from './status'
 import {
@@ -121,6 +123,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
   // Runtime worktree dir: what a project without its own `dirName` inherits.
   const [configDirName, setConfigDirName] = React.useState('')
   const [addOpen, setAddOpen] = React.useState(false)
+  const [focusOpen, setFocusOpen] = React.useState(false)
   const [publishProjectId, setPublishProjectId] = React.useState('')
   const [publishParentId, setPublishParentId] = React.useState('')
   const [confirm, setConfirm] = React.useState(null as ConfirmState | null)
@@ -570,6 +573,10 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     return map
   }, [allViews, pendingMap, sessionMap, healthMap, err])
   const attentionOf = React.useCallback((tv: TaskView) => attentionMap.get(tv.task.id) || EMPTY_ATTENTION, [attentionMap])
+  // The focus queue reuses the risk radar score as its base and the same
+  // attention map for the "waiting on an answer" weight. It reads the complete,
+  // unfiltered project views: search and tag filters never change the queue.
+  const focus = React.useMemo(() => buildFocusQueue({ views, attentionOf, now: Date.now() }), [views, attentionOf])
   // Dependencies are resolved against every task, archived or not, so a chip
   // never flaps while the archive toggle changes what the list shows.
   const taskLookup = React.useMemo(() => {
@@ -655,6 +662,11 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
         counts,
         attentionTotal: counts.total,
         attentionStale: !!err,
+        focusCount: focus.items.length,
+        focusReady: focus.ready,
+        focusWaiting: focus.waiting,
+        focusTotal: focus.total,
+        onOpenFocus: () => setFocusOpen(true),
         lastOkAt,
         emptyKind,
         loaded,
@@ -871,6 +883,18 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
             say(String(copy).replace('{name}', project.name || ''))
           }
           void refresh()
+        },
+      })
+      : null,
+
+    focusOpen
+      ? h(FocusQueueDialog, {
+        t,
+        queue: focus,
+        onClose: () => setFocusOpen(false),
+        onSelectTask: (taskId: string, projectId: string) => {
+          setFocusOpen(false)
+          selectTask(taskId, projectId)
         },
       })
       : null,

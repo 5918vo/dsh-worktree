@@ -41,6 +41,12 @@ export interface RailProps {
   counts: Record<string, number>
   attentionTotal: number
   attentionStale: boolean
+  /** Focus queue: rows shown (max 10), ready / waiting / open counts. */
+  focusCount?: number
+  focusReady?: number
+  focusWaiting?: number
+  focusTotal?: number
+  onOpenFocus?: () => void
   lastOkAt: number
   emptyKind: RailEmptyKind
   /** False until the first project fetch lands; the foot shows placeholders. */
@@ -218,6 +224,20 @@ export function Rail(props: RailProps) {
       lastOkAt: props.lastOkAt,
       onView: props.onFilter,
     }),
+
+    props.focusTotal && props.focusTotal > 0
+      ? h('button', {
+        type: 'button',
+        className: 'dshwd-focus-entry',
+        'aria-haspopup': 'dialog',
+        'aria-label': String(t.focusEntryLabel).replace('{n}', String(props.focusReady || 0)),
+        title: t.focusEntryTitle,
+        onClick: props.onOpenFocus,
+      },
+        h('span', { className: 'dshwd-focus-entry-icon', 'aria-hidden': 'true' }, h(Icon, { name: 'circle' })),
+        h('span', { className: 'dshwd-focus-entry-text' }, t.focusTitle),
+        h('span', { className: 'dshwd-focus-entry-count dshwd-mono' }, String(props.focusCount || 0)))
+      : null,
 
     h('div', { className: 'dshwd-rail-list' },
       props.emptyKind === 'no-projects'
