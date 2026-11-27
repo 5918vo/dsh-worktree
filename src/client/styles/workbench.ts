@@ -645,7 +645,7 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-portfolio-sec-count { flex: none; font-size: 11px; color: var(--text-3); }
 .dshw-board .dshwd-portfolio-projects { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .dshw-board .dshwd-portfolio-table { border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; overflow-y: hidden; background: var(--bg-elevated); }
-.dshw-board .dshwd-portfolio-columns, .dshw-board .dshwd-portfolio-row { display: grid; grid-template-columns: minmax(180px, 1.8fr) repeat(8, minmax(56px, .5fr)); align-items: center; gap: 10px; min-width: 760px; padding: 8px 12px; box-sizing: border-box; }
+.dshw-board .dshwd-portfolio-columns, .dshw-board .dshwd-portfolio-row { display: grid; grid-template-columns: minmax(180px, 1.8fr) repeat(9, minmax(56px, .5fr)); align-items: center; gap: 10px; min-width: 840px; padding: 8px 12px; box-sizing: border-box; }
 .dshw-board .dshwd-portfolio-columns { border-bottom: 1px solid var(--line); font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3); }
 .dshw-board .dshwd-portfolio-columns > span:not(:first-child) { text-align: right; }
 .dshw-board .dshwd-portfolio-row { width: 100%; border: none; border-bottom: 1px solid var(--line); background: transparent; color: var(--text-1); text-align: left; cursor: pointer; font: inherit; }
@@ -667,7 +667,7 @@ export const WORKBENCH_CSS = `
 @media (max-width: 860px) {
   .dshw-board .dshwd-portfolio-body { padding: 16px 14px 24px; gap: 18px; }
   .dshw-board .dshwd-portfolio-title { font-size: 17px; }
-  .dshw-board .dshwd-portfolio-columns, .dshw-board .dshwd-portfolio-row { grid-template-columns: minmax(150px, 1.6fr) repeat(8, minmax(48px, .5fr)); gap: 8px; min-width: 680px; }
+  .dshw-board .dshwd-portfolio-columns, .dshw-board .dshwd-portfolio-row { grid-template-columns: minmax(150px, 1.6fr) repeat(9, minmax(48px, .5fr)); gap: 8px; min-width: 750px; }
 }
 ${PANEL_CSS}
 `
