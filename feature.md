@@ -1000,7 +1000,7 @@ export interface ProjectInsights {
 
 ## 10. 验收记录
 
-- **状态**：五个功能已集成，待独立复核与 PR。
+- **状态**：五个功能已集成并通过独立复核，PR 已提交，待验收。
 
 ### 10.1 实施来源
 
@@ -1033,4 +1033,4 @@ export interface ProjectInsights {
 
 ### 10.5 PR
 
-- 待实施后填写。
+- https://github.com/5918vo/dsh-worktree/pull/36
