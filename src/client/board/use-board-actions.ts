@@ -11,7 +11,8 @@ import type { BoardAction } from '../model'
 import { cleanupPrimaryLabel, criteria, criteriaProgress, mergeGateMissing, switchConfirmText } from '../model'
 import { copyText, downloadText } from '../format'
 import { buildAcceptanceReport, reportFilename } from '../report'
-import type { ProjectView, TaskDiff, TaskView } from '../../models'
+import { buildHandoffBrief } from '../handoff'
+import type { ProjectView, TaskDiff, TaskView, WorktreeTask } from '../../models'
 import type { ConfirmState, StashViewState } from './dialogs'
 import type { BoardTab } from '../stage'
 
@@ -23,6 +24,8 @@ export interface UseBoardActionsArgs {
   projectOfTask: ProjectView | null
   /** Diff already loaded for the selected task; the report never refetches it. */
   diff: TaskDiff | null
+  /** Every task (archived included); the handoff brief resolves prerequisites from it. */
+  tasks: WorktreeTask[]
   /** Localized status label for the report, matching the Stage chip. */
   statusLabel: string
   busy: string
@@ -49,6 +52,7 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     selectedProjectId,
     projectOfTask,
     diff,
+    tasks,
     statusLabel,
     busy,
     setBusy,
@@ -386,6 +390,32 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     }
   }
 
+  /**
+   * Handoff brief for the next agent: same snapshot and diff as the report,
+   * but built for continuing the task rather than archiving it.
+   */
+  async function runCopyHandoff() {
+    if (!selectedTask || busy) return
+    setBusy('handoff')
+    try {
+      const text = buildHandoffBrief({
+        task: selectedTask.task,
+        snapshot: selectedTask.snapshot,
+        diff,
+        tasks,
+        projectName: projectOfTask ? projectOfTask.project.name : '',
+        statusLabel,
+        t,
+      })
+      if (!(await copyText(text))) throw new Error(t.handoffCopyFailed)
+      say(t.handoffCopied)
+    } catch (e: any) {
+      say(String((e && e.message) || t.handoffCopyFailed), true)
+    } finally {
+      setBusy('')
+    }
+  }
+
   async function runDownloadReport() {
     if (!selectedTask || busy) return
     const view = selectedTask
@@ -506,6 +536,7 @@ export function useBoardActions(args: UseBoardActionsArgs) {
     runAction,
     runCriterion,
     runCopyReport,
+    runCopyHandoff,
     runDownloadReport,
     runSaveMeta,
     runTimer,

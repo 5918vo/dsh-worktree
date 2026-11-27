@@ -27,7 +27,7 @@ export interface ReportInput {
  * Machine `TaskDiff.reason` -> message. Written as a switch on purpose: the locale
  * checker reads literal `t.<key>` references, so every message stays discoverable.
  */
-function diffReasonText(t: Record<string, any>, diff: TaskDiff): string {
+export function diffReasonText(t: Record<string, any>, diff: TaskDiff): string {
   switch (diff.reason) {
     case 'worktree-missing': return String(t.reportDiffWorktreeMissing)
     case 'no-merge-base': return String(t.reportDiffNoMergeBase)

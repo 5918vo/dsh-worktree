@@ -351,6 +351,8 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-alert-info { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent); }
 .dshw-board .dshwd-alert-warn { border-color: var(--warn-line); background: var(--warn-soft); color: var(--warn); }
 .dshw-board .dshwd-hint { color: var(--text-3); font-size: 11px; line-height: 1.5; }
+/* Handoff brief: the hint sits under the block label and never spans the card. */
+.dshw-board .dshwd-handoff .dshwd-handoff-hint { max-width: 560px; }
 /* Persistent inline notice: same text as the error toast, but it stays put. */
 .dshw-board .dshwd-notice { align-items: flex-start; margin-bottom: 14px; }
 .dshw-board .dshwd-notice-text { min-width: 0; overflow-wrap: anywhere; line-height: 1.5; }

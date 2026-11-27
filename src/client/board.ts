@@ -466,6 +466,14 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
   const cta = selectedTask && status ? boardCta(status, !!selectedTask.task.sessionId) : null
   const statusLabel = status ? boardStatusLabel(t, status) : ''
 
+  // Every task's view, unfiltered: the handoff brief resolves prerequisites
+  // even when they are archived or hidden by the current filter.
+  const allViews: TaskView[] = React.useMemo(() => {
+    const out: TaskView[] = []
+    for (const view of views) for (const tv of view.tasks) out.push(tv)
+    return out
+  }, [views])
+
   const actions = useBoardActions({
     t,
     remotes,
@@ -473,6 +481,7 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
     selectedProjectId,
     projectOfTask,
     diff,
+    tasks: allViews.map((tv) => tv.task),
     statusLabel,
     busy,
     setBusy,
@@ -529,11 +538,6 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
 
   // One attention map feeds the rows, the filter counts and the summary bar, so
   // they can never disagree about what needs attention.
-  const allViews: TaskView[] = React.useMemo(() => {
-    const out: TaskView[] = []
-    for (const view of views) for (const tv of view.tasks) out.push(tv)
-    return out
-  }, [views])
   const shownViews = React.useMemo(() => visibleProjectViews(views, showArchived), [views, showArchived])
   // Tag options come from every task, archived or not, so the dropdown does not
   // flicker while the archive toggle changes what the list shows.
@@ -712,6 +716,8 @@ export function WorkbenchBoardPage(props: WorkbenchBoardPageProps) {
           onDownloadReport: actions.runDownloadReport,
           // Any in-flight action freezes the snapshot the report would read.
           reportBusy: !!busy,
+          onCopyHandoff: actions.runCopyHandoff,
+          handoffBusy: !!busy,
           entries,
           entriesReady,
           live,
