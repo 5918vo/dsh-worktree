@@ -9,12 +9,45 @@
  */
 
 import type { TaskView } from '../models'
-import { parseEstimate } from '../task-meta'
+import { parseEstimate, TASK_ESTIMATES } from '../task-meta'
+import { elapsedWorkMs } from '../task-timer'
 import { criteria, criteriaProgress } from './model'
 
 export const INSIGHTS_DAYS = 7
 
 const DAY_MS = 86400000
+const HOUR_MS = 3600000
+const MAX_SAFE = Number.MAX_SAFE_INTEGER
+
+/** Clamped addition: a broken ledger must never overflow into Infinity. */
+function safeAdd(total: number, value: number): number {
+  const next = total + value
+  return next > MAX_SAFE ? MAX_SAFE : next
+}
+
+export interface CalibrationBucket {
+  points: number
+  samples: number
+  workMs: number
+  hours: number
+  /** Average hours per sample for this size; null when the bucket is empty. */
+  averageHours: number | null
+}
+
+export interface EstimateCalibration {
+  /** Merged tasks carrying both a valid estimate and a positive work time. */
+  samples: number
+  /** Sum of the estimates of those tasks, in points. */
+  points: number
+  workMs: number
+  hours: number
+  /** Weighted hours per point = hours / points; null without samples. */
+  hoursPerPoint: number | null
+  /** Median of each task's hours / points; null without samples. */
+  medianHoursPerPoint: number | null
+  /** Always the five TASK_ESTIMATES buckets, empty ones included. */
+  buckets: CalibrationBucket[]
+}
 
 export interface InsightDay {
   /** Days relative to today: -6 .. 0, where 0 is today. */
@@ -52,6 +85,8 @@ export interface ProjectInsights {
   statusCounts: Record<string, number>
   /** The last 7 local calendar days, in ascending order. */
   daily: InsightDay[]
+  /** Estimate vs recorded work time across merged tasks. */
+  calibration: EstimateCalibration
 }
 
 /** Finite, positive timestamps only; everything else is treated as absent. */
@@ -110,6 +145,12 @@ export function buildProjectInsights(views: TaskView[], now: number = Date.now()
   let unestimatedOpen = 0
   const cycles: number[] = []
   const statusCounts: Record<string, number> = {}
+  let calibrationSamples = 0
+  let calibrationPoints = 0
+  let calibrationWorkMs = 0
+  const hoursPerPointSamples: number[] = []
+  const bucketStats = new Map<number, { samples: number; workMs: number }>()
+  for (const points of TASK_ESTIMATES) bucketStats.set(points, { samples: 0, workMs: 0 })
 
   for (const view of list) {
     const task = (view && view.task) || ({} as any)
@@ -133,6 +174,30 @@ export function buildProjectInsights(views: TaskView[], now: number = Date.now()
         estimatedOpen += 1
       } else {
         unestimatedOpen += 1
+      }
+    }
+
+    // Calibration: only merged records with a usable estimate and a positive
+    // elapsed work time. A cleaned task without a merge stamp never qualifies
+    // (`isMerged` requires a valid mergedAt or the merged status), and an open
+    // task's running timer is not evidence of finished work.
+    if (isMerged) {
+      const estimate = parseEstimate(task.estimate)
+      if (estimate.ok && estimate.value != null) {
+        const spent = elapsedWorkMs(task, at)
+        if (Number.isFinite(spent) && spent > 0) {
+          const workMs = Math.min(spent, MAX_SAFE)
+          const points = estimate.value
+          calibrationSamples += 1
+          calibrationPoints = safeAdd(calibrationPoints, points)
+          calibrationWorkMs = safeAdd(calibrationWorkMs, workMs)
+          hoursPerPointSamples.push(workMs / HOUR_MS / points)
+          const bucket = bucketStats.get(points)
+          if (bucket) {
+            bucket.samples += 1
+            bucket.workMs = safeAdd(bucket.workMs, workMs)
+          }
+        }
       }
     }
 
@@ -185,6 +250,38 @@ export function buildProjectInsights(views: TaskView[], now: number = Date.now()
       : (sorted[middle - 1] + sorted[middle]) / 2)
   }
 
+  const buckets: CalibrationBucket[] = TASK_ESTIMATES.map((points) => {
+    const bucket = bucketStats.get(points) || { samples: 0, workMs: 0 }
+    return {
+      points,
+      samples: bucket.samples,
+      workMs: bucket.workMs,
+      hours: round1(bucket.workMs / HOUR_MS),
+      averageHours: bucket.samples ? round1(bucket.workMs / HOUR_MS / bucket.samples) : null,
+    }
+  })
+
+  let hoursPerPoint: number | null = null
+  let medianHoursPerPoint: number | null = null
+  if (calibrationSamples > 0 && calibrationPoints > 0) {
+    hoursPerPoint = round1(calibrationWorkMs / HOUR_MS / calibrationPoints)
+    const sorted = hoursPerPointSamples.slice().sort((a, b) => a - b)
+    const middle = Math.floor(sorted.length / 2)
+    medianHoursPerPoint = round1(sorted.length % 2
+      ? sorted[middle]
+      : (sorted[middle - 1] + sorted[middle]) / 2)
+  }
+
+  const calibration: EstimateCalibration = {
+    samples: calibrationSamples,
+    points: calibrationPoints,
+    workMs: calibrationWorkMs,
+    hours: round1(calibrationWorkMs / HOUR_MS),
+    hoursPerPoint,
+    medianHoursPerPoint,
+    buckets,
+  }
+
   return {
     total: list.length,
     open,
@@ -205,5 +302,6 @@ export function buildProjectInsights(views: TaskView[], now: number = Date.now()
     estimateCoveragePercent: open ? Math.round((estimatedOpen / open) * 100) : null,
     statusCounts,
     daily,
+    calibration,
   }
 }

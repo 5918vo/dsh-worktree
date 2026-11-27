@@ -426,6 +426,13 @@ export const WORKBENCH_CSS = `
 .dshw-board .dshwd-insights-swatch { width: 8px; height: 8px; border-radius: 2px; background: var(--accent); }
 .dshw-board .dshwd-insights-swatch--merged { background: var(--ok); }
 
+/* ---------- estimate calibration ------------------------------------------ */
+.dshw-board .dshwd-calibration { margin-top: 12px; }
+.dshw-board .dshwd-calibration-detail { margin-top: 6px; font-size: 11px; color: var(--text-2); }
+.dshw-board .dshwd-calibration-detail > summary { cursor: pointer; }
+.dshw-board .dshwd-calibration-list { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; color: var(--text-3); }
+.dshw-board .dshwd-calibration-median { margin-top: 4px; }
+
 /* ---------- dependency graph: layered DAG --------------------------------- */
 .dshw-board .dshwd-depgraph-legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px; color: var(--text-3); }
 .dshw-board .dshwd-depgraph-legend-item { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }

@@ -256,6 +256,30 @@ export function ProjectDetail(props: any) {
     const insights = buildProjectInsights(v.tasks, Date.now())
     const maxDaily = insights.daily.reduce((max: number, day: any) => Math.max(max, day.created, day.merged), 0)
     const barHeight = (count: number) => maxDaily > 0 ? Math.round((count / maxDaily) * 100) + '%' : '0%'
+    const calibration = insights.calibration
+    // Descriptive only: no prediction, no write-back. A project with no merged
+    // task shows nothing rather than a meaningless empty state.
+    const calibrationBlock = insights.merged === 0
+      ? null
+      : calibration.samples > 0
+        ? h('div', { className: 'dshwd-calibration' },
+          h('div', { className: 'dshw-hint dshwd-calibration-summary' }, fill(t.insightsCalibration, {
+            samples: calibration.samples,
+            hours: calibration.hoursPerPoint == null ? '0.0' : calibration.hoursPerPoint.toFixed(1),
+          })),
+          h('details', { className: 'dshwd-calibration-detail' },
+            h('summary', null, t.insightsCalibrationDetail),
+            h('ul', { className: 'dshwd-calibration-list' },
+              calibration.buckets.filter((bucket: any) => bucket.samples > 0).map((bucket: any) => h('li', { key: bucket.points },
+                fill(t.insightsCalibrationBucket, {
+                  points: bucket.points,
+                  samples: bucket.samples,
+                  hours: bucket.averageHours == null ? '0.0' : bucket.averageHours.toFixed(1),
+                }))))),
+          calibration.medianHoursPerPoint == null
+            ? null
+            : h('div', { className: 'dshw-hint dshwd-calibration-median' }, fill(t.insightsCalibrationMedian, { hours: calibration.medianHoursPerPoint.toFixed(1) })))
+        : h('div', { className: 'dshw-hint dshwd-calibration-empty' }, t.insightsCalibrationEmpty)
     const insightsCard = h(Card, null,
       h(CardHead, { icon: 'grid', title: t.projectInsights }),
       h('div', { className: 'dshw-stats' },
@@ -284,6 +308,7 @@ export function ProjectDetail(props: any) {
       h('div', { className: 'dshw-hint' }, insights.open === 0
         ? t.insightsWorkloadEmpty
         : fill(t.insightsWorkload, { open: insights.open, estimated: insights.estimatedOpen, points: insights.openEstimatePoints })),
+      calibrationBlock,
       insights.total === 0
         ? h('div', { className: 'dshw-hint' }, t.insightsEmpty)
         : h('div', { className: 'dshwd-insights' },
